@@ -5,13 +5,12 @@ Connector for downloading files from arbitrary HTTP/HTTPS URLs.
 from __future__ import annotations
 import tempfile
 from pathlib import Path
-import requests
+import requests  # type: ignore[import-untyped]
 import pandas as pd
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore[import-untyped]
 from urllib.parse import urlparse, parse_qs
 
 from .base import BaseConnector
-from .local import LocalConnector
 
 
 class HTTPConnector(BaseConnector):

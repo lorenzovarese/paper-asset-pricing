@@ -2,7 +2,7 @@
 
 import pandas as pd
 from typing import Sequence, Any, Literal
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -23,16 +23,18 @@ class BaseCleaner:
 
     def __init__(self, raw: RawDataset):
         self.raw = raw
-        self.df = raw.df  # alias for convenience
+        self.df = raw.df
 
     def _require(self, *allowed: Literal["firm", "macro"]):
         if self.raw.objective not in allowed:
             raise ValueError(
-                f"Operation only valid for {allowed}, "
-                f"but dataset.objective={self.raw.objective}"
+                f"Operation only valid for {allowed}, but dataset.objective={self.raw.objective}"
             )
 
     def normalize_columns(self) -> "BaseCleaner":
+        """
+        Lowercase and strip whitespace from column names.
+        """
         self.df.columns = self.df.columns.astype(str).str.lower().str.strip()
         return self
 
@@ -41,7 +43,12 @@ class BaseCleaner:
         candidates: Sequence[str] = ("date", "yyyymm", "time"),
         target: str = "date",
     ) -> "BaseCleaner":
+        """
+        Rename the first matching date-like column to a standard target.
+        Only valid for firm datasets.
+        """
         self._require("firm", "macro")
+        # Lookup lowercase names to original
         lcols = {c.lower(): c for c in self.df.columns}
         for cand in candidates:
             if cand in lcols:
@@ -55,6 +62,9 @@ class BaseCleaner:
         date_format: str | None = None,
         monthly_option: Literal["start", "end"] | None = None,
     ) -> "BaseCleaner":
+        """
+        Parse a date column, optionally adjusting to start or end of month.
+        """
         self._require("firm", "macro")
         if date_format:
             self.df[date_col] = pd.to_datetime(
@@ -64,22 +74,25 @@ class BaseCleaner:
             self.df[date_col] = pd.to_datetime(self.df[date_col], errors="coerce")
         if monthly_option:
             period = self.df[date_col].dt.to_period("M")
-            self.df[date_col] = (
-                period.dt.to_timestamp("start")
-                if monthly_option == "start"
-                else period.dt.to_timestamp("end")
-            )
+            self.df[date_col] = period.dt.to_timestamp(how=monthly_option)
         return self
 
     def clean_numeric_column(self, col: str) -> "BaseCleaner":
+        """
+        Coerce a column to numeric dtype.
+        """
         self._require("firm", "macro")
         self.df[col] = pd.to_numeric(self.df[col], errors="coerce")
         return self
 
     def impute_constant(self, cols: Sequence[str], value: Any) -> "BaseCleaner":
+        """
+        Fill missing values in specified columns with a constant.
+        """
         self._require("firm", "macro")
         for c in cols:
-            self.df[c].fillna(value, inplace=True)
+            # avoid chained assignment warnings
+            self.df[c] = self.df[c].fillna(value)
         return self
 
 
@@ -104,22 +117,31 @@ class FirmCleaner(BaseCleaner):
             )
 
     def impute_cross_section_median(self, cols: Sequence[str]) -> "FirmCleaner":
+        """
+        Fill missing by monthly cross-sectional median.
+        """
         self._ensure_datetime()
         month = self.df[self.date_col].dt.to_period("M")
         med = self.df.groupby(month)[cols].transform("median")
         for c in cols:
-            self.df[c].fillna(med[c], inplace=True)
+            self.df[c] = self.df[c].fillna(med[c])
         return self
 
     def impute_cross_section_mean(self, cols: Sequence[str]) -> "FirmCleaner":
+        """
+        Fill missing by monthly cross-sectional mean.
+        """
         self._ensure_datetime()
         month = self.df[self.date_col].dt.to_period("M")
         mn = self.df.groupby(month)[cols].transform("mean")
         for c in cols:
-            self.df[c].fillna(mn[c], inplace=True)
+            self.df[c] = self.df[c].fillna(mn[c])
         return self
 
     def impute_cross_section_mode(self, cols: Sequence[str]) -> "FirmCleaner":
+        """
+        Fill missing by monthly cross-sectional mode.
+        """
         self._ensure_datetime()
         month = self.df[self.date_col].dt.to_period("M")
         modes = self.df.groupby(month)[cols].transform(
@@ -128,14 +150,13 @@ class FirmCleaner(BaseCleaner):
             else pd.NA
         )
         for c in cols:
-            self.df[c].fillna(modes[c], inplace=True)
+            self.df[c] = self.df[c].fillna(modes[c])
         return self
 
 
 class MacroCleaner(BaseCleaner):
     """
-    Macro‐specific imputation can be added here if needed.
-    Currently inherits only generic methods.
+    Macro-specific cleaner. Currently no extra methods.
     """
 
     def __init__(self, raw: RawDataset, date_col: str = "date"):

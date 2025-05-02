@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Directory used to simulate a user folder for downloading data and storing intermediate files
+PAPER

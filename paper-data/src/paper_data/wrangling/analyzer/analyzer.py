@@ -1,10 +1,10 @@
-import pandas as pd
+import polars as pl
 from ydata_profiling import ProfileReport  # type: ignore[import-untyped]
 from typing import Optional
 
 
 def analyze_dataframe(
-    df: pd.DataFrame,
+    df: pl.DataFrame,
     title: str = "PAPER Data Profile",
     minimal: bool = True,
     explorative: bool = False,
@@ -31,14 +31,14 @@ def analyze_dataframe(
     # Limit to last n_rows if specified
     if n_rows is not None and len(df) > n_rows:
         # Ensure a copy to avoid SettingWithCopyWarning in profiling
-        df = df.tail(n_rows).copy()
+        df = df.tail(n_rows)
 
     # Prevent explorative mode on large datasets
     if explorative and len(df) > 1000:
         raise ValueError("Explorative mode is limited to 1000 rows or fewer.")
 
     report = ProfileReport(
-        df,
+        df.to_pandas(),  # Convert Polars DataFrame to Pandas for profiling
         title=title,
         explorative=explorative,
         minimal=minimal,

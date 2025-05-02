@@ -1,5 +1,5 @@
 import pytest
-import pandas as pd
+import polars as pl
 import zipfile
 from pathlib import Path
 
@@ -7,21 +7,21 @@ from paper_data.ingestion.local import LocalConnector  # type: ignore[import-unt
 
 
 def test_read_csv(tmp_path):
-    data = pd.DataFrame({"a": [1, 2, 3]})
+    data = pl.DataFrame({"a": [1, 2, 3]})
     csv_path = tmp_path / "test.csv"
-    data.to_csv(csv_path, index=False)
+    data.write_csv(csv_path)
     conn = LocalConnector(str(csv_path))
     df = conn.get_data()
-    pd.testing.assert_frame_equal(df, data)
+    pl.testing.assert_frame_equal(df, data)
 
 
 def test_read_parquet(tmp_path):
-    data = pd.DataFrame({"b": [4.0, 5.5]})
+    data = pl.DataFrame({"b": [4.0, 5.5]})
     pq_path = tmp_path / "test.parquet"
-    data.to_parquet(pq_path)
+    data.write_parquet(pq_path)
     conn = LocalConnector(pq_path)
     df = conn.get_data()
-    pd.testing.assert_frame_equal(df, data)
+    pl.testing.assert_frame_equal(df, data)
 
 
 def test_file_not_found(tmp_path):
@@ -58,8 +58,8 @@ def test_read_single_csv_in_zip(tmp_path):
     zip_path = _make_zip(tmp_path, {"data.csv": csv_content})
     conn = LocalConnector(str(zip_path))
     df = conn.get_data()
-    expected = pd.DataFrame({"x": [1, 3], "y": [2, 4]})
-    pd.testing.assert_frame_equal(df, expected)
+    expected = pl.DataFrame({"x": [1, 3], "y": [2, 4]})
+    pl.testing.assert_frame_equal(df, expected)
 
 
 def test_multiple_files_without_member_name_raises(tmp_path):
@@ -85,8 +85,8 @@ def test_read_specific_member_in_zip(tmp_path):
     zip_path = _make_zip(tmp_path, files)
     conn = LocalConnector(zip_path, member_name="second.csv")
     df = conn.get_data()
-    expected = pd.DataFrame({"c": [7], "d": [8]})
-    pd.testing.assert_frame_equal(df, expected)
+    expected = pl.DataFrame({"c": [7], "d": [8]})
+    pl.testing.assert_frame_equal(df, expected)
 
 
 def test_member_name_not_found(tmp_path):

@@ -4,7 +4,7 @@ ydata-profiling UI via paper_data’s analyzer.
 """
 
 import argparse
-import pandas as pd
+import polars as pl
 import sys
 from pathlib import Path
 
@@ -47,8 +47,8 @@ def main():
         print(f"ERROR: sample_data.csv not found at {csv_path}", file=sys.stderr)
         sys.exit(1)
 
-    # 2) Read the data (semicolon delimiter)
-    df = pd.read_csv(csv_path, sep=";")
+    # 2) Read the data
+    df = pl.read_csv(csv_path)
 
     # 3) Launch the profiling report
     #    This will generate an HTML file under PAPER/ and open it in your browser.

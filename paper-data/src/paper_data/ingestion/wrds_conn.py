@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from typing import Any
 import os
 import pandas as pd
+import polars as pl
 import wrds  # type: ignore[import-untyped]
 
 from .base import BaseConnector
@@ -42,10 +43,32 @@ class WRDSConnector(BaseConnector):
         finally:
             db.close()
 
-    def get_data(self) -> pd.DataFrame:
+    def get_data(self) -> pl.DataFrame:
         with self._conn() as db:
             if self.max_rows:
                 q = f"SELECT * FROM ({self.query}) LIMIT {self.max_rows}"
             else:
                 q = self.query
-            return db.raw_sql(q)
+
+            result = db.raw_sql(q)
+            # If pandas.DataFrame, convert to Polars
+            if isinstance(result, pd.DataFrame):
+                return pl.from_pandas(result)
+            # If it’s already a Polars DataFrame
+            if isinstance(result, pl.DataFrame):
+                return result
+            # If it’s an iterator of DataFrames (chunks), collect and concat
+            if hasattr(result, "__iter__") and not isinstance(result, (str, bytes)):
+                dfs = []
+                for chunk in result:  # type: ignore
+                    if isinstance(chunk, pd.DataFrame):
+                        dfs.append(pl.from_pandas(chunk))
+                    elif isinstance(chunk, pl.DataFrame):
+                        dfs.append(chunk)
+                    else:
+                        raise TypeError(f"Chunk of type {type(chunk)} not supported")
+                return pl.concat(dfs)
+
+            raise TypeError(
+                f"Cannot convert WRDS raw_sql result {type(result)} to pl.DataFrame"
+            )

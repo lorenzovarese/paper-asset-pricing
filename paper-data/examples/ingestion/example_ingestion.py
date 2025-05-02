@@ -34,7 +34,7 @@ def main():
     try:
         welch_df = HTTPConnector(csv_url).get_data()
         path_welch = out_dir / "welch_goyal_monthly.csv"
-        welch_df.to_csv(path_welch, index=False)
+        welch_df.write_csv(path_welch)
         print(f"✔ Saved Welch & Goyal monthly data to {path_welch}")
     except Exception as e:
         print(
@@ -62,7 +62,7 @@ def main():
         wrds = WRDSConnector(query, user=wrds_user, password=wrds_pass)
         df_crsp = wrds.get_data()
         path_crsp = out_dir / "crsp_monthly_returns.parquet"
-        df_crsp.to_parquet(path_crsp, index=False)
+        df_crsp.write_parquet(path_crsp)
         print(f"✔ Saved CRSP monthly returns to {path_crsp}")
     except Exception as e:
         print(

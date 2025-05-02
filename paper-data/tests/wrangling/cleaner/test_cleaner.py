@@ -13,7 +13,7 @@ from paper_data.wrangling.cleaner.cleaner import (  # type: ignore[import-untype
 def test_normalize_columns_and_rename_and_parse_date_and_clean_numeric():
     # Create DataFrame with messy columns, date in yyyymm format, numeric as strings
     data = {
-        " YYYymm ": ["202001", "202002"],
+        " yyYYmm ": ["202001", "202002"],
         "Company_ID": ["1", "2"],
         "Value": ["10.5", "20.0"],
     }
@@ -32,9 +32,11 @@ def test_normalize_columns_and_rename_and_parse_date_and_clean_numeric():
 
     # Parse date with monthly start
     cleaner.parse_date(date_col="date", date_format="%Y%m", monthly_option="start")
-    assert cleaner.df["date"].dtype == pl.Datetime("ns")
+    from polars.datatypes import Date
+
+    assert cleaner.df["date"].dtype == Date()
     # The parsed dates should correspond to first day of month
-    assert cleaner.df["date"].dt.day.eq(1).all()
+    assert cleaner.df["date"].dt.day().eq(1).all()
 
     # Clean numeric column
     cleaner.clean_numeric_column("value")
@@ -52,7 +54,9 @@ def test_impute_constant():
 
 def test_firm_cleaner_cross_section_imputations():
     # Create sample firm data for two months and two companies
-    dates = pl.to_datetime(["2021-01-15", "2021-01-20", "2021-02-15", "2021-02-20"])
+    dates = pl.Series(
+        ["2021-01-15", "2021-01-20", "2021-02-15", "2021-02-20"]
+    ).str.to_date("%Y-%m-%d")
     perm = [1, 2, 1, 2]
     feature = [10.0, None, None, 40.0]
     df = pl.DataFrame({"date": dates, "company_id": perm, "feature": feature})
@@ -61,10 +65,10 @@ def test_firm_cleaner_cross_section_imputations():
 
     # Test median imputation: January median=(10), February median=(40)
     cleaner.impute_cross_section_median(["feature"])
-    jan_vals = cleaner.df[cleaner.df["date"].dt.strftime("%Y-%m") == "2021-01"][
+    jan_vals = cleaner.df.filter(cleaner.df["date"].dt.strftime("%Y-%m") == "2021-01")[
         "feature"
     ]
-    feb_vals = cleaner.df[cleaner.df["date"].dt.strftime("%Y-%m") == "2021-02"][
+    feb_vals = cleaner.df.filter(cleaner.df["date"].dt.strftime("%Y-%m") == "2021-02")[
         "feature"
     ]
     assert jan_vals.to_list() == [10.0, 10.0]
@@ -74,10 +78,10 @@ def test_firm_cleaner_cross_section_imputations():
     raw = RawDataset(df.clone(), objective="firm")
     cleaner = FirmCleaner(raw)
     cleaner.impute_cross_section_mean(["feature"])
-    jan_vals = cleaner.df[cleaner.df["date"].dt.strftime("%Y-%m") == "2021-01"][
+    jan_vals = cleaner.df.filter(cleaner.df["date"].dt.strftime("%Y-%m") == "2021-01")[
         "feature"
     ]
-    feb_vals = cleaner.df[cleaner.df["date"].dt.strftime("%Y-%m") == "2021-02"][
+    feb_vals = cleaner.df.filter(cleaner.df["date"].dt.strftime("%Y-%m") == "2021-02")[
         "feature"
     ]
     assert jan_vals.to_list() == [10.0, 10.0]
@@ -88,12 +92,12 @@ def test_firm_cleaner_cross_section_imputations():
     raw_mode = RawDataset(df_mode.clone(), objective="firm")
     cleaner_mode = FirmCleaner(raw_mode)
     cleaner_mode.impute_cross_section_mode(["flag"])
-    jan_flags = cleaner_mode.df[cleaner.df["date"].dt.strftime("%Y-%m") == "2021-01"][
-        "flag"
-    ]
-    feb_flags = cleaner_mode.df[cleaner.df["date"].dt.strftime("%Y-%m") == "2021-02"][
-        "flag"
-    ]
+    jan_flags = cleaner_mode.df.filter(
+        cleaner_mode.df["date"].dt.strftime("%Y-%m") == "2021-01"
+    )["flag"]
+    feb_flags = cleaner_mode.df.filter(
+        cleaner_mode.df["date"].dt.strftime("%Y-%m") == "2021-02"
+    )["flag"]
     # January mode is 1
     assert jan_flags.to_list() == [1, 1]
     # February mode is 2

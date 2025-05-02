@@ -51,7 +51,21 @@ class HuggingFaceConnector(BaseConnector):
             df = pl.from_arrow(table)
             return ensure_df(df)
 
-        # 3) Pandas fallback
+        # 3) Objects with a to_pandas() method
+        try:
+            import pandas as pd
+
+            to_pd = getattr(raw, "to_pandas", None)
+            if callable(to_pd):
+                pdf = to_pd()
+                if isinstance(pdf, pl.DataFrame):
+                    return pdf
+                if isinstance(pdf, pd.DataFrame):
+                    return pl.from_pandas(pdf)
+        except ImportError:
+            pass
+
+        # 4) Pandas DataFrame fallback
         try:
             import pandas as pd
 
@@ -60,7 +74,7 @@ class HuggingFaceConnector(BaseConnector):
         except ImportError:
             pass
 
-        # 4) List of dicts → direct Polars
+        # 5) List of dicts → direct Polars
         if isinstance(raw, list):
             return pl.DataFrame(raw)
 

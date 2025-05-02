@@ -7,7 +7,7 @@ from paper_data.schema.macro import macro_schema  # type: ignore[import-untyped]
 def test_valid_macro_schema():
     df = pl.DataFrame(
         {
-            "date": pl.to_datetime(["2021-05-01", "2021-06-01"]),
+            "date": (pl.Series(["2021-05-01", "2021-06-01"]).str.to_date("%Y-%m-%d")),
             "feature1": [1.2, 2.3],
             "feature2": [3.4, 4.5],
         }

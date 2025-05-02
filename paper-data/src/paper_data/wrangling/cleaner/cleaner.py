@@ -67,11 +67,14 @@ class BaseCleaner:
         Parse `date_col` to datetime, optionally truncating to month start/end.
         """
         self._require("firm", "macro")
-        # 1) String→Datetime conversion :contentReference[oaicite:1]{index=1}
-        if date_format:
-            expr = pl.col(date_col).str.to_datetime(date_format)
-        else:
-            expr = pl.col(date_col).str.to_datetime()
+        # 1) String→Datetime conversion
+        # parse into a Polars Date column
+        expr = (
+            pl.col(date_col).str.to_date(date_format)
+            if date_format
+            else pl.col(date_col).str.to_date()
+        )
+
         self.df = self.df.with_columns(expr.alias(date_col))
 
         # 2) Truncate to month start/end if requested :contentReference[oaicite:2]{index=2} :contentReference[oaicite:3]{index=3}
@@ -91,7 +94,10 @@ class BaseCleaner:
         Coerce a column to numeric dtype.
         """
         self._require("firm", "macro")
-        self.df[col] = pl.to_numeric(self.df[col], errors="coerce")
+        # cast non-numeric values to null
+        self.df = self.df.with_columns(
+            pl.col(col).cast(pl.Float64, strict=False).alias(col)
+        )
         return self
 
     def impute_constant(self, cols: Sequence[str], value: Any) -> "BaseCleaner":
@@ -119,8 +125,9 @@ class FirmCleaner(BaseCleaner):
         self.id_col = id_col
 
     def _ensure_datetime(self):
-        if not pl.datatypes.is_datetime(self.df[self.date_col]):
-            # Coerce to datetime if not already :contentReference[oaicite:6]{index=6}
+        # `.is_temporal()` returns True for Date or Datetime
+        if not self.df[self.date_col].dtype.is_temporal():
+            # Coerce to datetime if not already
             self.df = self.df.with_columns(
                 pl.col(self.date_col).str.to_datetime().alias(self.date_col)
             )
@@ -163,18 +170,27 @@ class FirmCleaner(BaseCleaner):
         Fill missing by monthly cross-sectional mode.
         """
         self._ensure_datetime()
+        # 1) Truncate to month start
         self.df = self.df.with_columns(
             pl.col(self.date_col).dt.truncate("1mo").alias("__month")
         )
         for c in cols:
-            # Polars doesn’t have a built-in mode transform; use `value_counts` then join back
+            # 2) Compute per-month mode (excluding nulls)
             mode_df = (
-                self.df.group_by(["__month", c])
-                .count()
-                .sort("__month", descending=True)
+                self.df
+                # drop nulls so they aren't counted
+                .filter(pl.col(c).is_not_null())
+                # count occurrences per month
+                .group_by(["__month", c])
+                .agg(pl.count().alias("count"))
+                # sort by __month ASC, count DESC
+                .sort(["__month", "count"], descending=[False, True])
+                # pick the highest‐count row per month
                 .unique(subset="__month")
+                # keep only the month and the mode‐value column
                 .select(["__month", c])
             )
+            # 3) Join back and fill only the original nulls
             self.df = (
                 self.df.join(mode_df, on="__month", how="left")
                 .with_columns(pl.col(c).fill_null(pl.col(f"{c}_right")).alias(c))

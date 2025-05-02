@@ -86,7 +86,8 @@ class LocalConnector(BaseConnector):
                 pbar.update(1)
 
         print("Merging tables…")
-        return pa.concat_tables(tables)  # TODO
+        table = pa.concat_tables(tables)
+        return pl.from_arrow(table)
 
     def _read_from_zip(self) -> pl.DataFrame:
         with tempfile.TemporaryDirectory() as tmpdir:

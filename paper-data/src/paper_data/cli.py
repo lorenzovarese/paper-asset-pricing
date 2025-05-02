@@ -110,7 +110,7 @@ def clean(
     # 1) Load raw data
     ext = source.suffix.lower()
     if ext == ".csv":
-        df = pl.read_csv(source)
+        df = pl.read_csv(source, infer_schema_length=10_000)
     elif ext in {".parquet", ".pq"}:
         df = pl.read_parquet(source)
     else:

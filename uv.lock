@@ -1064,6 +1064,7 @@ dependencies = [
     { name = "datasets" },
     { name = "pandas" },
     { name = "pandera" },
+    { name = "polars" },
     { name = "pyyaml" },
     { name = "requests" },
     { name = "tqdm" },
@@ -1075,6 +1076,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "types-pyyaml" },
+    { name = "types-requests" },
 ]
 
 [package.metadata]
@@ -1082,6 +1084,7 @@ requires-dist = [
     { name = "datasets", specifier = ">=3.6.0" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pandera", specifier = ">=0.24.0" },
+    { name = "polars", specifier = ">=1.30.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "tqdm", specifier = ">=4.67.1" },
@@ -1091,7 +1094,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "types-pyyaml", specifier = ">=6.0.12.20250516" }]
+dev = [
+    { name = "types-pyyaml", specifier = ">=6.0.12.20250516" },
+    { name = "types-requests", specifier = ">=2.32.0.20250515" },
+]
 
 [[package]]
 name = "paper-model"
@@ -1209,6 +1215,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538 },
+]
+
+[[package]]
+name = "polars"
+version = "1.30.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/b6/8dbdf626c0705a57f052708c9fc0860ffc2aa97955930d5faaf6a66fcfd3/polars-1.30.0.tar.gz", hash = "sha256:dfe94ae84a5efd9ba74e616e3e125b24ca155494a931890a8f17480737c4db45", size = 4668318 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/48/e9b2cb379abcc9f7aff2e701098fcdb9fe6d85dc4ad4cec7b35d39c70951/polars-1.30.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:4c33bc97c29b7112f0e689a2f8a33143973a3ff466c70b25c7fd1880225de6dd", size = 35704342 },
+    { url = "https://files.pythonhosted.org/packages/36/ca/f545f61282f75eea4dfde4db2944963dcd59abd50c20e33a1c894da44dad/polars-1.30.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:e3d05914c364b8e39a5b10dcf97e84d76e516b3b1693880bf189a93aab3ca00d", size = 32459857 },
+    { url = "https://files.pythonhosted.org/packages/76/20/e018cd87d7cb6f8684355f31f4e193222455a6e8f7b942f4a2934f5969c7/polars-1.30.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1a52af3862082b868c1febeae650af8ae8a2105d2cb28f0449179a7b44f54ccf", size = 36267243 },
+    { url = "https://files.pythonhosted.org/packages/cb/e7/b88b973021be07b13d91b9301cc14392c994225ef5107a32a8ffd3fd6424/polars-1.30.0-cp39-abi3-manylinux_2_24_aarch64.whl", hash = "sha256:ffb3ef133454275d4254442257c5f71dd6e393ce365c97997dadeb6fa9d6d4b5", size = 33416871 },
+    { url = "https://files.pythonhosted.org/packages/dd/7c/d46d4381adeac537b8520b653dc30cb8b7edbf59883d71fbb989e9005de1/polars-1.30.0-cp39-abi3-win_amd64.whl", hash = "sha256:c26b633a9bd530c5fc09d317fca3bb3e16c772bd7df7549a9d8ec1934773cc5d", size = 36363630 },
+    { url = "https://files.pythonhosted.org/packages/fb/b5/5056d0c12aadb57390d0627492bef8b1abf3549474abb9ae0fd4e2bfa885/polars-1.30.0-cp39-abi3-win_arm64.whl", hash = "sha256:476f1bde65bc7b4d9f80af370645c2981b5798d67c151055e58534e89e96f2a8", size = 32643590 },
 ]
 
 [[package]]
@@ -1855,6 +1875,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/4e/22/59e2aeb48ceeee1f7cd4537db9568df80d62bdb44a7f9e743502ea8aab9c/types_pyyaml-6.0.12.20250516.tar.gz", hash = "sha256:9f21a70216fc0fa1b216a8176db5f9e0af6eb35d2f2932acb87689d03a5bf6ba", size = 17378 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/5f/e0af6f7f6a260d9af67e1db4f54d732abad514252a7a378a6c4d17dd1036/types_pyyaml-6.0.12.20250516-py3-none-any.whl", hash = "sha256:8478208feaeb53a34cb5d970c56a7cd76b72659442e733e268a94dc72b2d0530", size = 20312 },
+]
+
+[[package]]
+name = "types-requests"
+version = "2.32.0.20250515"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/c1/cdc4f9b8cfd9130fbe6276db574f114541f4231fcc6fb29648289e6e3390/types_requests-2.32.0.20250515.tar.gz", hash = "sha256:09c8b63c11318cb2460813871aaa48b671002e59fda67ca909e9883777787581", size = 23012 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/0f/68a997c73a129287785f418c1ebb6004f81e46b53b3caba88c0e03fcd04a/types_requests-2.32.0.20250515-py3-none-any.whl", hash = "sha256:f8eba93b3a892beee32643ff836993f15a785816acca21ea0ffa006f05ef0fb2", size = 20635 },
 ]
 
 [[package]]

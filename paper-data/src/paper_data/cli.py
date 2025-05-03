@@ -148,14 +148,14 @@ def convert(
 
     typer.secho(f"[convert] → {source} → {out_path}", fg=typer.colors.BLUE)
 
-    # 1) Build a lazy CSV scan (no chunk_size arg) :contentReference[oaicite:4]{index=4}
+    # 1) Build a lazy CSV scan (no chunk_size arg)
     lazy_df = pl.scan_csv(str(source))
 
     # 2) Execute in streaming mode; get DataFrame
     print("Collecting data...")
     streaming_df = lazy_df.collect(engine="streaming")
 
-    # 3) Convert to Arrow Table, then iterate its RecordBatches :contentReference[oaicite:6]{index=6}
+    # 3) Convert to Arrow Table, then iterate its RecordBatches
     for rb in tqdm(streaming_df.to_arrow().to_batches(), desc="Chunks"):
         table = Table.from_batches([rb])
         if writer is None:

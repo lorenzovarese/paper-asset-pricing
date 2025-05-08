@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import wrds
@@ -7,7 +8,10 @@ def open_connection():
     return wrds.Connection(wrds_username="varesl")
 
 
-def get_initial_data(conn: wrds.Connection) -> pd.DataFrame:
+def get_initial_data(conn: wrds.Connection, cache_path: str) -> pd.DataFrame:
+    if os.path.exists(cache_path):
+        return pd.read_csv(cache_path, parse_dates=["datadate"])
+
     # SQL query mimicking the PROC SQL step in SAS
     query = """
     SELECT 
@@ -52,19 +56,22 @@ def get_initial_data(conn: wrds.Connection) -> pd.DataFrame:
         f.consol = 'C'
     """
 
-    # Load data into a DataFrame
-    return conn.raw_sql(query, date_cols=["datadate"])
+    df = conn.raw_sql(query, date_cols=["datadate"])
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    df.to_csv(cache_path, index=False)
+    return df
 
 
 if __name__ == "__main__":
+    cache_file = "cache/compustat_annual_init.csv"
+
     print("Opening connection to WRDS...")
     engine = open_connection()
     print("Connection opened.")
-    print("Fetching initial data from Compustat...")
-    initial_data = get_initial_data(engine)
-    print("Data fetched.")
+
+    print("Loading data (from cache if available)...")
+    initial_data = get_initial_data(engine, cache_file)
+    print("Data loaded.")
+
     print("Closing connection to WRDS...")
     engine.close()
-
-    # Save the initial data to a CSV file
-    initial_data.to_csv("compustat_initial_data.csv", index=False)

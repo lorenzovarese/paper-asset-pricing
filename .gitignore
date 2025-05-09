@@ -173,6 +173,10 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# cache
+# ignore everything in data/, then re‑include the .gitkeep
+data/*
+!data/.gitkeep
+
+# ignore everything in cache/, then re‑include its .gitkeep
 cache/*
 !cache/.gitkeep

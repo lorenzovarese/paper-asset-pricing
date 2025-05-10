@@ -20,10 +20,24 @@ def load_and_preprocess(
     filename: str, date_column: str = "date", date_format: str = "%Y%m%d"
 ) -> pd.DataFrame:
     """
-    Internal loader with common preprocessing:
-      - applies global column name standardization
-      - parses `date_column` as datetime after standardization
-      - sets MultiIndex(date, permno)
+    Load and preprocess a CSV file:
+      - Reads the file from the specified path.
+      - Standardizes column names (trims whitespace, converts to lowercase).
+      - Parses the specified `date_column` as datetime using the given format.
+      - Converts the 'permno' column to integer type.
+      - Sets a MultiIndex with levels ('date', 'permno') and sorts the index.
+
+    Args:
+        filename (str): Name of the CSV file to load.
+        date_column (str): Name of the column containing date information (default: "date").
+        date_format (str): Format of the date in the `date_column` (default: "%Y%m%d").
+
+    Returns:
+        pd.DataFrame: Preprocessed DataFrame with a MultiIndex of ('date', 'permno').
+
+    Raises:
+        FileNotFoundError: If the specified file does not exist.
+        ValueError: If the `date_column` is not found after standardization.
     """
     path = Path(DATA_DIR) / filename
     if not path.exists():

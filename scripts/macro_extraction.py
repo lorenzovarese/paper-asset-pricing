@@ -1,3 +1,11 @@
+"""
+Original macroeconomic dataset from Welch & Goyal (2024).
+
+The data is available at:
+https://docs.google.com/spreadsheets/d/1OIZg6htTK60wtnCVXvxAujvG1aKEOVYv/edit?gid=1660564386#gid=1660564386
+The link was last checked on 2024-05-10 from the Amit Goyal's website: https://sites.google.com/view/agoyal145
+"""
+
 from pathlib import Path
 import pandas as pd
 import numpy as np

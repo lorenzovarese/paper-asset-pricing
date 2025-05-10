@@ -66,6 +66,9 @@ if __name__ == "__main__":
     save_dataset(chars_df, "chars_dataset.csv")
 
     # 2) returns‑only dataset
+    print("Generating returns dataset...")
     return_gens = {"return": lambda n: np.random.normal(0.01, 0.05, n)}
     returns_df = create_panel_df(permnos, start_date, periods, return_gens)
     save_dataset(returns_df, "returns_dataset.csv")
+
+    print("Mock data generation complete.")

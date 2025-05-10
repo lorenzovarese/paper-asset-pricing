@@ -40,7 +40,7 @@ In practice, replication packages for published papers are often incomplete. For
 The authors used a ![SAS program](https://drive.google.com/file/d/0BwwEXkCgXEdRQWZreUpKOHBXOUU/view?usp=sharing&resourcekey=0-1xjZ8fAc0sTybVC6RADDCA) that connects to various WRDS‑subscribed providers to extract all data required to construct 94 firm‑characteristic columns. The output of this feature‑extraction process is available here:
 
 ![Download data share](https://dachxiu.chicagobooth.edu/download/datashare.zip)
-(It contains a 3.57 GB `datashare.csv` file with 4117301)
+(It contains a 3.57 GB `datashare.csv` file with 4117301 lines)
 
 The resulting dataset has the following header:
 
@@ -56,7 +56,7 @@ chtx,cinvest,ear,nincr,roaq,roavol,roeq,rsup,stdacc,stdcf,ms,baspread,ill,
 maxret,retvol,std_dolvol,std_turn,zerotrade,sic2
 ```
 
-* **permno**: The CRSP's permno', a unique identifier at the share‑class level. Some firms issue multiple share classes (each with its own PERMNO). This field allows you to merge with other datasets or identify the company’s ticker.
+* **permno**: The CRSP's permno, a unique identifier at the share‑class level. Some firms issue multiple share classes (each with its own PERMNO). This field allows you to merge with other datasets or identify the company’s ticker.
 * **DATE**: Month‑end date in YYYYMMDD format.
 * **94 lagged firm characteristics**: See the Gu et al. appendix for full definitions.
 * **sic2**: The first two digits of the Standard Industrial Classification code on DATE.

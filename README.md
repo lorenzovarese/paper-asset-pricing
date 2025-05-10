@@ -16,3 +16,10 @@ Platform for Asset Pricing Experiment and Research
 ├── experiments/    # YAML specs wiring data+model+metrics
 └─ ui/              # optional Streamlit or REST interface
 ```
+
+### Troubleshooting
+
+Mock data generation:
+```bash
+uv run python -m scripts.generate_mock_data
+```

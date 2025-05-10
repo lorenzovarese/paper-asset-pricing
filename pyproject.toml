@@ -23,6 +23,7 @@ dev = [
     "pandas-stubs>=2.2.3.250308",
     "pytest>=8.3.5",
     "ruff>=0.11.8",
+    "types-tqdm>=4.67.0.20250417",
 ]
 
 # [tool.pytest.ini_options]

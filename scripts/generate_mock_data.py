@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
-from typing import Callable, Dict
+from typing import Callable, Dict, Any
+
 
 def create_panel_df(
     permnos: list[int],
     start_date: str,
     periods: int,
-    column_generators: Dict[str, Callable[[int], np.ndarray]]
+    column_generators: Dict[str, Callable[[int], Any]],
 ) -> pd.DataFrame:
     """
     Build a “panel” DataFrame with monthly dates at month‑end, a permno column,
@@ -29,20 +30,22 @@ def create_panel_df(
     DataFrame
         Combined panel of shape (len(permnos)*periods, 1 + 1 + len(column_generators)).
     """
-    dates = pd.date_range(start=start_date, periods=periods, freq='M')
+    dates = pd.date_range(start=start_date, periods=periods, freq="M")
     rows = []
     for perm in permnos:
-        base = {'date': dates, 'permno': perm}
+        base = {"date": dates, "permno": perm}
         for name, gen in column_generators.items():
             base[name] = gen(periods)
         rows.append(pd.DataFrame(base))
     return pd.concat(rows, ignore_index=True)
+
 
 def save_dataset(df: pd.DataFrame, output_file: str) -> None:
     """
     Save DataFrame to CSV without the index.
     """
     df.to_csv(output_file, index=False)
+
 
 if __name__ == "__main__":
     permnos = [10001, 10002, 10003, 10004, 10005]
@@ -51,16 +54,14 @@ if __name__ == "__main__":
 
     # 1) characteristics dataset
     char_gens = {
-        'char1': lambda n: np.random.normal(0, 1, n),
-        'char2': lambda n: np.random.normal(5, 2, n),
-        'char3': lambda n: np.random.uniform(0, 1, n),
+        "char1": lambda n: np.random.normal(0, 1, n),
+        "char2": lambda n: np.random.normal(5, 2, n),
+        "char3": lambda n: np.random.uniform(0, 1, n),
     }
     chars_df = create_panel_df(permnos, start_date, periods, char_gens)
     save_dataset(chars_df, "chars_dataset.csv")
 
     # 2) returns‑only dataset
-    return_gens = {
-        'return': lambda n: np.random.normal(0.01, 0.05, n)
-    }
+    return_gens = {"return": lambda n: np.random.normal(0.01, 0.05, n)}
     returns_df = create_panel_df(permnos, start_date, periods, return_gens)
     save_dataset(returns_df, "returns_dataset.csv")

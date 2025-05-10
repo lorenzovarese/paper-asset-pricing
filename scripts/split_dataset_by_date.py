@@ -10,7 +10,7 @@ uv run scripts/split_dataset_by_date.py \
     --date-format '%Y%m%d' \
     --start 20020101 \
     --end 20211231 \
-    --output filtered_chars_2002_2021.csv
+    --output data/filtered_chars_2002_2021.csv
 """
 
 from __future__ import annotations

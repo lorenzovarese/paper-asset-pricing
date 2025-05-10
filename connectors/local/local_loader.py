@@ -16,7 +16,9 @@ def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_and_preprocess(filename: str, date_column: str = "date") -> pd.DataFrame:
+def load_and_preprocess(
+    filename: str, date_column: str = "date", date_format: str = "%Y%m%d"
+) -> pd.DataFrame:
     """
     Internal loader with common preprocessing:
       - applies global column name standardization
@@ -35,7 +37,9 @@ def load_and_preprocess(filename: str, date_column: str = "date") -> pd.DataFram
             f"Expected date column '{date_column}' not found after standardization."
         )
 
-    df[date_column.lower()] = pd.to_datetime(df[date_column.lower()])
+    df[date_column.lower()] = pd.to_datetime(
+        df[date_column.lower()], format=date_format
+    )
     df["permno"] = df["permno"].astype(int)
     df = df.set_index(["date", "permno"]).sort_index()
     return df

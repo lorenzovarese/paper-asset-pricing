@@ -37,10 +37,10 @@ In practice, replication packages for published papers are often incomplete. For
 
 ### 94 Firm Characteristics
 
-The authors used a ![SAS program](https://drive.google.com/file/d/0BwwEXkCgXEdRQWZreUpKOHBXOUU/view?usp=sharing&resourcekey=0-1xjZ8fAc0sTybVC6RADDCA) that connects to various WRDS‑subscribed providers to extract all data required to construct 94 firm‑characteristic columns. The output of this feature‑extraction process is available here:
+The authors used an adapted version of the original ![SAS program](https://drive.google.com/file/d/0BwwEXkCgXEdRQWZreUpKOHBXOUU/view?usp=sharing&resourcekey=0-1xjZ8fAc0sTybVC6RADDCA) from Green. et al (2016) that connects to various WRDS‑subscribed providers to extract all data required to construct 94 firm‑characteristic columns. The output of this feature‑extraction process is available here:
 
-![Download data share](https://dachxiu.chicagobooth.edu/download/datashare.zip)
-(It contains a 3.57 GB `datashare.csv` file with 4117301 lines)
+![Download `Empirical Data` from "Empirical Asset Pricing via Machine Learning"](https://dachxiu.chicagobooth.edu/)
+(There is a 1.4 GB ZIP file containing a 3.57 GB datashare.csv with 4,117,301 lines.)
 
 The resulting dataset has the following header:
 

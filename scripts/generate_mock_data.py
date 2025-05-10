@@ -1,6 +1,9 @@
+from pathlib import Path
 import pandas as pd
 import numpy as np
 from typing import Callable, Dict, Any
+
+from core.settings import CACHE_DIR
 
 
 def create_panel_df(
@@ -44,7 +47,8 @@ def save_dataset(df: pd.DataFrame, output_file: str) -> None:
     """
     Save DataFrame to CSV without the index.
     """
-    df.to_csv(output_file, index=False)
+    output_path = Path(CACHE_DIR) / output_file
+    df.to_csv(output_path, index=False)
 
 
 if __name__ == "__main__":

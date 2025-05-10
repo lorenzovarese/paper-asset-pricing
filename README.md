@@ -101,7 +101,7 @@ As noted above, the authors extracted all firm characteristics themselves, but t
 
 # Troubleshooting
 
-Mock data generation:
+Mock data generation available in the [scripts](scripts) folder:
 ```bash
 uv run python -m scripts.generate_mock_data
 ```

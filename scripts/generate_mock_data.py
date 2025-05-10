@@ -33,7 +33,7 @@ def create_panel_df(
     DataFrame
         Combined panel of shape (len(permnos)*periods, 1 + 1 + len(column_generators)).
     """
-    dates = pd.date_range(start=start_date, periods=periods, freq="M")
+    dates = pd.date_range(start=start_date, periods=periods, freq="ME")
     rows = []
     for perm in permnos:
         base = {"date": dates, "permno": perm}

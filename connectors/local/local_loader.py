@@ -45,6 +45,24 @@ def load_and_preprocess(
     return df
 
 
+def print_date_stats(df: pd.DataFrame, name: str) -> None:
+    """
+    Print basic statistics for the 'date' level of a MultiIndex DataFrame:
+      - earliest date
+      - latest date
+      - total number of rows
+      - number of unique year-month periods
+    """
+    dates = df.index.get_level_values("date")
+    earliest = dates.min().date()
+    latest = dates.max().date()
+    total = len(dates)
+    unique_m = dates.to_series().dt.to_period("M").nunique()
+    print(
+        f"{name} → min date: {earliest}, max date: {latest}, rows: {total}, unique YM: {unique_m}"
+    )
+
+
 def merge_features_and_crsp(
     features: pd.DataFrame,
     crsp: pd.DataFrame,
@@ -73,20 +91,30 @@ def merge_features_and_crsp(
 
 
 if __name__ == "__main__":
+    # Run from root with: uv run -m connectors.local.local_loader
     with tqdm(total=3, desc="Loading pipeline", ncols=80) as pbar:
         if VERBOSE:
             print("Loading datashare...")
         features = load_and_preprocess("datashare.csv", date_column="DATE")
+        if VERBOSE:
+            print("Datashare data loaded.")
+            print_date_stats(features, "Datashare")
         pbar.update(1)
 
         if VERBOSE:
             print("Loading local CRSP...")
         crsp = load_and_preprocess("crsp_returns.csv", date_column="date")
+        if VERBOSE:
+            print("CRSP data loaded.")
+            print_date_stats(crsp, "CRSP")
         pbar.update(1)
 
         if VERBOSE:
             print("Merging features and CRSP...")
         merged_data = merge_features_and_crsp(features, crsp)
+        if VERBOSE:
+            print("Merged data loaded.")
+            print_date_stats(merged_data, "Merged Data")
         pbar.update(1)
 
     if VERBOSE:

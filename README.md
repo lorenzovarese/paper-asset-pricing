@@ -67,7 +67,37 @@ As noted above, the authors extracted all firm characteristics themselves, but t
 
 ### Returns data from WRDS/CRSP
 
-TODO
+1. **Log in to WRDS**
+
+   * Go to [https://wrds-web.wharton.upenn.edu/](https://wrds-www.wharton.upenn.edu/) and enter your WRDS username and password.
+
+2. **Navigate to the CRSP Monthly Stock File**
+
+   * From the WRDS landing page, click **“CRSP”** in the left‑hand menu.
+   * Under “CRSP Products,” select **“Stock / Security File”** and click on **“Monthly Stock File”**.
+
+3. **Define your sample**
+
+   * In the “Date Range” fields, enter the start and end months matching your characteristics dataset (e.g. 1957‑01 through 2025‑04).
+   * For “Identifier,” choose **PERMNO** to align with your `permno` column.
+
+4. **Select variables**
+
+   * Under “Select Variables,” check **RET** (monthly return).
+   * Optionally select **VOL** (volume) or **PRC** (price) if needed.
+
+5. **Submit the query**
+
+   * Click **“Submit”** at the bottom of the page. WRDS will process your request.
+
+6. **Download results**
+
+   * When the query completes, click the **Download** link.
+   * Choose **CSV** format and save the file (e.g. `crsp_returns.csv`).
+
+7. **Merge with your characteristics data**
+
+   * Use your preferred tool (Python, R, SAS) to join on `(permno, DATE)`, where DATE is month‑end.
 
 # Troubleshooting
 

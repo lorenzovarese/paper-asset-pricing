@@ -57,6 +57,7 @@ if __name__ == "__main__":
     periods = 12
 
     # 1) characteristics dataset
+    print("Generating characteristics dataset...")
     char_gens = {
         "char1": lambda n: np.random.normal(0, 1, n),
         "char2": lambda n: np.random.normal(5, 2, n),

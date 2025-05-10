@@ -91,4 +91,4 @@ if __name__ == "__main__":
     )
 
     wg_predictors = construct_welch_goyal_predictors(raw)
-    wg_predictors.to_csv(DATA_DIR / "wg_8_predictors.csv")
+    wg_predictors.to_csv(DATA_DIR / "wg_8_predictors.csv", date_format="%Y%m%d")

@@ -78,26 +78,27 @@ As noted above, the authors extracted all firm characteristics themselves, but t
 
 3. **Define your sample**
 
-   * In the “Date Range” fields, enter the start and end months matching your characteristics dataset (e.g. 1957‑01 through 2025‑04).
+   * In the “Date Range” fields, enter the start and end months matching your characteristics dataset (e.g. 1957‑01 through 2021‑12).
    * For “Identifier,” choose **PERMNO** to align with your `permno` column.
+   * Check the box with **"Search the entire database"**
 
 4. **Select variables**
 
    * Under “Select Variables,” check **RET** (monthly return).
-   * Optionally select **VOL** (volume) or **PRC** (price) if needed.
 
-5. **Submit the query**
-
-   * Click **“Submit”** at the bottom of the page. WRDS will process your request.
+5. **Select query output**
+   * Output Format: comma-delimited text `csv`
+   * Compression type: Uncompressed
+   * Date Format: YYYYMMDD (e.g. 19840725)
+   * Click **“Submit Form”** at the bottom of the page. WRDS will process your request.
 
 6. **Download results**
 
-   * When the query completes, click the **Download** link.
-   * Choose **CSV** format and save the file (e.g. `crsp_returns.csv`).
+   * When the query completes, click the **Download .csv Output** button.
 
 7. **Merge with your characteristics data**
 
-   * Use your preferred tool (Python, R, SAS) to join on `(permno, DATE)`, where DATE is month‑end.
+   * Use the platform to merge this data with the firm characteristics dataset. See the implementation details in [local_loader.py](connectors/local/local_loader.py) if needed but a configuration file will be supported.
 
 # Troubleshooting
 

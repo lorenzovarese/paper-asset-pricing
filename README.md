@@ -17,14 +17,6 @@ Platform for Asset Pricing Experiment and Research
 └─ ui/              # optional Streamlit or REST interface
 ```
 
-**Rewriting content for clarity and style**
-
-The user has provided a section of text with a focus on data, tools, and replication. They want the content maintained, but with improved English for grammar, clarity, and style. Since the user prefers a formal tone at a Master’s level, I’ll aim for conciseness and clarity while correcting the grammar and style. I’ll keep the markdown structure intact and avoid overly fancy language. I’ll now focus on adjusting sentences for better readability. I'll provide the corrected version based on this approach.
-
-
-Thought for a few seconds
-
-
 # Data
 
 This platform supports multiple data sources. Since our primary goal was to replicate Gu et al. (2020), data ingestion was designed around the local datasets that each user already possesses. This approach avoids license issues associated with directly retrieving data from sources that the user may not have access to, and it also prevents privilege‑related problems when accessing WRDS during feature extraction.

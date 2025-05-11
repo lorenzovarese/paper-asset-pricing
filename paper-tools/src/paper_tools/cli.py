@@ -5,7 +5,7 @@ import shutil
 import datetime
 import subprocess
 import sys
-import importlib.util
+from jinja2 import Environment, FileSystemLoader  # For template rendering
 
 # Try to get version from __init__ for the config file, fallback if not found
 try:
@@ -25,29 +25,24 @@ CONFIGS_DIR_NAME = "configs"
 DATA_DIR_NAME = "data"
 MODELS_DIR_NAME = "models"
 PORTFOLIOS_DIR_NAME = "portfolios"
-LOG_FILE_NAME = "logs.log"  # Root level log file
+LOG_FILE_NAME = "logs.log"
 
-DEFAULT_PROJECT_CONFIG_NAME = "paper-project.yaml"  # Main project config
-
-# Component-specific config file names (to be placed inside CONFIGS_DIR_NAME)
+DEFAULT_PROJECT_CONFIG_NAME = "paper-project.yaml"
 DATA_COMPONENT_CONFIG_FILENAME = "data-config.yaml"
 MODELS_COMPONENT_CONFIG_FILENAME = "models-config.yaml"
 PORTFOLIO_COMPONENT_CONFIG_FILENAME = "portfolio-config.yaml"
 
+# Path to the templates directory within the package
+# This assumes cli.py is in src/paper_tools/ and templates/ is a sibling
+TEMPLATE_DIR = Path(__file__).parent / "templates"
 
-# --- Helper Functions ---
 
-
+# --- Helper Functions (existing _get_project_root, _load_project_config, etc. remain the same) ---
 def _get_project_root() -> Path:
-    """Determines the project root, assuming the main config is there."""
-    # A common pattern is to look for a marker file, like paper-project.yaml
-    # For simplicity now, we assume CWD is project root when 'execute' is called.
-    # More robust: search upwards from CWD for paper-project.yaml
     return Path.cwd()
 
 
 def _load_project_config(project_root: Path) -> dict | None:
-    """Loads the main project configuration file."""
     config_path = project_root / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
     if not config_path.exists():
         typer.secho(
@@ -73,23 +68,14 @@ def _load_project_config(project_root: Path) -> dict | None:
 
 
 def _check_component_cli_exists(cli_name: str) -> bool:
-    """Checks if a component's CLI tool is available in PATH."""
     return shutil.which(cli_name) is not None
-
-
-def _check_component_installed(module_name: str) -> bool:
-    """Checks if a Python module (component) is installed."""
-    spec = importlib.util.find_spec(module_name)
-    return spec is not None
 
 
 def _run_component_cli(
     component_cli_name: str,
     component_config_file: Path,
     project_root: Path,
-    additional_args: list[str] | None = None,
 ):
-    """Executes a component's CLI tool."""
     if not _check_component_cli_exists(component_cli_name):
         typer.secho(
             f"Error: Component CLI '{component_cli_name}' not found in PATH.",
@@ -103,44 +89,46 @@ def _run_component_cli(
         raise typer.Exit(code=1)
 
     if not component_config_file.exists():
+        # This is now a warning, as the user is expected to create these.
         typer.secho(
-            f"Error: Component configuration file '{component_config_file}' not found.",
-            fg=typer.colors.RED,
+            f"Warning: Component configuration file '{component_config_file}' not found.",
+            fg=typer.colors.YELLOW,
             err=True,
         )
-        raise typer.Exit(code=1)
+        typer.secho(
+            f"  The component '{component_cli_name}' might fail or use default behavior.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        # We still try to run the component; it's up to the component to handle missing config.
+        # Or, we could make this an error:
+        # raise typer.Exit(code=1)
 
     cmd = [
         component_cli_name,
-        # Assuming a common pattern like 'process' or 'run' for the main command
-        # This might need to be configurable per component in paper-project.yaml
-        "process",  # Or "run", "execute" - this is a key assumption about component CLIs
+        "process",  # Main command assumption
         "--config",
         str(component_config_file),
         "--project-root",
-        str(project_root),  # Pass project root for context
+        str(project_root),
     ]
-    if additional_args:
-        cmd.extend(additional_args)
+    # if additional_args: # Removed
+    #     cmd.extend(additional_args)
 
     typer.secho(f"Executing: {' '.join(cmd)}", fg=typer.colors.BLUE)
     try:
-        # Run from project root so relative paths in configs work as expected
-        result = subprocess.run(cmd, cwd=project_root, check=True, text=True)
+        result = subprocess.run(
+            cmd, cwd=project_root, check=True, text=True, capture_output=True
+        )
         if result.stdout:
             typer.echo(result.stdout)
-        if result.stderr:  # Should be empty on success with check=True
-            typer.secho(result.stderr, fg=typer.colors.YELLOW, err=True)
+        if result.stderr:
+            typer.secho(
+                result.stderr, fg=typer.colors.YELLOW, err=True
+            )  # check=True means stderr is not for errors
         typer.secho(
             f"'{component_cli_name}' executed successfully.", fg=typer.colors.GREEN
         )
-    except FileNotFoundError:  # Should be caught by _check_component_cli_exists
-        typer.secho(
-            f"Error: CLI command '{component_cli_name}' not found. Is it installed?",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
     except subprocess.CalledProcessError as e:
         typer.secho(
             f"Error executing '{component_cli_name}': Command returned non-zero exit status {e.returncode}.",
@@ -163,7 +151,27 @@ def _run_component_cli(
         raise typer.Exit(code=1)
 
 
-# --- `init` Command ---
+def _render_template(template_name: str, context: dict, output_path: Path):
+    """Renders a Jinja2 template and writes it to the output path."""
+    env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
+    try:
+        template = env.get_template(template_name)
+    except (
+        Exception
+    ) as e:  # Catch specific jinja2.exceptions.TemplateNotFound if preferred
+        typer.secho(
+            f"Error: Template '{template_name}' not found in '{TEMPLATE_DIR}'. Error: {e}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    rendered_content = template.render(context)
+    with open(output_path, "w") as f:
+        f.write(rendered_content)
+
+
+# --- `init` Command (Modified) ---
 @app.command()
 def init(
     project_name: str = typer.Argument(
@@ -180,7 +188,7 @@ def init(
 ):
     """
     Initializes a new P.A.P.E.R project with a standard directory
-    structure and a main configuration file.
+    structure and configuration files from templates.
     """
     project_path = Path(project_name).resolve()
 
@@ -192,7 +200,7 @@ def init(
                 err=True,
             )
             raise typer.Exit(code=1)
-        if any(project_path.iterdir()):
+        if any(project_path.iterdir()):  # Check if directory is not empty
             if force:
                 typer.secho(
                     f"Warning: Project directory '{project_path.name}' exists and is not empty. Overwriting due to --force.",
@@ -239,57 +247,54 @@ def init(
         for main_dir, sub_dirs in dirs_to_create.items():
             base_path = project_path / main_dir
             base_path.mkdir(exist_ok=True)
-            (base_path / ".gitkeep").touch()  # Keep main phase dirs
+            (base_path / ".gitkeep").touch()
             for sub_dir in sub_dirs:
                 sub_path = base_path / sub_dir
                 sub_path.mkdir(exist_ok=True)
-                (sub_path / ".gitkeep").touch()  # Keep sub dirs like raw, processed
+                (sub_path / ".gitkeep").touch()
+        typer.secho("✓ Created project directories.", fg=typer.colors.GREEN)
 
-        # 3. Create main project configuration file
-        main_config_path = project_path / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
-        project_cfg_content = {
+        # 3. Prepare context for template rendering
+        template_context = {
             "project_name": project_path.name,
-            "version": "0.1.0",
             "paper_tools_version": paper_tools_version,
             "creation_date": datetime.date.today().isoformat(),
-            "description": f"P.A.P.E.R project: {project_path.name}",
-            "components": {
-                "data": {
-                    "config_file": str(
-                        Path(CONFIGS_DIR_NAME) / DATA_COMPONENT_CONFIG_FILENAME
-                    ),
-                    "raw_dir": str(Path(DATA_DIR_NAME) / "raw"),
-                    "processed_dir": str(Path(DATA_DIR_NAME) / "processed"),
-                    "cli_tool": "paper-data",  # Assumed CLI name
-                },
-                "models": {
-                    "config_file": str(
-                        Path(CONFIGS_DIR_NAME) / MODELS_COMPONENT_CONFIG_FILENAME
-                    ),
-                    "saved_dir": str(Path(MODELS_DIR_NAME) / "saved"),
-                    "cli_tool": "paper-model",  # Assumed CLI name
-                },
-                "portfolio": {
-                    "config_file": str(
-                        Path(CONFIGS_DIR_NAME) / PORTFOLIO_COMPONENT_CONFIG_FILENAME
-                    ),
-                    "results_dir": str(Path(PORTFOLIOS_DIR_NAME) / "results"),
-                    "cli_tool": "paper-portfolio",  # Assumed CLI name
-                },
-            },
-            "logging": {
-                "log_file": LOG_FILE_NAME,  # Relative to project root
-                "level": "INFO",
-            },
+            "CONFIGS_DIR_NAME": CONFIGS_DIR_NAME,
+            "DATA_DIR_NAME": DATA_DIR_NAME,
+            "MODELS_DIR_NAME": MODELS_DIR_NAME,
+            "PORTFOLIOS_DIR_NAME": PORTFOLIOS_DIR_NAME,
+            "LOG_FILE_NAME": LOG_FILE_NAME,
+            "DEFAULT_PROJECT_CONFIG_NAME": DEFAULT_PROJECT_CONFIG_NAME,
+            "DATA_COMPONENT_CONFIG_FILENAME": DATA_COMPONENT_CONFIG_FILENAME,
+            "MODELS_COMPONENT_CONFIG_FILENAME": MODELS_COMPONENT_CONFIG_FILENAME,
+            "PORTFOLIO_COMPONENT_CONFIG_FILENAME": PORTFOLIO_COMPONENT_CONFIG_FILENAME,
         }
-        with open(main_config_path, "w") as f:
-            yaml.dump(project_cfg_content, f, sort_keys=False, indent=2)
+
+        # 4. Create main project configuration file from template
+        main_config_output_path = (
+            project_path / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
+        )
+        _render_template(
+            "paper_project.yaml.template", template_context, main_config_output_path
+        )
         typer.secho(
-            f"✓ Created main project config: {main_config_path.relative_to(Path.cwd())}",
+            f"✓ Created main project config: {main_config_output_path.relative_to(Path.cwd())}",
             fg=typer.colors.GREEN,
         )
 
-        # 4. Create root log file
+        # 5. Create .gitignore from template
+        gitignore_output_path = project_path / ".gitignore"
+        _render_template("gitignore.template", template_context, gitignore_output_path)
+        typer.secho("✓ Created .gitignore file.", fg=typer.colors.GREEN)
+
+        # 6. Create README.md from template
+        readme_output_path = project_path / "README.md"
+        _render_template(
+            "project_readme.md.template", template_context, readme_output_path
+        )
+        typer.secho("✓ Created project README.md.", fg=typer.colors.GREEN)
+
+        # 7. Create root log file (simple, no template needed)
         log_file_path = project_path / LOG_FILE_NAME
         with open(log_file_path, "w") as f:
             f.write(
@@ -300,110 +305,40 @@ def init(
             fg=typer.colors.GREEN,
         )
 
-        # 5. Create .gitignore
-        gitignore_content = f"""
-# Python
-__pycache__/
-*.py[cod]
-.DS_Store
-
-# Virtual environment
-.venv/
-venv/
-ENV/
-env/
-
-# Data (typically not versioned, but .gitkeep files are for structure)
-/{DATA_DIR_NAME}/raw/*
-!/{DATA_DIR_NAME}/raw/.gitkeep
-/{DATA_DIR_NAME}/processed/*
-!/{DATA_DIR_NAME}/processed/.gitkeep
-
-# Models (saved models typically not versioned)
-/{MODELS_DIR_NAME}/saved/*
-!/{MODELS_DIR_NAME}/saved/.gitkeep
-
-# Portfolios (results typically not versioned)
-/{PORTFOLIOS_DIR_NAME}/results/*
-!/{PORTFOLIOS_DIR_NAME}/results/.gitkeep
-
-# Logs
-/{LOG_FILE_NAME}
-"""
-        (project_path / ".gitignore").write_text(gitignore_content.strip())
-        typer.secho("✓ Created .gitignore file.", fg=typer.colors.GREEN)
-
-        # 6. Create README.md
-        readme_content = f"""
-# {project_path.name}
-
-A P.A.P.E.R (Platform for Asset Pricing Experimentation and Research) project.
-
-Initialized on: {datetime.date.today().isoformat()}
-P.A.P.E.R Tools Version: {paper_tools_version}
-
-## Project Structure
-
-- `{CONFIGS_DIR_NAME}/{DEFAULT_PROJECT_CONFIG_NAME}`: Main project configuration.
-- `{CONFIGS_DIR_NAME}/`: Directory for component-specific YAML configurations:
-    - `{DATA_COMPONENT_CONFIG_FILENAME}`: For `paper-data` processing.
-    - `{MODELS_COMPONENT_CONFIG_FILENAME}`: For `paper-model` tasks.
-    - `{PORTFOLIO_COMPONENT_CONFIG_FILENAME}`: For `paper-portfolio` strategies.
-- `{DATA_DIR_NAME}/`: Data storage.
-    - `raw/`: Place for raw input data.
-    - `processed/`: Output for processed data from `paper-data`.
-- `{MODELS_DIR_NAME}/`: Model-related files.
-    - `saved/`: Output for trained models from `paper-model`.
-- `{PORTFOLIOS_DIR_NAME}/`: Portfolio-related files.
-    - `results/`: Output for portfolio backtests/results from `paper-portfolio`.
-- `{LOG_FILE_NAME}`: Project-level log file.
-- `.gitignore`: Specifies files for Git to ignore.
-- `README.md`: This file.
-
-## Getting Started
-
-1.  **Navigate to the project directory:**
-    ```bash
-    cd "{project_path.name}"
-    ```
-
-2.  **Set up your Python environment** and install P.AP.E.R components:
-    ```bash
-    # Example:
-    # uv venv
-    # source .venv/bin/activate
-    pip install paper-data paper-model paper-portfolio # Or use paper-tools[all]
-    ```
-
-3.  **Create Component Configurations:**
-    - In the `{CONFIGS_DIR_NAME}/` directory, create and populate:
-        - `{DATA_COMPONENT_CONFIG_FILENAME}` (for `paper-data`)
-        - `{MODELS_COMPONENT_CONFIG_FILENAME}` (for `paper-model`)
-        - `{PORTFOLIO_COMPONENT_CONFIG_FILENAME}` (for `paper-portfolio`)
-    - Refer to the documentation of each P.AP.E.R component for its specific YAML structure.
-
-4.  **Place Raw Data:**
-    - Put your raw data files into the `{DATA_DIR_NAME}/raw/` directory.
-
-5.  **Execute Project Phases:**
-    Use `paper-tools execute` from the project root:
-    ```bash
-    paper-tools execute data      # Runs the data processing phase
-    paper-tools execute models    # Runs the modeling phase
-    paper-tools execute portfolio # Runs the portfolio phase
-    ```
-    You can also run them sequentially:
-    ```bash
-    paper-tools execute data && paper-tools execute models && paper-tools execute portfolio
-    ```
-
-Refer to `{CONFIGS_DIR_NAME}/{DEFAULT_PROJECT_CONFIG_NAME}` to see how `paper-tools` locates component configurations.
-"""
-        (project_path / "README.md").write_text(readme_content.strip())
-        typer.secho("✓ Created project README.md.", fg=typer.colors.GREEN)
+        # 8. Create empty placeholder component config files (optional, but helpful)
+        #    User is still responsible for filling them.
+        for conf_filename in [
+            DATA_COMPONENT_CONFIG_FILENAME,
+            MODELS_COMPONENT_CONFIG_FILENAME,
+            PORTFOLIO_COMPONENT_CONFIG_FILENAME,
+        ]:
+            placeholder_conf_path = project_path / CONFIGS_DIR_NAME / conf_filename
+            with open(placeholder_conf_path, "w") as f:
+                f.write(f"# Placeholder for {conf_filename}\n")
+                f.write(
+                    f"# Please refer to the respective component's documentation for structure.\n"
+                )
+                if conf_filename == DATA_COMPONENT_CONFIG_FILENAME:
+                    f.write(f"""\
+# Example structure for {DATA_COMPONENT_CONFIG_FILENAME}:
+# sources:
+#   - name: my_data
+#     connector: local
+#     path: "{DATA_DIR_NAME}/raw/your_data.csv"
+#     # ...
+# transformations:
+#   # - type: ...
+# output:
+#   format: parquet
+#   # ...
+""")
+            typer.secho(
+                f"✓ Created placeholder component config: {placeholder_conf_path.relative_to(Path.cwd())}",
+                fg=typer.colors.BLUE,
+            )
 
         typer.secho(
-            f"\n🎉 P.AP.E.R project '{project_path.name}' initialized successfully!",
+            f"\n🎉 P.A.P.E.R project '{project_path.name}' initialized successfully!",
             bold=True,
             fg=typer.colors.BRIGHT_GREEN,
         )
@@ -413,7 +348,7 @@ Refer to `{CONFIGS_DIR_NAME}/{DEFAULT_PROJECT_CONFIG_NAME}` to see how `paper-to
         )
         typer.secho("\nNext steps:", fg=typer.colors.CYAN)
         typer.secho(
-            f"  1. Create your component-specific YAML configuration files in '{CONFIGS_DIR_NAME}/'.",
+            f"  1. Populate your component-specific YAML configuration files in '{CONFIGS_DIR_NAME}/'.",
             fg=typer.colors.CYAN,
         )
         typer.secho(
@@ -439,17 +374,15 @@ Refer to `{CONFIGS_DIR_NAME}/{DEFAULT_PROJECT_CONFIG_NAME}` to see how `paper-to
         raise typer.Exit(code=1)
 
 
-# --- `execute` Command Group ---
+# --- `execute` Command Group (Portfolio command simplified) ---
 execute_app = typer.Typer(
-    name="execute", help="Execute P.AP.E.R project phases.", no_args_is_help=True
+    name="execute", help="Execute P.A.P.E.R project phases.", no_args_is_help=True
 )
 app.add_typer(execute_app)
 
 
 @execute_app.command("data")
-def execute_data_phase(
-    ctx: typer.Context,  # Access parent context if needed
-):
+def execute_data_phase(ctx: typer.Context):
     """Executes the data processing phase using the configured 'paper-data' component."""
     project_root = _get_project_root()
     project_config = _load_project_config(project_root)
@@ -466,7 +399,10 @@ def execute_data_phase(
         raise typer.Exit(code=1)
 
     config_file_rel_path = data_cfg.get("config_file")
-    cli_tool_name = data_cfg.get("cli_tool", "paper-data")  # Default to paper-data
+    cli_tool_name = data_cfg.get("cli_tool", "paper-data")
+    cli_main_command = data_cfg.get(
+        "cli_command", "process"
+    )  # Allow overriding 'process'
 
     if not config_file_rel_path:
         typer.secho(
@@ -477,13 +413,14 @@ def execute_data_phase(
         raise typer.Exit(code=1)
 
     component_config_abs_path = (project_root / config_file_rel_path).resolve()
-    _run_component_cli(cli_tool_name, component_config_abs_path, project_root)
+    # Modify _run_component_cli to accept cli_main_command
+    _run_component_cli_v2(
+        cli_tool_name, cli_main_command, component_config_abs_path, project_root
+    )
 
 
 @execute_app.command("models")
-def execute_models_phase(
-    ctx: typer.Context,
-):
+def execute_models_phase(ctx: typer.Context):
     """Executes the modeling phase using the configured 'paper-model' component."""
     project_root = _get_project_root()
     project_config = _load_project_config(project_root)
@@ -501,6 +438,7 @@ def execute_models_phase(
 
     config_file_rel_path = models_cfg.get("config_file")
     cli_tool_name = models_cfg.get("cli_tool", "paper-model")
+    cli_main_command = models_cfg.get("cli_command", "process")
 
     if not config_file_rel_path:
         typer.secho(
@@ -511,26 +449,14 @@ def execute_models_phase(
         raise typer.Exit(code=1)
 
     component_config_abs_path = (project_root / config_file_rel_path).resolve()
-    _run_component_cli(cli_tool_name, component_config_abs_path, project_root)
+    _run_component_cli_v2(
+        cli_tool_name, cli_main_command, component_config_abs_path, project_root
+    )
 
 
 @execute_app.command("portfolio")
-def execute_portfolio_phase(
-    ctx: typer.Context,
-    override_config: Path = typer.Option(
-        None,
-        "--override-config",
-        help="Path to an additional/override YAML configuration file for the portfolio component.",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        resolve_path=True,  # Resolve to absolute path
-    ),
-):
-    """
-    Executes the portfolio phase using the configured 'paper-portfolio' component.
-    Allows an optional override configuration file.
-    """
+def execute_portfolio_phase(ctx: typer.Context):  # Removed override_config
+    """Executes the portfolio phase using the configured 'paper-portfolio' component."""
     project_root = _get_project_root()
     project_config = _load_project_config(project_root)
     if not project_config:
@@ -547,6 +473,7 @@ def execute_portfolio_phase(
 
     config_file_rel_path = portfolio_cfg.get("config_file")
     cli_tool_name = portfolio_cfg.get("cli_tool", "paper-portfolio")
+    cli_main_command = portfolio_cfg.get("cli_command", "process")
 
     if not config_file_rel_path:
         typer.secho(
@@ -557,33 +484,95 @@ def execute_portfolio_phase(
         raise typer.Exit(code=1)
 
     component_config_abs_path = (project_root / config_file_rel_path).resolve()
+    _run_component_cli_v2(
+        cli_tool_name, cli_main_command, component_config_abs_path, project_root
+    )  # No additional_args
 
-    additional_args = []
-    if override_config:
-        # How paper-portfolio CLI handles an override needs to be defined by paper-portfolio.
-        # Example: it might take another --config or a specific --override flag.
-        # For now, let's assume it can take multiple --config flags or a specific one.
-        additional_args.extend(["--additional-config", str(override_config)])
+
+# Updated _run_component_cli to accept main_command
+def _run_component_cli_v2(
+    component_cli_name: str,
+    component_main_command: str,  # New argument
+    component_config_file: Path,
+    project_root: Path,
+):
+    if not _check_component_cli_exists(component_cli_name):
         typer.secho(
-            f"Using override portfolio config: {override_config}",
+            f"Error: Component CLI '{component_cli_name}' not found in PATH.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.secho(
+            f"Please ensure '{component_cli_name}' (from package like {component_cli_name.replace('-', '_')}) is installed and accessible.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    # Warning for missing config, but attempt to run anyway
+    if not component_config_file.exists():
+        typer.secho(
+            f"Warning: Component configuration file '{component_config_file}' not found.",
             fg=typer.colors.YELLOW,
+            err=True,
+        )
+        typer.secho(
+            f"  The component '{component_cli_name}' might fail or use default behavior if its config is optional.",
+            fg=typer.colors.YELLOW,
+            err=True,
         )
 
-    _run_component_cli(
-        cli_tool_name,
-        component_config_abs_path,
-        project_root,
-        additional_args=additional_args,
-    )
+    cmd = [
+        component_cli_name,
+        component_main_command,  # Use the specified main command
+        "--config",
+        str(component_config_file),
+        "--project-root",
+        str(project_root),
+    ]
+
+    typer.secho(f"Executing: {' '.join(cmd)}", fg=typer.colors.BLUE)
+    try:
+        result = subprocess.run(
+            cmd, cwd=project_root, check=True, text=True, capture_output=True
+        )
+        if result.stdout:
+            typer.echo(result.stdout)
+        # For check=True, stderr is usually for non-error informational messages from the tool
+        if result.stderr:
+            typer.secho("Component output (stderr):", fg=typer.colors.YELLOW, err=True)
+            typer.echo(result.stderr, err=True)
+        typer.secho(
+            f"'{component_cli_name} {component_main_command}' executed successfully.",
+            fg=typer.colors.GREEN,
+        )
+    except subprocess.CalledProcessError as e:
+        typer.secho(
+            f"Error executing '{component_cli_name} {component_main_command}': Command returned non-zero exit status {e.returncode}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        if e.stdout:
+            typer.secho("Stdout:", fg=typer.colors.YELLOW, err=True)
+            typer.echo(e.stdout, err=True)
+        if e.stderr:
+            typer.secho("Stderr:", fg=typer.colors.YELLOW, err=True)
+            typer.echo(e.stderr, err=True)
+        raise typer.Exit(code=1)
+    except Exception as e:
+        typer.secho(
+            f"An unexpected error occurred while running '{component_cli_name} {component_main_command}': {e}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
 
 @app.callback()
 def main_callback(ctx: typer.Context):
     """
-    P.AP.E.R Tools: Initialize and Execute research project phases.
+    P.A.P.E.R Tools: Initialize and Execute research project phases.
     Run `paper-tools init --help` or `paper-tools execute --help` for more information.
     """
-    # You can add global options or context setup here if needed
     pass
 
 

@@ -7,7 +7,7 @@ authors = [
     { name = "Lorenzo Varese", email = "55581163+lorenzovarese@users.noreply.github.com" },
 ]
 requires-python = ">=3.11"
-dependencies = ["pyyaml>=6.0.2", "typer>=0.16.0"]
+dependencies = ["jinja2>=3.1.6", "pyyaml>=6.0.2", "typer>=0.16.0"]
 # Core paper-tools might have no dependencies itself, or very few.
 # dependencies = []
 

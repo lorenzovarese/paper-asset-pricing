@@ -14,6 +14,7 @@ class SourceConfig(BaseModel):
     connector: Literal["local"]  # extendable (wrds, s3 …)
     path: Path
     join_on: Sequence[str]
+    level: Literal["firm", "macro"]  # New field to distinguish source type
 
 
 class OutputConfig(BaseModel):
@@ -22,7 +23,6 @@ class OutputConfig(BaseModel):
     format: Optional[Literal["csv", "parquet"]] = None
     parquet_engine: Optional[Literal["auto", "pyarrow", "fastparquet"]] = "auto"
     parquet_compression: Optional[str] = "snappy"
-    # csv_index: bool = False # Example if you wanted to configure CSV index writing
 
 
 class OneHotConfig(BaseModel):
@@ -30,33 +30,33 @@ class OneHotConfig(BaseModel):
 
     type: Literal["one_hot"]
     column: str
-    prefix: str = ""
-    drop_original: bool = True
+    prefix: str
+    drop_original: bool
 
 
-class FillNaConfig(BaseModel):
-    """Missing-value imputation specification."""
+class FillNaGroupedConfig(BaseModel):
+    """Configuration for grouped fillna operations."""
 
-    type: Literal["fillna"]
-    method: Literal["mean", "median", "ffill", "bfill"] = "mean"
+    type: Literal["fillna_grouped"]
+    method: Literal["mean", "median"]
+    group_by_column: str
+    columns: Optional[List[str]] = None
 
 
 class LagConfig(BaseModel):
-    """Simple lag of macro variables."""
+    """Lagging specification."""
 
     type: Literal["lag"]
-    columns: Sequence[str]
-    periods: int = 1
+    columns: List[str]
+    periods: int
 
 
-TransformationConfig = OneHotConfig | FillNaConfig | LagConfig
+TransformationConfig = Union[OneHotConfig, FillNaGroupedConfig, LagConfig]
 
 
 class AggregationConfig(BaseModel):
     """Root model for the YAML specification."""
 
     sources: List[SourceConfig]
-    transformations: List[Union[OneHotConfig, FillNaConfig, LagConfig]] = Field(
-        default_factory=list
-    )
+    transformations: List[TransformationConfig] = Field(default_factory=list)
     output: Optional[OutputConfig] = None

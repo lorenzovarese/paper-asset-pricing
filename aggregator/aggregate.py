@@ -153,7 +153,7 @@ class DataAggregator:
     @staticmethod
     def _apply_one(df: pd.DataFrame, tr: TransformationConfig) -> pd.DataFrame:
         if isinstance(tr, OneHotConfig):
-            dummies = pd.get_dummies(df[tr.column], prefix=tr.prefix)
+            dummies = pd.get_dummies(df[tr.column], prefix=tr.prefix, dtype=int)
             df = pd.concat([df, dummies], axis=1)
             if tr.drop_original:
                 df = df.drop(columns=tr.column)

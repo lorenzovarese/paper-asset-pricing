@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import List, Literal, Optional, Sequence, Union
 
-import pydantic
+from pydantic import BaseModel, Field
 
 
-class SourceConfig(pydantic.BaseModel):
+class SourceConfig(BaseModel):
     """Location and merge-key information for a single data source."""
 
     name: str
@@ -16,7 +16,16 @@ class SourceConfig(pydantic.BaseModel):
     join_on: Sequence[str]
 
 
-class OneHotConfig(pydantic.BaseModel):
+class OutputConfig(BaseModel):
+    """Configuration for the output file."""
+
+    format: Optional[Literal["csv", "parquet"]] = None
+    parquet_engine: Optional[Literal["auto", "pyarrow", "fastparquet"]] = "auto"
+    parquet_compression: Optional[str] = "snappy"
+    # csv_index: bool = False # Example if you wanted to configure CSV index writing
+
+
+class OneHotConfig(BaseModel):
     """One-hot-encoding specification."""
 
     type: Literal["one_hot"]
@@ -25,14 +34,14 @@ class OneHotConfig(pydantic.BaseModel):
     drop_original: bool = True
 
 
-class FillNaConfig(pydantic.BaseModel):
+class FillNaConfig(BaseModel):
     """Missing-value imputation specification."""
 
     type: Literal["fillna"]
     method: Literal["mean", "median", "ffill", "bfill"] = "mean"
 
 
-class LagConfig(pydantic.BaseModel):
+class LagConfig(BaseModel):
     """Simple lag of macro variables."""
 
     type: Literal["lag"]
@@ -43,8 +52,11 @@ class LagConfig(pydantic.BaseModel):
 TransformationConfig = OneHotConfig | FillNaConfig | LagConfig
 
 
-class AggregationConfig(pydantic.BaseModel):
-    """Top-level YAML structure."""
+class AggregationConfig(BaseModel):
+    """Root model for the YAML specification."""
 
-    sources: Sequence[SourceConfig]
-    transformations: Sequence[TransformationConfig] = []
+    sources: List[SourceConfig]
+    transformations: List[Union[OneHotConfig, FillNaConfig, LagConfig]] = Field(
+        default_factory=list
+    )
+    output: Optional[OutputConfig] = None

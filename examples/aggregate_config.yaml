@@ -27,3 +27,8 @@ transformations:
   # - type: lag
   #   columns: ["tbl"]
   #   periods: 1
+
+output:
+  format: parquet
+  # parquet_engine: "pyarrow" # Optional, default is "auto"
+  # parquet_compression: "gzip" # Optional, default is "snappy"

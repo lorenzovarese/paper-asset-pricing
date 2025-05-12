@@ -147,6 +147,8 @@ class DataAggregator:
     # --------------------------------------------------------------------- #
     def apply_transformations(self, df: pd.DataFrame) -> pd.DataFrame:
         """Sequentially apply every transformation from the YAML spec."""
+        if not self.cfg.transformations:  # Handle case with no transformations
+            return df
         return functools.reduce(self._apply_one, self.cfg.transformations, df)
 
     # private ----------------------------------------------------------------
@@ -179,11 +181,16 @@ class DataAggregator:
         return df
 
 
-def aggregate_from_yaml(spec_path: str | Path) -> pd.DataFrame:
-    """One-shot helper: parse YAML → load → merge → transform → DataFrame."""
+def aggregate_from_yaml(
+    spec_path: str | Path,
+) -> tuple[pd.DataFrame, AggregationConfig]:
+    """One-shot helper: parse YAML → load → merge → transform → DataFrame.
+    Returns the aggregated DataFrame and the parsed configuration.
+    """
     with open(spec_path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     cfg = AggregationConfig.model_validate(raw)
     agg = DataAggregator(cfg).load()
     merged = agg.merge()
-    return agg.apply_transformations(merged)
+    transformed_df = agg.apply_transformations(merged)
+    return transformed_df, cfg

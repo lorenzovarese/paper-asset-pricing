@@ -9,6 +9,8 @@ dependencies = [
     "numpy>=2.2.5",
     "pandas>=2.2.3",
     "polars>=1.29.0",
+    "pydantic>=2.11.4",
+    "pyyaml>=6.0.2",
     "scikit-learn>=1.6.1",
     "sqlalchemy>=2.0.40",
     "statsmodels>=0.14.4",
@@ -23,8 +25,12 @@ dev = [
     "pandas-stubs>=2.2.3.250308",
     "pytest>=8.3.5",
     "ruff>=0.11.8",
+    "types-pyyaml>=6.0.12.20250402",
     "types-tqdm>=4.67.0.20250417",
 ]
+
+[tool.pdm.scripts]
+aggregate = "python scripts/aggregate_data.py"
 
 # [tool.pytest.ini_options]
 # pythonpath = "src"

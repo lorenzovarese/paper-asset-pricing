@@ -24,8 +24,8 @@ def load_and_preprocess(
       - Reads the file from the specified path.
       - Standardizes column names (trims whitespace, converts to lowercase).
       - Parses the specified `date_column` as datetime using the given format.
-      - Converts the 'permno' column to integer type.
-      - Sets a MultiIndex with levels ('date', 'permno') and sorts the index.
+      - Converts the 'permno' column to integer type if it exists.
+      - Sets an Index or MultiIndex (['date', 'permno'] if 'permno' exists, else ['date']) and sorts the index.
 
     Args:
         filename (str): Name of the CSV file to load.
@@ -33,7 +33,7 @@ def load_and_preprocess(
         date_format (str): Format of the date in the `date_column` (default: "%Y%m%d").
 
     Returns:
-        pd.DataFrame: Preprocessed DataFrame with a MultiIndex of ('date', 'permno').
+        pd.DataFrame: Preprocessed DataFrame.
 
     Raises:
         FileNotFoundError: If the specified file does not exist.
@@ -46,16 +46,22 @@ def load_and_preprocess(
     df = pd.read_csv(path)
     df = _standardize_columns(df)
 
-    if date_column.lower() not in df.columns:
+    standardized_date_column = date_column.lower()
+
+    if standardized_date_column not in df.columns:
         raise ValueError(
-            f"Expected date column '{date_column}' not found after standardization."
+            f"Expected date column '{date_column}' (standardized to '{standardized_date_column}') not found after standardization. Available columns: {df.columns.tolist()}"
         )
 
-    df[date_column.lower()] = pd.to_datetime(
-        df[date_column.lower()], format=date_format
+    df[standardized_date_column] = pd.to_datetime(
+        df[standardized_date_column], format=date_format
     )
-    df["permno"] = df["permno"].astype(int)
-    df = df.set_index(["date", "permno"]).sort_index()
+
+    if "permno" in df.columns:
+        df["permno"] = df["permno"].astype(int)
+        df = df.set_index([standardized_date_column, "permno"]).sort_index()
+    else:
+        df = df.set_index([standardized_date_column]).sort_index()
     return df
 
 

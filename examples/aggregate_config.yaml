@@ -1,0 +1,29 @@
+sources:
+  - name: crsp_returns
+    connector: local
+    path: data/crsp_returns_2002_2021.csv
+    join_on: ["permno", "date"]
+
+  - name: firm_chars
+    connector: local
+    path: data/firm_chars_2002_2021.csv
+    join_on: ["permno", "date"]
+
+  - name: macro
+    connector: local
+    path: data/wg_macro_2002_2021.csv
+    join_on: ["date"]
+
+transformations:
+  - type: one_hot
+    column: sic2
+    prefix: sic2_
+    drop_original: true
+
+  - type: fillna
+    method: mean
+
+  # Example of lagging a column
+  # - type: lag
+  #   columns: ["tbl"]
+  #   periods: 1

@@ -4,7 +4,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Literal, Optional, Sequence, Union
 
-from pydantic import BaseModel, Field, validator
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,  # Keep if used elsewhere, not for column_suffix anymore
+    validator,
+)
 
 
 class DateHandlingConfig(BaseModel):
@@ -13,11 +18,6 @@ class DateHandlingConfig(BaseModel):
     frequency: Literal["daily", "monthly", "yearly"] = Field(
         description="The intended frequency of the data in the source."
     )
-    # For monthly, how to align the date (e.g., to month end or month start)
-    # For now, we'll implicitly align monthly to month_end if frequency is 'monthly'
-    # More options like 'month_start' or specific day can be added later.
-    # monthly_alignment: Optional[Literal["month_end", "month_start"]] = "month_end"
-    # Let's make it simpler for now: if frequency is monthly, it implies alignment.
 
     @validator("frequency")
     def monthly_is_supported(cls, v):
@@ -35,79 +35,50 @@ class SourceConfig(BaseModel):
     connector: Literal["local"]
     path: Path
     join_on: Sequence[str]
-    level: Literal["firm", "macro"]
-    is_primary_firm_base: Optional[bool] = Field(
-        default=False,
-        description="If True, this firm-level source is used as the base for merging other firm-level data. "
-        "Only one firm-level source can be marked as primary. "
-        "If multiple firm sources exist and none are marked primary, an error will be raised during merge.",
-    )
-    date_handling: Optional[DateHandlingConfig] = Field(
-        default=None,
-        description="Specifies how to handle and align date columns for this source, e.g., for monthly data.",
-    )
+    level: Literal["firm", "macro"]  # This will now determine the automatic suffix
+    is_primary_firm_base: Optional[bool] = Field(default=False)
+    date_handling: Optional[DateHandlingConfig] = Field(default=None)
+    # column_suffix: Optional[str] = Field(default=None) # REMOVED
 
 
 class OutputConfig(BaseModel):
-    """Configuration for the output file."""
-
     format: Optional[Literal["csv", "parquet"]] = None
     parquet_engine: Optional[Literal["auto", "pyarrow", "fastparquet"]] = "auto"
     parquet_compression: Optional[str] = "snappy"
 
 
 class OneHotConfig(BaseModel):
-    """One-hot-encoding specification."""
-
     type: Literal["one_hot"]
-    column: str
+    column: str  # This will refer to the auto-suffixed column name
     prefix: str
     drop_original: bool
 
 
 class LagConfig(BaseModel):
-    """Lagging specification."""
-
     type: Literal["lag"]
-    columns: List[str]
+    columns: List[
+        str
+    ]  # These will refer to auto-suffixed column names or inferred names
     periods: int
 
 
 class CleanNumericConfig(BaseModel):
-    """Configuration for cleaning columns to ensure they are numeric."""
-
     type: Literal["clean_numeric"]
-    columns: List[str]
-    action: Literal["to_nan"] = Field(
-        default="to_nan",
-        description="Action to take for non-numeric values. 'to_nan' converts them to NaN.",
-    )
+    columns: List[
+        str
+    ]  # These will refer to auto-suffixed column names or inferred names
+    action: Literal["to_nan"] = Field(default="to_nan")
 
 
 class GroupedFillMissingConfig(BaseModel):
-    """Configuration for grouped filling of missing values."""
-
     type: Literal["grouped_fill_missing"]
     method: Literal["mean", "median"]
-    group_by_column: str = Field(
-        description="Column to group by for imputation (e.g., 'date')."
+    group_by_column: str  # Typically 'date' or 'permno', not auto-suffixed
+    columns: Optional[List[str]] = (
+        None  # These will refer to auto-suffixed or inferred names
     )
-    columns: Optional[List[str]] = Field(
-        default=None,
-        description="Specific columns to impute. If None, applies to all eligible numeric columns (excluding group_by_column).",
-    )
-    missing_threshold_warning: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Warning threshold for missing data ratio in a group-column (0.0 to 1.0).",
-    )
-    missing_threshold_error: float = Field(
-        default=0.8,
-        ge=0.0,
-        le=1.0,
-        description="Error threshold for missing data ratio in a group-column (0.0 to 1.0).",
-    )
+    missing_threshold_warning: float = Field(default=0.5, ge=0.0, le=1.0)
+    missing_threshold_error: float = Field(default=0.8, ge=0.0, le=1.0)
 
     @validator("missing_threshold_error")
     def check_error_threshold_greater_than_warning(cls, v, values):
@@ -116,23 +87,19 @@ class GroupedFillMissingConfig(BaseModel):
             and v < values["missing_threshold_warning"]
         ):
             raise ValueError(
-                "missing_threshold_error must be greater than or equal to missing_threshold_warning"
+                "missing_threshold_error must be >= missing_threshold_warning"
             )
         return v
 
 
 class ExpandCartesianConfig(BaseModel):
-    """Configuration for creating Cartesian product interaction terms between sets of columns."""
-
     type: Literal["expand_cartesian"]
-    macro_columns: List[str] = Field(
-        description="List of columns to be used as the first set for interaction (e.g., macro variables)."
+    macro_columns: List[str]  # User provides base names
+    firm_columns: List[str]  # User provides base names
+    infer_suffix: bool = Field(
+        default=True,  # CHANGED DEFAULT: Suffixes are now auto-applied, so inference is the natural mode.
+        description="If True (default), attempts to find auto-suffixed versions (_macro, _firm) of macro/firm columns. If False, expects exact pre-suffixed names provided by user (less common with auto-suffixing).",
     )
-    firm_columns: List[str] = Field(
-        description="List of columns to be used as the second set for interaction (e.g., firm characteristics)."
-    )
-    # Default naming for new columns will be f"{macro_col}_x_{firm_col}"
-    # Example: if macro_columns=["m1"], firm_columns=["f1", "f2"], new columns: "m1_x_f1", "m1_x_f2"
 
 
 TransformationConfig = Union[
@@ -140,49 +107,43 @@ TransformationConfig = Union[
     LagConfig,
     CleanNumericConfig,
     GroupedFillMissingConfig,
-    ExpandCartesianConfig,  # Added new transformation
+    ExpandCartesianConfig,
 ]
 
 
 class AggregationConfig(BaseModel):
-    """Root model for the YAML specification."""
-
     sources: List[SourceConfig]
     transformations: List[TransformationConfig] = Field(default_factory=list)
     output: Optional[OutputConfig] = None
 
     @validator("sources")
-    def check_primary_firm_base_declaration(
-        cls, sources: List[SourceConfig]
-    ) -> List[SourceConfig]:
-        """
-        Validates that at most one firm-level source is marked as 'is_primary_firm_base: True'.
-        The logic for requiring a primary base if multiple firm sources exist is handled at merge time.
-        """
+    def validate_sources_config(cls, sources: List[SourceConfig]) -> List[SourceConfig]:
         primary_firm_sources_marked = [
             s for s in sources if s.level == "firm" and s.is_primary_firm_base
         ]
         if len(primary_firm_sources_marked) > 1:
             primary_names = [s.name for s in primary_firm_sources_marked]
             raise ValueError(
-                f"Configuration error: Only one firm-level source can be marked as 'is_primary_firm_base: True'. "
-                f"Found: {primary_names}"
+                f"Config error: Only one firm-level source can be 'is_primary_firm_base: True'. Found: {primary_names}"
             )
 
-        # Validate that if date_handling is used, 'date' is a join key
         for src in sources:
-            if src.date_handling and "date" not in [key.lower() for key in src.join_on]:
+            join_keys_lower = {key.lower() for key in src.join_on}
+            if src.date_handling and "date" not in join_keys_lower:
                 raise ValueError(
-                    f"Source '{src.name}': If 'date_handling' is specified, 'date' must be one of the 'join_on' keys."
+                    f"Source '{src.name}': If 'date_handling' is specified, 'date' must be a join_on key."
                 )
             if src.date_handling and src.date_handling.frequency == "monthly":
-                # For now, we only support 'date' as the sole join key for monthly macro,
-                # or 'permno', 'date' for monthly firm.
-                # This is a simplification; more complex scenarios might need more thought.
-                join_keys_lower = {key.lower() for key in src.join_on}
                 if src.level == "macro" and join_keys_lower != {"date"}:
                     print(
-                        f"Warning: Source '{src.name}' is 'macro' with 'monthly' date_handling. "
-                        f"Expected 'join_on: [\"date\"]'. Found: {src.join_on}. This might lead to unexpected merge behavior if other keys are present."
+                        f"Warning: Source '{src.name}' (macro, monthly) has join_on: {src.join_on}. Expected just ['date']."
                     )
+
+        source_names = [s.name for s in sources]
+        if len(source_names) != len(set(source_names)):
+            raise ValueError(
+                f"Config error: Source names must be unique. Duplicates: {[name for name in set(source_names) if source_names.count(name) > 1]}"
+            )
+
+        # The check for duplicate column names *after auto-suffixing* will be done in DataAggregator.load()
         return sources

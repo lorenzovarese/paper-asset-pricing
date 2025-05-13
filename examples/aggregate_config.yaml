@@ -3,7 +3,7 @@ sources:
     connector: local
     path: data/test/ret.csv # Path to CRSP returns data
     join_on: ["permno", "date"]          # Columns to join on
-    level: firm                          # Data level: firm-specific
+    level: firm                          # Data level: firm-specific. Auto-suffix: _firm
     date_handling:                       # Configuration for date processing
       frequency: monthly                 # Assume data is monthly, align to month-end
 
@@ -11,49 +11,58 @@ sources:
     connector: local
     path: data/test/firm.csv  # Path to firm characteristics data
     join_on: ["permno", "date"]          # Columns to join on
-    level: firm                          # Data level: firm-specific
+    level: firm                          # Data level: firm-specific. Auto-suffix: _firm
     is_primary_firm_base: true           # This is the main firm-level table to merge onto
     date_handling:                       # Configuration for date processing
       frequency: monthly                 # Assume data is monthly, align to month-end
 
-  - name: macro
+  - name: macro_data # Renamed from 'macro' for clarity in example
     connector: local
     path: data/test/macro.csv    # Path to macroeconomic data
     join_on: ["date"]                    # Column to join on
-    level: macro                         # Data level: macroeconomic
+    level: macro                         # Data level: macroeconomic. Auto-suffix: _macro
     date_handling:                       # Configuration for date processing
       frequency: monthly                 # Assume data is monthly, align to month-end
 
 transformations:
   - type: clean_numeric                 # Transformation to convert columns to numeric type
-    columns: ["ret"]                    # Target the 'ret' (return) column
-    action: "to_nan"                    # Convert any non-numeric values (like 'B', 'C') in 'ret' to NaN
+    columns: ["ret"]                    # User provides base name 'ret'. Code will find 'ret_firm' (assuming 'ret' is from a firm source)
+    action: "to_nan"
 
   - type: one_hot                       # One-hot encode a categorical column
-    column: sic2                        # Target the 'sic2' (industry code) column
-    prefix: sic2_                       # Prefix for the new one-hot encoded columns
-    drop_original: true                 # Remove the original 'sic2' column after encoding
+    column: "sic2"                      # User provides base name 'sic2'. Code will find 'sic2_firm'
+    prefix: sic2_
+    drop_original: true
 
-  - type: grouped_fill_missing          # Fill missing values within groups
-    method: median                      # Use the median of each group to fill NaNs
-    group_by_column: date               # Group data by the 'date' column
-    # columns: ["ret", "char1"]         # Optional: List of specific columns to fill. 
-                                        # If omitted (like now), all numeric columns (except group_by_column) will be targeted.
-    missing_threshold_warning: 0.7      # Issue a warning if a group has >70% missing values for a column
-    missing_threshold_error: 0.8        # Raise an error if a group has >80% missing values for a column
+  - type: grouped_fill_missing
+    method: median
+    group_by_column: date
+    # columns: ["ret", "beta"]           # User provides base names. Code finds 'ret_firm', 'beta_firm'
+    missing_threshold_warning: 0.7
+    missing_threshold_error: 0.8
 
-  - type: expand_cartesian              # Create interaction terms
-    macro_columns: ["dp", "ep"]         # List of 'macro' conceptual columns for interaction
-                                        # (These columns must exist in the DataFrame at this stage)
-    firm_columns: ["char1", "ret"]      # List of 'firm' conceptual columns for interaction
-                                        # New columns will be named e.g., "dp_x_char1", "dp_x_ret", "ep_x_char1", "ep_x_ret"
+  - type: expand_cartesian
+    infer_suffix: true                  # Default is true, but explicit here for clarity
+    macro_columns: ["dp", "ep", "bm", "ntis", "tbl", "tms", "dfy", "svar"] # Base names
+    firm_columns: [                     # Base names
+        "mvel1", "beta", "betasq", "chmom", "dolvol", "idiovol", "indmom", "mom1m", 
+        "mom6m", "mom12m", "mom36m", "pricedelay", "turn", "absacc", "acc", "age", 
+        "agr", "bm", "bm_ia", "cashdebt", "cashpr", "cfp", "cfp_ia", "chatoia", 
+        "chcsho", "chempia", "chinv", "chpmia", "convind", "currat", "depr", "divi", 
+        "divo", "dy", "egr", "ep", "gma", "grcapx", "grltnoa", "herf", "hire", 
+        "invest", "lev", "lgr", "mve_ia", "operprof", "orgcap", "pchcapx_ia", 
+        "pchcurrat", "pchdepr", "pchgm_pchsale", "pchquick", "pchsale_pchinvt", 
+        "pchsale_pchrect", "pchsale_pchxsga", "pchsaleinv", "pctacc", "ps", "quick", 
+        "rd", "rd_mve", "rd_sale", "realestate", "roic", "salecash", "saleinv", 
+        "salerec", "secured", "securedind", "sgr", "sin", "sp", "tang", "tb", 
+        "aeavol", "cash", "chtx", "cinvest", "ear", "nincr", "roaq", "roavol", 
+        "roeq", "rsup", "stdacc", "stdcf", "ms", "baspread", "ill", "maxret", 
+        "retvol", "std_dolvol", "std_turn", "zerotrade"
+      ]
   
-  # Example of lagging a column (currently commented out)
   # - type: lag
-  #   columns: ["tbl", "dp_x_char1"]    # Columns to lag (can include newly created interaction terms)
-  #   periods: 1                        # Number of periods to lag by
+  #   columns: ["tbl", "dp_x_mvel1"] # User provides base names for lag. Code finds 'tbl_macro', 'dp_macro_x_mvel1_firm'
+  #   periods: 1
 
 output:
-  format: parquet                       # Desired output format for the final aggregated table
-  # parquet_engine: "pyarrow"           # Optional: Specify Parquet engine (e.g., "pyarrow", "fastparquet")
-  # parquet_compression: "snappy"       # Optional: Specify Parquet compression
+  format: parquet

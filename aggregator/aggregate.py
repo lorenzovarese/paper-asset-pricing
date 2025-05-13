@@ -18,10 +18,11 @@ from .schema import (
     AggregationConfig,
     OneHotConfig,
     LagConfig,
-    FillNaGroupedConfig,
+    # FillNaGroupedConfig, # Removed
     TransformationConfig,
-    ImputationConfig,  # Added ImputationConfig
-    CleanNumericConfig,  # Added CleanNumericConfig
+    # ImputationConfig, # Removed (superseded by GroupedFillMissingConfig)
+    CleanNumericConfig,
+    GroupedFillMissingConfig,  # Added
 )
 
 
@@ -72,7 +73,7 @@ def _load_local(path: Path) -> pd.DataFrame:
                         print(
                             f"Error: Failed to parse date column '{date_column_name_std}' in '{path.name}' even with inference: {e_infer}. Date column may not be correctly processed."
                         )
-            else:  # Other types, attempt general inference
+            else:
                 try:
                     print(
                         f"Info: Date column '{date_column_name_std}' in '{path.name}' (after load_and_preprocess) is not standard. Attempting general date inference."
@@ -88,16 +89,14 @@ def _load_local(path: Path) -> pd.DataFrame:
         print(
             f"Info: load_and_preprocess failed for '{path.name}'. Falling back to direct CSV load for '{path}'."
         )
-        df_fallback = pd.read_csv(
-            path, low_memory=False
-        )  # Added low_memory=False for mixed types
+        df_fallback = pd.read_csv(path, low_memory=False)
         df_fallback = _standardize_columns(df_fallback)
         date_column_name_std = "date"
         date_format_str = "%Y%m%d"  # For fallback, assume this common format
 
         if date_column_name_std in df_fallback.columns:
             if pd.api.types.is_datetime64_any_dtype(df_fallback[date_column_name_std]):
-                pass  # Already datetime
+                pass
             elif pd.api.types.is_integer_dtype(df_fallback[date_column_name_std]) or (
                 pd.api.types.is_object_dtype(df_fallback[date_column_name_std])
                 and df_fallback[date_column_name_std]
@@ -200,25 +199,15 @@ class DataAggregator:
                             f"Info: 'date' column in source '{src_cfg.name}' (no specific date_handling) normalized to midnight. Min: {df['date'].min() if not df['date'].empty else 'N/A'}, Max: {df['date'].max() if not df['date'].empty else 'N/A'}"
                         )
 
-            # Check for non-numeric data in non-join columns and warn
             join_keys_lower = {key.lower() for key in src_cfg.join_on}
             for col in df.columns:
-                if (
-                    col in join_keys_lower or col == "date"
-                ):  # Skip join keys and date (already handled)
+                if col in join_keys_lower or col == "date":
                     continue
-
-                # Attempt to convert to numeric to check for non-numeric strings
-                # We don't change the type here, just inspect
                 try:
-                    # Check if column is already numeric or boolean (which can be numeric)
                     if pd.api.types.is_numeric_dtype(
                         df[col]
                     ) or pd.api.types.is_bool_dtype(df[col]):
                         continue
-
-                    # For object columns, try to see if they can be numeric
-                    # This is a bit expensive, so do it carefully
                     if df[col].dtype == "object":
                         temp_numeric_col = pd.to_numeric(df[col], errors="coerce")
                         num_non_numeric_strings = df[col][
@@ -230,7 +219,7 @@ class DataAggregator:
                                 f"(e.g., {df[col][temp_numeric_col.isna() & df[col].notna()].unique()[:3]}). "
                                 f"Consider using 'clean_numeric' transformation if this column should be numeric."
                             )
-                except Exception as e:  # Broad exception for safety during this check
+                except Exception as e:
                     print(
                         f"Debug: Could not perform numeric check on source '{src_cfg.name}', column '{col}': {e}"
                     )
@@ -255,7 +244,6 @@ class DataAggregator:
 
         firm_source_configs = [s for s in self.cfg.sources if s.level == "firm"]
         macro_source_configs = [s for s in self.cfg.sources if s.level == "macro"]
-
         base_df = None
 
         if not firm_source_configs:
@@ -265,7 +253,6 @@ class DataAggregator:
                 )
                 if not self._frames:
                     raise RuntimeError("Call load() first.")
-
                 base_df = self._frames[macro_source_configs[0].name].copy()
                 print(
                     f"Starting merge with base macro-level source: {macro_source_configs[0].name}"
@@ -286,7 +273,6 @@ class DataAggregator:
         primary_firm_sources_marked = [
             s_cfg for s_cfg in firm_source_configs if s_cfg.is_primary_firm_base
         ]
-
         if len(primary_firm_sources_marked) == 1:
             primary_firm_config = primary_firm_sources_marked[0]
             print(
@@ -302,18 +288,15 @@ class DataAggregator:
                 "Multiple firm-level sources are provided. Please specify exactly one as the primary base "
                 "by setting 'is_primary_firm_base: True' for that source in the YAML configuration."
             )
-
         base_df = self._frames[primary_firm_config.name].copy()
         print(
             f"Starting merge with primary firm-level source: {primary_firm_config.name}"
         )
-
         other_firm_source_configs = [
             s_cfg
             for s_cfg in firm_source_configs
             if s_cfg.name != primary_firm_config.name
         ]
-
         for firm_cfg in other_firm_source_configs:
             right_df = self._frames[firm_cfg.name]
             keys = [col.lower() for col in firm_cfg.join_on]
@@ -321,173 +304,14 @@ class DataAggregator:
                 f"Left-merging firm-level source: {firm_cfg.name} onto base on keys: {keys}"
             )
             base_df = base_df.merge(right_df, how="left", on=keys)
-
         for macro_cfg in macro_source_configs:
             right_df = self._frames[macro_cfg.name]
             keys = [col.lower() for col in macro_cfg.join_on]
             print(f"Merging macro-level source: {macro_cfg.name} on keys: {keys}")
             base_df = base_df.merge(right_df, how="left", on=keys)
-
         return base_df
 
-    def apply_imputation(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Applies data imputation based on the configuration."""
-        if not self.cfg.imputation:
-            print("No imputation config provided. Skipping imputation step.")
-            return df
-
-        imp_cfg = self.cfg.imputation
-        print(
-            f"Starting imputation: method='{imp_cfg.method}', group_by='{imp_cfg.group_by_column}'."
-        )
-
-        print("Checking for NaNs in data columns from macro sources...")
-        for src_cfg_iter in self.cfg.sources:
-            if src_cfg_iter.level == "macro":
-                original_cols_this_macro = self._source_original_columns.get(
-                    src_cfg_iter.name, []
-                )
-                join_keys_this_macro = [k.lower() for k in src_cfg_iter.join_on]
-
-                for col_name in original_cols_this_macro:
-                    if col_name in df.columns:
-                        if col_name in join_keys_this_macro:
-                            continue
-
-                        if df[col_name].isnull().any():
-                            num_nans = df[col_name].isnull().sum()
-                            total_rows = len(df)
-                            nan_rows_for_macro_col = df[df[col_name].isnull()]
-                            example_dates_with_nan_str = "N/A"
-                            if (
-                                "date" in nan_rows_for_macro_col.columns
-                                and pd.api.types.is_datetime64_any_dtype(
-                                    nan_rows_for_macro_col["date"]
-                                )
-                            ):
-                                example_dates_list = (
-                                    nan_rows_for_macro_col["date"].dropna().unique()[:5]
-                                )
-                                if len(example_dates_list) > 0:
-                                    example_dates_with_nan_str = ", ".join(
-                                        [
-                                            pd.Timestamp(d).strftime("%Y-%m-%d")
-                                            for d in example_dates_list
-                                        ]
-                                    )
-                            raise ValueError(
-                                f"Error: Data column '{col_name}' from macro source '{src_cfg_iter.name}' contains {num_nans} missing values "
-                                f"(out of {total_rows}) in the merged DataFrame. Macro data columns must be complete after joins. "
-                                f"Example dates with missing '{col_name}': [{example_dates_with_nan_str}]"
-                            )
-        print(
-            "Macro column check complete: No NaNs found in non-join key columns from macro sources."
-        )
-
-        group_by_col_lower = imp_cfg.group_by_column.lower()
-        if group_by_col_lower not in df.columns:
-            raise ValueError(
-                f"Imputation group_by_column '{group_by_col_lower}' not found in DataFrame columns: {df.columns.tolist()}."
-            )
-
-        target_cols_for_imputation: List[str] = []
-        if imp_cfg.target_columns:
-            print(
-                f"Using user-specified target columns for imputation: {imp_cfg.target_columns}"
-            )
-            temp_target_cols = [col.lower() for col in imp_cfg.target_columns]
-            for col in temp_target_cols:
-                if col not in df.columns:
-                    print(
-                        f"Warning: Specified imputation target column '{col}' not found. Skipping."
-                    )
-                    continue
-                if not pd.api.types.is_numeric_dtype(df[col]):
-                    print(
-                        f"Warning: Specified imputation target column '{col}' is not numeric. Skipping."
-                    )
-                    continue
-                if col == group_by_col_lower:
-                    print(
-                        f"Warning: Specified imputation target column '{col}' is the group_by_column. Skipping."
-                    )
-                    continue
-                target_cols_for_imputation.append(col)
-        else:
-            print(
-                "Auto-identifying numeric columns for imputation (excluding macro data cols and group_by col)..."
-            )
-            all_numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-            macro_data_cols_to_exclude = set()
-            for src_cfg_iter in self.cfg.sources:
-                if src_cfg_iter.level == "macro":
-                    original_cols = self._source_original_columns.get(
-                        src_cfg_iter.name, []
-                    )
-                    join_keys = [k.lower() for k in src_cfg_iter.join_on]
-                    for col in original_cols:
-                        if col in df.columns and col not in join_keys:
-                            macro_data_cols_to_exclude.add(col)
-            target_cols_for_imputation = [
-                col
-                for col in all_numeric_cols
-                if col != group_by_col_lower and col not in macro_data_cols_to_exclude
-            ]
-
-        if not target_cols_for_imputation:
-            print(
-                "No suitable columns found for imputation after filtering. Skipping imputation step."
-            )
-            return df
-        print(f"Columns targeted for imputation: {target_cols_for_imputation}")
-
-        print(
-            f"Performing pre-check for missing value thresholds on columns, grouped by '{group_by_col_lower}'..."
-        )
-        for col_to_check in target_cols_for_imputation:
-
-            def check_group_missing_ratio(group_series: pd.Series):
-                group_identifier = group_series.name
-                if group_series.empty:
-                    return
-                missing_count = group_series.isnull().sum()
-                total_count = len(group_series)
-                if total_count == 0:
-                    return
-                missing_ratio = missing_count / total_count
-                group_id_str = group_identifier
-                if isinstance(group_identifier, pd.Timestamp):
-                    group_id_str = group_identifier.strftime("%Y-%m-%d")
-                if missing_ratio > imp_cfg.missing_threshold_error:
-                    raise ValueError(
-                        f"Error: Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing values, "
-                        f"exceeding error threshold of {imp_cfg.missing_threshold_error * 100:.2f}%."
-                    )
-                if missing_ratio > imp_cfg.missing_threshold_warning:
-                    print(
-                        f"Warning: Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing values, "
-                        f"exceeding warning threshold of {imp_cfg.missing_threshold_warning * 100:.2f}%."
-                    )
-
-            df.groupby(group_by_col_lower, group_keys=True)[col_to_check].apply(
-                check_group_missing_ratio
-            )
-
-        print(f"Pre-check complete. Applying imputation method: '{imp_cfg.method}'...")
-        for col_to_impute in target_cols_for_imputation:
-            if imp_cfg.method == "mean":
-                fill_value_func = lambda x: x.fillna(x.mean())
-            elif imp_cfg.method == "median":
-                fill_value_func = lambda x: x.fillna(x.median())
-            else:
-                raise ValueError(
-                    f"Internal Error: Invalid imputation method '{imp_cfg.method}' despite schema validation."
-                )
-            df[col_to_impute] = df.groupby(group_by_col_lower, group_keys=False)[
-                col_to_impute
-            ].transform(fill_value_func)
-        print("Imputation process completed.")
-        return df
+    # apply_imputation method is removed
 
     def apply_transformations(self, df: pd.DataFrame) -> pd.DataFrame:
         """Sequentially apply every transformation from the YAML spec."""
@@ -498,7 +322,6 @@ class DataAggregator:
     @staticmethod
     def _apply_one(df: pd.DataFrame, tr: TransformationConfig) -> pd.DataFrame:
         if isinstance(tr, OneHotConfig):
-            # ... (OneHotConfig logic remains the same)
             if tr.column.lower() not in df.columns:
                 print(
                     f"Warning: Column '{tr.column}' for one-hot encoding not found. Skipping."
@@ -509,19 +332,16 @@ class DataAggregator:
             if tr.drop_original:
                 df = df.drop(columns=tr.column.lower())
         elif isinstance(tr, LagConfig):
-            # ... (LagConfig logic remains the same, ensure sorted approach is used)
             lag_cols_lower = [col.lower() for col in tr.columns]
             group_keys = []
             if "permno" in df.columns:
                 group_keys.append("permno")
-
             for col_to_lag in lag_cols_lower:
                 if col_to_lag not in df.columns:
                     print(
                         f"Warning: Column '{col_to_lag}' not found for lagging. Skipping."
                     )
                     continue
-
                 new_lag_col_name = f"{col_to_lag}_lag{tr.periods}"
                 if group_keys:
                     print(
@@ -554,53 +374,9 @@ class DataAggregator:
                     )
                     df[new_lag_col_name] = df[col_to_lag].shift(tr.periods)
 
-        elif isinstance(tr, FillNaGroupedConfig):
-            # ... (FillNaGroupedConfig logic remains the same)
-            group_by_col_lower = tr.group_by_column.lower()
-            if group_by_col_lower not in df.columns:
-                print(
-                    f"Warning: Group_by_column '{group_by_col_lower}' for fillna_grouped not found. Skipping."
-                )
-                return df
-            target_cols_for_fill = []
-            if tr.columns:
-                for col_name in tr.columns:
-                    col_name_lower = col_name.lower()
-                    if col_name_lower not in df.columns:
-                        print(
-                            f"Warning: Specified column '{col_name_lower}' for fillna_grouped not found. Skipping this column."
-                        )
-                        continue
-                    if not pd.api.types.is_numeric_dtype(df[col_name_lower]):
-                        print(
-                            f"Warning: Specified column '{col_name_lower}' for fillna_grouped is not numeric. Skipping this column."
-                        )
-                        continue
-                    target_cols_for_fill.append(col_name_lower)
-            else:
-                target_cols_for_fill = df.select_dtypes(
-                    include=np.number
-                ).columns.tolist()
-                if group_by_col_lower in target_cols_for_fill:
-                    target_cols_for_fill.remove(group_by_col_lower)
-            if not target_cols_for_fill:
-                print(
-                    "Warning: No numeric columns to process for fillna_grouped. Skipping."
-                )
-                return df
-            print(
-                f"Applying fillna_grouped (method: {tr.method}) on columns: {target_cols_for_fill} grouped by '{group_by_col_lower}'"
-            )
-            if tr.method == "median":
-                df[target_cols_for_fill] = df.groupby(
-                    group_by_col_lower, group_keys=False
-                )[target_cols_for_fill].transform(lambda x: x.fillna(x.median()))
-            elif tr.method == "mean":
-                df[target_cols_for_fill] = df.groupby(
-                    group_by_col_lower, group_keys=False
-                )[target_cols_for_fill].transform(lambda x: x.fillna(x.mean()))
+        # FillNaGroupedConfig handler is removed
 
-        elif isinstance(tr, CleanNumericConfig):  # New transformation
+        elif isinstance(tr, CleanNumericConfig):
             print(f"Applying 'clean_numeric' transformation for columns: {tr.columns}")
             for col_name_orig in tr.columns:
                 col_name = col_name_orig.lower()
@@ -609,7 +385,6 @@ class DataAggregator:
                         f"Warning: Column '{col_name}' for clean_numeric not found. Skipping."
                     )
                     continue
-
                 print(f"  Cleaning column: '{col_name}'")
                 original_dtype = df[col_name].dtype
 
@@ -620,7 +395,6 @@ class DataAggregator:
                 # Attempt to convert to numeric to identify non-numeric strings and actual numbers
                 # This series is temporary, for inspection.
                 temp_numeric_series = pd.to_numeric(df[col_name], errors="coerce")
-
                 numeric_count = temp_numeric_series.notnull().sum()
                 # Non-numeric strings are those that are not NaN in original but become NaN after coerce
                 # and were not originally NaN.
@@ -628,7 +402,6 @@ class DataAggregator:
                     temp_numeric_series.isnull() & df[col_name].notnull()
                 )
                 non_numeric_string_count = non_numeric_string_mask.sum()
-
                 print(f"    Stats for '{col_name}' (before cleaning):")
                 print(f"      Total entries: {total_count}")
                 print(f"      Original NaN count: {nan_count_before}")
@@ -636,7 +409,6 @@ class DataAggregator:
                 print(
                     f"      Non-convertible string count (will become NaN): {non_numeric_string_count}"
                 )
-
                 if non_numeric_string_count == 0 and pd.api.types.is_numeric_dtype(
                     original_dtype
                 ):
@@ -664,7 +436,6 @@ class DataAggregator:
                         print(
                             f"    Action 'to_nan': Column '{col_name}' has no non-convertible strings to change to NaN, but ensuring it is numeric type."
                         )
-
                     df[col_name] = pd.to_numeric(df[col_name], errors="coerce")
                     nan_count_after = df[col_name].isnull().sum()
                     print(
@@ -674,15 +445,116 @@ class DataAggregator:
                     print(
                         f"    Warning: Unknown action '{tr.action}' for clean_numeric on column '{col_name}'. Skipping action."
                     )
+
+        elif isinstance(
+            tr, GroupedFillMissingConfig
+        ):  # New handler for GroupedFillMissingConfig
+            print(
+                f"Applying 'grouped_fill_missing' (method: {tr.method}) on columns grouped by '{tr.group_by_column}'."
+            )
+
+            group_by_col_lower = tr.group_by_column.lower()
+            if group_by_col_lower not in df.columns:
+                raise ValueError(
+                    f"GroupedFillMissingConfig: group_by_column '{group_by_col_lower}' not found in DataFrame columns: {df.columns.tolist()}."
+                )
+
+            cols_to_fill: List[str] = []
+            if tr.columns:  # User specified columns
+                print(f"  Targeting user-specified columns: {tr.columns}")
+                temp_target_cols = [col.lower() for col in tr.columns]
+                for col in temp_target_cols:
+                    if col not in df.columns:
+                        print(
+                            f"  Warning: Specified column '{col}' for grouped_fill_missing not found. Skipping."
+                        )
+                        continue
+                    if not pd.api.types.is_numeric_dtype(df[col]):
+                        # This check is important. If a column isn't numeric (e.g., after clean_numeric failed or wasn't run),
+                        # mean/median will fail or produce unexpected results.
+                        print(
+                            f"  Warning: Specified column '{col}' for grouped_fill_missing is not numeric (current dtype: {df[col].dtype}). Skipping this column. Ensure 'clean_numeric' was applied if needed."
+                        )
+                        continue
+                    if col == group_by_col_lower:
+                        print(
+                            f"  Warning: Specified column '{col}' is the group_by_column. Skipping."
+                        )
+                        continue
+                    cols_to_fill.append(col)
+            else:  # Auto-identify numeric columns
+                print(
+                    "  Auto-identifying numeric columns for grouped_fill_missing (excluding group_by_column)."
+                )
+                all_numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+                cols_to_fill = [
+                    col for col in all_numeric_cols if col != group_by_col_lower
+                ]
+
+            if not cols_to_fill:
+                print(
+                    "  No suitable numeric columns found for grouped_fill_missing. Skipping this transformation step."
+                )
+                return df
+            print(f"  Columns to be processed by grouped_fill_missing: {cols_to_fill}")
+
+            # Pre-check for missing value thresholds
+            print(
+                f"  Performing pre-check for missing value thresholds on columns, grouped by '{group_by_col_lower}'..."
+            )
+            for col_to_check in cols_to_fill:
+
+                def check_group_missing_ratio(group_series: pd.Series):
+                    group_identifier = group_series.name
+                    if group_series.empty:
+                        return
+                    missing_count = group_series.isnull().sum()
+                    total_count = len(group_series)
+                    if total_count == 0:
+                        return
+                    missing_ratio = missing_count / total_count
+                    group_id_str = group_identifier
+                    if isinstance(group_identifier, pd.Timestamp):
+                        group_id_str = group_identifier.strftime("%Y-%m-%d")
+                    if missing_ratio > tr.missing_threshold_error:
+                        raise ValueError(
+                            f"Error (GroupedFillMissing): Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing values, "
+                            f"exceeding error threshold of {tr.missing_threshold_error * 100:.2f}%."
+                        )
+                    if missing_ratio > tr.missing_threshold_warning:
+                        print(
+                            f"Warning (GroupedFillMissing): Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing values, "
+                            f"exceeding warning threshold of {tr.missing_threshold_warning * 100:.2f}%."
+                        )
+
+                df.groupby(group_by_col_lower, group_keys=True)[col_to_check].apply(
+                    check_group_missing_ratio
+                )
+
+            print(f"  Pre-check complete. Applying fill method: '{tr.method}'...")
+            for col_to_impute in cols_to_fill:
+                if tr.method == "mean":
+                    fill_value_func = lambda x: x.fillna(x.mean())
+                elif tr.method == "median":
+                    fill_value_func = lambda x: x.fillna(x.median())
+                else:  # Should be caught by Pydantic
+                    raise ValueError(
+                        f"Internal Error: Invalid fill method '{tr.method}'."
+                    )
+
+                df[col_to_impute] = df.groupby(group_by_col_lower, group_keys=False)[
+                    col_to_impute
+                ].transform(fill_value_func)
+            print(
+                "  Grouped_fill_missing process completed for this transformation step."
+            )
         return df
 
 
 def aggregate_from_yaml(
     spec_path: str | Path,
 ) -> tuple[pd.DataFrame, AggregationConfig]:
-    """One-shot helper: parse YAML → load → merge → transform → impute → DataFrame."""
-    # Note: Order changed slightly. Transformations (like clean_numeric) might need to run
-    # BEFORE imputation if they prepare columns for imputation.
+    """One-shot helper: parse YAML → load → merge → transform → DataFrame."""
     with open(spec_path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     cfg = AggregationConfig.model_validate(raw)
@@ -690,15 +562,6 @@ def aggregate_from_yaml(
     agg = DataAggregator(cfg).load()
     merged_df = agg.merge()
 
-    # Apply transformations first, as clean_numeric might be needed before imputation
     transformed_df = agg.apply_transformations(merged_df)
 
-    # Then apply imputation on the (potentially cleaned) transformed data
-    imputed_df = agg.apply_imputation(transformed_df)
-
-    # If there are transformations that MUST run after imputation, the model needs more stages.
-    # For now, this order (load -> merge -> transform -> impute) is common.
-    # If fillna_grouped is meant to run after imputation, it should be fine as part of transformations.
-    # The key is that clean_numeric runs before imputation or fillna_grouped on those columns.
-
-    return imputed_df, cfg  # Return the result of imputation
+    return transformed_df, cfg

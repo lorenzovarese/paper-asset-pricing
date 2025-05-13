@@ -21,7 +21,7 @@ class DateHandlingConfig(BaseModel):
 
     @validator("frequency")
     def monthly_is_supported(cls, v):
-        if v not in ["monthly"]:  # Extend this list as you add support
+        if v not in ["monthly"]:
             raise ValueError(
                 f"Frequency '{v}' is not yet supported. Currently only 'monthly' is implemented."
             )
@@ -32,7 +32,7 @@ class SourceConfig(BaseModel):
     """Location and merge-key information for a single data source."""
 
     name: str
-    connector: Literal["local"]  # extendable (wrds, s3 …)
+    connector: Literal["local"]
     path: Path
     join_on: Sequence[str]
     level: Literal["firm", "macro"]
@@ -65,13 +65,7 @@ class OneHotConfig(BaseModel):
     drop_original: bool
 
 
-class FillNaGroupedConfig(BaseModel):
-    """Configuration for grouped fillna operations."""
-
-    type: Literal["fillna_grouped"]
-    method: Literal["mean", "median"]
-    group_by_column: str
-    columns: Optional[List[str]] = None
+# FillNaGroupedConfig is now removed. Its functionality is superseded by GroupedFillMissingConfig.
 
 
 class LagConfig(BaseModel):
@@ -86,32 +80,24 @@ class CleanNumericConfig(BaseModel):
     """Configuration for cleaning columns to ensure they are numeric."""
 
     type: Literal["clean_numeric"]
-    columns: List[str]  # Specify one or more columns to clean
+    columns: List[str]
     action: Literal["to_nan"] = Field(
         default="to_nan",
         description="Action to take for non-numeric values. 'to_nan' converts them to NaN.",
     )
-    # We could add more actions later, e.g., 'remove_row' or specific value replacements.
 
 
-TransformationConfig = Union[
-    OneHotConfig,
-    FillNaGroupedConfig,
-    LagConfig,
-    CleanNumericConfig,  # Added CleanNumericConfig
-]
+class GroupedFillMissingConfig(BaseModel):  # Renamed from ImputationConfig
+    """Configuration for grouped filling of missing values."""
 
-
-class ImputationConfig(BaseModel):
-    """Configuration for data imputation after merging and before transformations."""
-
+    type: Literal["grouped_fill_missing"]  # New type discriminator
     method: Literal["mean", "median"]
     group_by_column: str = Field(
-        default="date", description="Column to group by for imputation (e.g., 'date')."
+        description="Column to group by for imputation (e.g., 'date')."
     )
-    target_columns: Optional[List[str]] = Field(
+    columns: Optional[List[str]] = Field(  # Renamed from target_columns
         default=None,
-        description="Specific columns to impute. If None, applies to eligible numeric columns not from macro sources.",
+        description="Specific columns to impute. If None, applies to all eligible numeric columns (excluding group_by_column).",
     )
     missing_threshold_warning: float = Field(
         default=0.5,
@@ -138,14 +124,19 @@ class ImputationConfig(BaseModel):
         return v
 
 
+TransformationConfig = Union[
+    OneHotConfig,
+    LagConfig,  # FillNaGroupedConfig removed
+    CleanNumericConfig,
+    GroupedFillMissingConfig,  # Added GroupedFillMissingConfig
+]
+
+
 class AggregationConfig(BaseModel):
     """Root model for the YAML specification."""
 
     sources: List[SourceConfig]
-    imputation: Optional[ImputationConfig] = Field(
-        default=None,
-        description="Configuration for data imputation after merging sources.",
-    )
+    # imputation: Optional[ImputationConfig] = Field(...) # This field is now removed
     transformations: List[TransformationConfig] = Field(default_factory=list)
     output: Optional[OutputConfig] = None
 

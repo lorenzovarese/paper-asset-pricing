@@ -18,6 +18,14 @@ sources:
     join_on: ["date"]
     level: macro
 
+imputation: 
+  method: median # or "mean"
+  group_by_column: "date" # Optional, defaults to "date"
+  # target_columns: ["ret", "some_other_char"] # Optional: if specified, only these numeric columns are imputed.
+                                            # If omitted, all eligible numeric columns (non-macro, non-group_by) are targeted.
+  missing_threshold_warning: 0.5 # Optional, default 0.5 (50%)
+  missing_threshold_error: 0.8   # Optional, default 0.8 (80%)
+
 transformations:
   - type: one_hot
     column: sic2
@@ -25,12 +33,9 @@ transformations:
     drop_original: true
 
   - type: fillna_grouped
-    method: median
-    group_by_column: date
-    # By omitting 'columns', all numeric columns will be targeted.
-    # If you want to be explicit, list them:
-    # columns: ["ret", "dp", "ep", "bm", "ntis", "tbl", "tms", "dfy", "svar"]
-    columns: ["ret"]
+    method: median # This is now a post-imputation fill, might be for specific cases or different groups
+    group_by_column: date 
+    columns: ["ret"] # Example: if 'ret' still has NaNs after main imputation (e.g., a whole date group was NaN)
 
   # Example of lagging a column
   # - type: lag
@@ -39,5 +44,25 @@ transformations:
 
 output:
   format: parquet
-  # parquet_engine: "pyarrow" # Optional, default is "auto"
-  # parquet_compression: "gzip" # Optional, default is "snappy"
+  # parquet_engine: "pyarrow"
+  # parquet_compression: "snappy"
+
+# sources:
+#   - name: crsp_returns
+#     connector: local
+#     path: data/crsp_returns_2002_2021.csv 
+#     join_on: ["permno", "date"]
+#     level: firm
+
+#   - name: firm_chars
+#     connector: local
+#     path: data/firm_chars_2002_2021.csv 
+#     join_on: ["permno", "date"]
+#     level: firm
+#     is_primary_firm_base: true
+
+#   - name: macro
+#     connector: local
+#     path: data/wg_macro_2002_2021.csv 
+#     join_on: ["date"]
+#     level: macro

@@ -3,7 +3,7 @@
 from __future__ import annotations
 import functools
 from pathlib import Path
-from typing import Union
+from typing import Union, List  # Added List
 
 import pandas as pd
 import numpy as np
@@ -20,6 +20,7 @@ from .schema import (
     LagConfig,
     FillNaGroupedConfig,
     TransformationConfig,
+    ImputationConfig,
 )
 
 
@@ -145,26 +146,23 @@ class DataAggregator:
     def __init__(self, cfg: AggregationConfig) -> None:
         self.cfg = cfg
         self._frames: dict[str, pd.DataFrame] = {}
+        self._source_original_columns: dict[str, List[str]] = {}  # Added
 
     def load(self) -> "DataAggregator":
         """Read every data source into memory."""
         for src_cfg in self.cfg.sources:
             loader = CONNECTOR_REGISTRY[src_cfg.connector]
-            # Ensure path is resolved correctly, especially if relative paths are used in YAML
-            # Assuming paths in YAML are relative to where the script is run or a defined base path
-            # For simplicity, let's assume Path(src_cfg.path) works as intended.
-            # If DATA_DIR is used by load_and_preprocess, src_cfg.path should be just the filename.
-            # If src_cfg.path is absolute, it should work.
-            # If src_cfg.path is relative, it's relative to CWD.
-            # The _load_local function handles path.name for load_and_preprocess and path for fallback.
-
-            # Let's assume src_cfg.path is a Path object already from Pydantic
-            # If it's a string, Path(src_cfg.path) is fine.
-            df = loader(Path(src_cfg.path))
+            df = loader(
+                src_cfg.path
+            )  # Pydantic should convert path string to Path object
 
             if not isinstance(df.index, pd.RangeIndex):
                 df = df.reset_index()  # Ensure join keys are columns
+
+            # Standardize column names after loading and potential index reset
             df.columns = df.columns.str.lower()
+            # Store standardized column names for later reference (e.g., macro checks)
+            self._source_original_columns[src_cfg.name] = list(df.columns)
 
             # Standardize join_on keys to lower case for checking
             join_on_lower = [col.lower() for col in src_cfg.join_on]
@@ -176,7 +174,7 @@ class DataAggregator:
                     f"Available columns after lowercasing and reset_index: {list(df.columns)[:10]}..."
                 )
             self._frames[src_cfg.name] = df
-        print("Stop here")
+        # print("Stop here") # Removed debug print
         return self
 
     def merge(self) -> pd.DataFrame:
@@ -196,7 +194,7 @@ class DataAggregator:
                 print(
                     "Warning: No firm-level sources found. Merging macro sources only."
                 )
-                if not self._frames:  # Should be caught by the first check
+                if not self._frames:
                     raise RuntimeError("Call load() first.")
 
                 base_df = self._frames[macro_source_configs[0].name].copy()
@@ -215,25 +213,22 @@ class DataAggregator:
             else:
                 raise ValueError("No sources configured to merge.")
 
-        # Determine the primary firm-level base DataFrame
         primary_firm_config = None
         primary_firm_sources_marked = [
             s_cfg for s_cfg in firm_source_configs if s_cfg.is_primary_firm_base
         ]
 
-        # Validator in AggregationConfig already ensures len(primary_firm_sources_marked) <= 1
         if len(primary_firm_sources_marked) == 1:
             primary_firm_config = primary_firm_sources_marked[0]
             print(
                 f"Identified explicit primary firm-level source: {primary_firm_config.name}"
             )
         elif len(firm_source_configs) == 1:
-            # If only one firm source, it's implicitly the primary base
             primary_firm_config = firm_source_configs[0]
             print(
                 f"Using the only firm-level source as de-facto primary: {primary_firm_config.name}"
             )
-        else:  # Multiple firm sources, none marked as primary
+        else:
             raise ValueError(
                 "Multiple firm-level sources are provided. Please specify exactly one as the primary base "
                 "by setting 'is_primary_firm_base: True' for that source in the YAML configuration."
@@ -244,7 +239,6 @@ class DataAggregator:
             f"Starting merge with primary firm-level source: {primary_firm_config.name}"
         )
 
-        # Merge other (non-primary) firm-level sources onto the primary base using a left join
         other_firm_source_configs = [
             s_cfg
             for s_cfg in firm_source_configs
@@ -258,9 +252,7 @@ class DataAggregator:
                 f"Left-merging firm-level source: {firm_cfg.name} onto base on keys: {keys}"
             )
             base_df = base_df.merge(right_df, how="left", on=keys)
-            # Pandas merge handles suffixes (_x, _y) for overlapping non-key columns by default.
 
-        # Merge macro-level sources onto the (now combined) firm base_df
         for macro_cfg in macro_source_configs:
             right_df = self._frames[macro_cfg.name]
             keys = [col.lower() for col in macro_cfg.join_on]
@@ -268,6 +260,166 @@ class DataAggregator:
             base_df = base_df.merge(right_df, how="left", on=keys)
 
         return base_df
+
+    def apply_imputation(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Applies data imputation based on the configuration."""
+        if not self.cfg.imputation:
+            print("No imputation config provided. Skipping imputation step.")
+            return df
+
+        imp_cfg = self.cfg.imputation
+        print(
+            f"Starting imputation: method='{imp_cfg.method}', group_by='{imp_cfg.group_by_column}'."
+        )
+
+        # 1. Macro data check: Non-join key columns from macro sources must not have NaNs after merge.
+        print("Checking for NaNs in data columns from macro sources...")
+        for src_cfg_iter in self.cfg.sources:
+            if src_cfg_iter.level == "macro":
+                original_cols_this_macro = self._source_original_columns.get(
+                    src_cfg_iter.name, []
+                )
+                join_keys_this_macro = [k.lower() for k in src_cfg_iter.join_on]
+
+                for col_name in original_cols_this_macro:
+                    if col_name in df.columns:  # Check if column exists in merged_df
+                        if col_name in join_keys_this_macro:
+                            # Join keys are not considered "data columns" for this specific check's purpose
+                            continue
+
+                        # This is a data column (non-join key) from a macro source
+                        if df[col_name].isnull().any():
+                            num_nans = df[col_name].isnull().sum()
+                            total_rows = len(df)
+                            raise ValueError(
+                                f"Error: Data column '{col_name}' from macro source '{src_cfg_iter.name}' contains {num_nans} missing values "
+                                f"(out of {total_rows}) in the merged DataFrame. Macro data columns must be complete after joins."
+                            )
+        print(
+            "Macro column check complete: No NaNs found in non-join key columns from macro sources."
+        )
+
+        # 2. Identify target columns for imputation
+        group_by_col_lower = imp_cfg.group_by_column.lower()
+        if group_by_col_lower not in df.columns:
+            raise ValueError(
+                f"Imputation group_by_column '{group_by_col_lower}' not found in DataFrame columns: {df.columns.tolist()}."
+            )
+
+        target_cols_for_imputation: List[str] = []
+        if imp_cfg.target_columns:
+            print(
+                f"Using user-specified target columns for imputation: {imp_cfg.target_columns}"
+            )
+            temp_target_cols = [col.lower() for col in imp_cfg.target_columns]
+            for col in temp_target_cols:
+                if col not in df.columns:
+                    print(
+                        f"Warning: Specified imputation target column '{col}' not found. Skipping."
+                    )
+                    continue
+                if not pd.api.types.is_numeric_dtype(df[col]):
+                    print(
+                        f"Warning: Specified imputation target column '{col}' is not numeric. Skipping."
+                    )
+                    continue
+                if col == group_by_col_lower:
+                    print(
+                        f"Warning: Specified imputation target column '{col}' is the group_by_column. Skipping."
+                    )
+                    continue
+                target_cols_for_imputation.append(col)
+        else:
+            print(
+                "Auto-identifying numeric columns for imputation (excluding macro data cols and group_by col)..."
+            )
+            all_numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+
+            # Identify data columns from macro sources to exclude them from general imputation
+            macro_data_cols_to_exclude = set()
+            for src_cfg_iter in self.cfg.sources:
+                if src_cfg_iter.level == "macro":
+                    original_cols = self._source_original_columns.get(
+                        src_cfg_iter.name, []
+                    )
+                    join_keys = [k.lower() for k in src_cfg_iter.join_on]
+                    for col in original_cols:
+                        if col in df.columns and col not in join_keys:
+                            macro_data_cols_to_exclude.add(col)
+
+            target_cols_for_imputation = [
+                col
+                for col in all_numeric_cols
+                if col != group_by_col_lower and col not in macro_data_cols_to_exclude
+            ]
+
+        if not target_cols_for_imputation:
+            print(
+                "No suitable columns found for imputation after filtering. Skipping imputation step."
+            )
+            return df
+        print(f"Columns targeted for imputation: {target_cols_for_imputation}")
+
+        # 3. Pre-check for missing value thresholds within groups
+        print(
+            f"Performing pre-check for missing value thresholds on columns, grouped by '{group_by_col_lower}'..."
+        )
+
+        for col_to_check in target_cols_for_imputation:
+
+            def check_group_missing_ratio(group_series: pd.Series):
+                # group_series.name will be the group key when used with groupby().apply() and group_keys=True
+                group_identifier = group_series.name
+
+                if group_series.empty:
+                    return
+
+                missing_count = group_series.isnull().sum()
+                total_count = len(group_series)
+                if total_count == 0:
+                    return
+
+                missing_ratio = missing_count / total_count
+
+                if missing_ratio > imp_cfg.missing_threshold_error:
+                    raise ValueError(
+                        f"Error: Column '{col_to_check}' in group '{group_by_col_lower}={group_identifier}' has {missing_ratio * 100:.2f}% missing values, "
+                        f"exceeding error threshold of {imp_cfg.missing_threshold_error * 100:.2f}%."
+                    )
+                if missing_ratio > imp_cfg.missing_threshold_warning:
+                    print(
+                        f"Warning: Column '{col_to_check}' in group '{group_by_col_lower}={group_identifier}' has {missing_ratio * 100:.2f}% missing values, "
+                        f"exceeding warning threshold of {imp_cfg.missing_threshold_warning * 100:.2f}%."
+                    )
+
+            # Using apply to access group names for richer error/warning messages
+            df.groupby(group_by_col_lower, group_keys=True)[col_to_check].apply(
+                check_group_missing_ratio
+            )
+
+        print(f"Pre-check complete. Applying imputation method: '{imp_cfg.method}'...")
+
+        # 4. Actual imputation using transform
+        for col_to_impute in target_cols_for_imputation:
+            if imp_cfg.method == "mean":
+
+                def fill_value_func(x):
+                    return x.fillna(x.mean())
+            elif imp_cfg.method == "median":
+
+                def fill_value_func(x):
+                    return x.fillna(x.median())
+            else:  # Should be caught by Pydantic Literal type
+                raise ValueError(
+                    f"Internal Error: Invalid imputation method '{imp_cfg.method}' despite schema validation."
+                )
+
+            df[col_to_impute] = df.groupby(group_by_col_lower, group_keys=False)[
+                col_to_impute
+            ].transform(fill_value_func)
+
+        print("Imputation process completed.")
+        return df
 
     def apply_transformations(self, df: pd.DataFrame) -> pd.DataFrame:
         """Sequentially apply every transformation from the YAML spec."""
@@ -278,31 +430,19 @@ class DataAggregator:
     @staticmethod
     def _apply_one(df: pd.DataFrame, tr: TransformationConfig) -> pd.DataFrame:
         if isinstance(tr, OneHotConfig):
-            # Ensure column exists before trying to one-hot encode
             if tr.column.lower() not in df.columns:
                 print(
                     f"Warning: Column '{tr.column}' for one-hot encoding not found. Skipping."
                 )
                 return df
-            dummies = pd.get_dummies(
-                df[tr.column.lower()], prefix=tr.prefix, dtype=int
-            )  # Use lowercased column name
+            dummies = pd.get_dummies(df[tr.column.lower()], prefix=tr.prefix, dtype=int)
             df = pd.concat([df, dummies], axis=1)
             if tr.drop_original:
-                df = df.drop(columns=tr.column.lower())  # Use lowercased column name
+                df = df.drop(columns=tr.column.lower())
         elif isinstance(tr, LagConfig):
-            # Ensure level=0 (permno if MultiIndex) is handled correctly if index was set before merge
-            # Current load() resets index, so groupby(level=0) might not be applicable here.
-            # Lagging should ideally happen on a per-entity basis if 'permno' is present.
-            # For now, assuming simple shift on the whole column.
-            # If 'permno' is a column, we should group by 'permno' before lagging.
-
-            # Standardize column names for lagging
             lag_cols_lower = [col.lower() for col in tr.columns]
-
-            # Check if 'permno' exists for grouped lagging
             group_keys = []
-            if "permno" in df.columns:  # Assuming 'permno' is the firm identifier
+            if "permno" in df.columns:
                 group_keys.append("permno")
 
             for col_to_lag in lag_cols_lower:
@@ -317,28 +457,37 @@ class DataAggregator:
                     print(
                         f"Applying grouped lag on '{col_to_lag}' by {group_keys} for {tr.periods} periods."
                     )
-                    # Ensure data is sorted by group keys and date for consistent lags
                     sort_keys = (
                         group_keys + ["date"] if "date" in df.columns else group_keys
                     )
-                    if all(key in df.columns for key in sort_keys):
-                        df_sorted = df.sort_values(by=sort_keys)
-                        df[new_lag_col_name] = df_sorted.groupby(group_keys)[
-                            col_to_lag
-                        ].shift(tr.periods)
-                        # If original df was not sorted, this might misalign.
-                        # It's better to assign back to the original df after computing on sorted,
-                        # but pandas handles index alignment.
-                        # Let's re-assign to original df index to be safe.
+                    # Check if all sort_keys are present before attempting to sort
+                    if not all(key in df.columns for key in sort_keys):
+                        print(
+                            f"Warning: Not all sort keys ({sort_keys}) found for grouped lag on '{col_to_lag}'. Applying simple shift."
+                        )
+                        df[new_lag_col_name] = df[col_to_lag].shift(tr.periods)
+                    else:
+                        # Using group_keys=False to prevent adding group keys to index of the result of shift
+                        df[new_lag_col_name] = (
+                            df.sort_values(by=sort_keys)
+                            .groupby(group_keys, group_keys=False)[col_to_lag]
+                            .shift(tr.periods)
+                        )
+                        # Reindex to match original df's index if sorting changed order significantly
+                        # However, pandas assignment by column name usually handles index alignment.
+                        # If df was not sorted by group_keys, date initially, this could be an issue.
+                        # A safer assignment after sorting and grouping:
+                        # lagged_series = df.sort_values(by=sort_keys).groupby(group_keys)[col_to_lag].shift(tr.periods)
+                        # df[new_lag_col_name] = lagged_series # relies on pandas index alignment
+                        # The current approach of assigning directly to df[new_name] after a groupby().shift()
+                        # on a (potentially sorted) copy is generally fine due to pandas' index alignment.
+                        # For clarity and safety, ensure the groupby operation for shift is on a DataFrame
+                        # that has the same index as the original `df` or can be aligned.
+                        # The current code: df.groupby(...).shift() assigns based on original df's index.
                         df[new_lag_col_name] = df.groupby(group_keys, group_keys=False)[
                             col_to_lag
                         ].shift(tr.periods)
 
-                    else:
-                        print(
-                            f"Warning: Cannot sort for grouped lag as one of {sort_keys} is missing. Applying simple shift."
-                        )
-                        df[new_lag_col_name] = df[col_to_lag].shift(tr.periods)
                 else:
                     print(
                         f"Applying simple lag on '{col_to_lag}' for {tr.periods} periods."
@@ -368,12 +517,13 @@ class DataAggregator:
                         )
                         continue
                     target_cols_for_fill.append(col_name_lower)
-            else:  # If tr.columns is None or empty, fill all numeric columns
+            else:
                 target_cols_for_fill = df.select_dtypes(
                     include=np.number
                 ).columns.tolist()
-                # Exclude the group_by_column itself if it's numeric and was auto-selected
-                if group_by_col_lower in target_cols_for_fill:
+                if (
+                    group_by_col_lower in target_cols_for_fill
+                ):  # Exclude group_by if numeric
                     target_cols_for_fill.remove(group_by_col_lower)
 
             if not target_cols_for_fill:
@@ -400,11 +550,16 @@ class DataAggregator:
 def aggregate_from_yaml(
     spec_path: str | Path,
 ) -> tuple[pd.DataFrame, AggregationConfig]:
-    """One-shot helper: parse YAML → load → merge → transform → DataFrame."""
+    """One-shot helper: parse YAML → load → merge → impute → transform → DataFrame."""
     with open(spec_path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     cfg = AggregationConfig.model_validate(raw)
+
     agg = DataAggregator(cfg).load()
-    merged = agg.merge()
-    transformed_df = agg.apply_transformations(merged)
+    merged_df = agg.merge()
+    imputed_df = agg.apply_imputation(merged_df)  # New imputation step
+    transformed_df = agg.apply_transformations(
+        imputed_df
+    )  # Apply transformations on imputed_df
+
     return transformed_df, cfg

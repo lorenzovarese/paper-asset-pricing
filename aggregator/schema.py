@@ -60,10 +60,50 @@ class LagConfig(BaseModel):
 TransformationConfig = Union[OneHotConfig, FillNaGroupedConfig, LagConfig]
 
 
+class ImputationConfig(BaseModel):
+    """Configuration for data imputation after merging and before transformations."""
+
+    method: Literal["mean", "median"]
+    group_by_column: str = Field(
+        default="date", description="Column to group by for imputation (e.g., 'date')."
+    )
+    target_columns: Optional[List[str]] = Field(
+        default=None,
+        description="Specific columns to impute. If None, applies to eligible numeric columns not from macro sources.",
+    )
+    missing_threshold_warning: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Warning threshold for missing data ratio in a group-column (0.0 to 1.0).",
+    )
+    missing_threshold_error: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Error threshold for missing data ratio in a group-column (0.0 to 1.0).",
+    )
+
+    @validator("missing_threshold_error")
+    def check_error_threshold_greater_than_warning(cls, v, values):
+        if (
+            "missing_threshold_warning" in values
+            and v < values["missing_threshold_warning"]
+        ):
+            raise ValueError(
+                "missing_threshold_error must be greater than or equal to missing_threshold_warning"
+            )
+        return v
+
+
 class AggregationConfig(BaseModel):
     """Root model for the YAML specification."""
 
     sources: List[SourceConfig]
+    imputation: Optional[ImputationConfig] = Field(
+        default=None,
+        description="Configuration for data imputation after merging sources.",
+    )
     transformations: List[TransformationConfig] = Field(default_factory=list)
     output: Optional[OutputConfig] = None
 

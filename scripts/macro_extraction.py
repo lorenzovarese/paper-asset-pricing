@@ -16,6 +16,8 @@ from core.settings import DATA_DIR
 
 def load_monthly_data(
     path: str,
+    date_col: str = "date",
+    date_format: str = "%Y%m",
     start: str | pd.Timestamp | None = None,
     end: str | pd.Timestamp | None = None,
 ) -> pd.DataFrame:
@@ -37,18 +39,18 @@ def load_monthly_data(
     """
     df = pd.read_csv(path)
     df = df.replace({",": ""}, regex=True)
-    numeric_cols = df.columns.drop("yyyymm")
+    numeric_cols = df.columns.drop(date_col)
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
 
-    date = pd.to_datetime(df["yyyymm"].astype(str), format="%Y%m") + MonthEnd(0)
-    df = df.drop(columns="yyyymm")
+    date = pd.to_datetime(df[date_col].astype(str), format=date_format) + MonthEnd(0)
+    df = df.drop(columns=date_col)
     df.index = pd.Index(date)
-    df.index.name = "date"
+    df.index.name = date_col
 
     if start is not None or end is not None:
-        df = df.loc[
-            pd.Timestamp(start) if start else None : pd.Timestamp(end) if end else None
-        ]
+        start_ts = pd.to_datetime(start) + MonthEnd(0) if start else None
+        end_ts = pd.to_datetime(end) + MonthEnd(0) if end else None
+        df = df.loc[start_ts:end_ts]
 
     return df.sort_index()
 

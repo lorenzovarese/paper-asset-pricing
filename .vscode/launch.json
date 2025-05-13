@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "aggregate_data (uv)",
+      "type": "debugpy",
+      "request": "launch",
+
+      // run the module exactly as you would with `uv run -m`
+      "module": "scripts.aggregate_data",
+
+      // command-line arguments
+      "args": [
+        "examples/aggregate_config.yaml",
+        "--out",
+        "data/aggregated_output_debug_results.parquet"
+      ],
+
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true        // flip to false if you need to step into libraries
+    }
+  ]
+}

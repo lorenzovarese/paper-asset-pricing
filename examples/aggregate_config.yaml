@@ -10,6 +10,7 @@ sources:
     path: data/test/firm.csv
     join_on: ["permno", "date"]
     level: firm
+    is_primary_firm_base: true
 
   - name: macro
     connector: local

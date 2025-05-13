@@ -65,9 +65,6 @@ class OneHotConfig(BaseModel):
     drop_original: bool
 
 
-# FillNaGroupedConfig is now removed. Its functionality is superseded by GroupedFillMissingConfig.
-
-
 class LagConfig(BaseModel):
     """Lagging specification."""
 
@@ -87,15 +84,15 @@ class CleanNumericConfig(BaseModel):
     )
 
 
-class GroupedFillMissingConfig(BaseModel):  # Renamed from ImputationConfig
+class GroupedFillMissingConfig(BaseModel):
     """Configuration for grouped filling of missing values."""
 
-    type: Literal["grouped_fill_missing"]  # New type discriminator
+    type: Literal["grouped_fill_missing"]
     method: Literal["mean", "median"]
     group_by_column: str = Field(
         description="Column to group by for imputation (e.g., 'date')."
     )
-    columns: Optional[List[str]] = Field(  # Renamed from target_columns
+    columns: Optional[List[str]] = Field(
         default=None,
         description="Specific columns to impute. If None, applies to all eligible numeric columns (excluding group_by_column).",
     )
@@ -124,11 +121,26 @@ class GroupedFillMissingConfig(BaseModel):  # Renamed from ImputationConfig
         return v
 
 
+class ExpandCartesianConfig(BaseModel):
+    """Configuration for creating Cartesian product interaction terms between sets of columns."""
+
+    type: Literal["expand_cartesian"]
+    macro_columns: List[str] = Field(
+        description="List of columns to be used as the first set for interaction (e.g., macro variables)."
+    )
+    firm_columns: List[str] = Field(
+        description="List of columns to be used as the second set for interaction (e.g., firm characteristics)."
+    )
+    # Default naming for new columns will be f"{macro_col}_x_{firm_col}"
+    # Example: if macro_columns=["m1"], firm_columns=["f1", "f2"], new columns: "m1_x_f1", "m1_x_f2"
+
+
 TransformationConfig = Union[
     OneHotConfig,
-    LagConfig,  # FillNaGroupedConfig removed
+    LagConfig,
     CleanNumericConfig,
-    GroupedFillMissingConfig,  # Added GroupedFillMissingConfig
+    GroupedFillMissingConfig,
+    ExpandCartesianConfig,  # Added new transformation
 ]
 
 
@@ -136,7 +148,6 @@ class AggregationConfig(BaseModel):
     """Root model for the YAML specification."""
 
     sources: List[SourceConfig]
-    # imputation: Optional[ImputationConfig] = Field(...) # This field is now removed
     transformations: List[TransformationConfig] = Field(default_factory=list)
     output: Optional[OutputConfig] = None
 
@@ -174,6 +185,4 @@ class AggregationConfig(BaseModel):
                         f"Warning: Source '{src.name}' is 'macro' with 'monthly' date_handling. "
                         f"Expected 'join_on: [\"date\"]'. Found: {src.join_on}. This might lead to unexpected merge behavior if other keys are present."
                     )
-                # No specific check for firm level yet, as ['permno', 'date'] is common.
-
         return sources

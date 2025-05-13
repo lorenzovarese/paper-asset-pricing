@@ -4,6 +4,7 @@ from __future__ import annotations
 import functools
 from pathlib import Path
 from typing import List
+import warnings  # For UserWarning
 
 import pandas as pd
 import numpy as np
@@ -18,15 +19,15 @@ from .schema import (
     AggregationConfig,
     OneHotConfig,
     LagConfig,
-    # FillNaGroupedConfig, # Removed
     TransformationConfig,
-    # ImputationConfig, # Removed (superseded by GroupedFillMissingConfig)
     CleanNumericConfig,
-    GroupedFillMissingConfig,  # Added
+    GroupedFillMissingConfig,
+    ExpandCartesianConfig,
 )
 
 
 # ---- helper registry ---------------------------------------------------- #
+# _load_local method remains unchanged from your provided version
 def _load_local(path: Path) -> pd.DataFrame:
     """
     Load a file, prioritizing `load_and_preprocess` with `DATA_DIR` logic,
@@ -123,7 +124,7 @@ def _load_local(path: Path) -> pd.DataFrame:
                         print(
                             f"Error: Failed to parse date column '{date_column_name_std}' in fallback load of '{path}' even with inference: {e_infer_fb}. Date column may not be correctly processed."
                         )
-            else:  # Other types, attempt general inference
+            else:
                 try:
                     print(
                         f"Info: Date column '{date_column_name_std}' in fallback load of '{path}' is not datetime, integer, or YYYYMMDD string. Attempting general date inference."
@@ -189,8 +190,10 @@ class DataAggregator:
                         df["date"] = (
                             df["date"].dt.to_period("M").dt.to_timestamp(how="end")
                         )
+                        # Normalize AFTER month-end alignment to ensure midnight
+                        df["date"] = df["date"].dt.normalize()
                         print(
-                            f"  Source '{src_cfg.name}' dates aligned to month-end. Min: {df['date'].min() if not df['date'].empty else 'N/A'}, Max: {df['date'].max() if not df['date'].empty else 'N/A'}"
+                            f"  Source '{src_cfg.name}' dates aligned to month-end (normalized). Min: {df['date'].min() if not df['date'].empty else 'N/A'}, Max: {df['date'].max() if not df['date'].empty else 'N/A'}"
                         )
                 else:
                     if pd.api.types.is_datetime64_any_dtype(df["date"]):
@@ -209,14 +212,18 @@ class DataAggregator:
                     ) or pd.api.types.is_bool_dtype(df[col]):
                         continue
                     if df[col].dtype == "object":
-                        temp_numeric_col = pd.to_numeric(df[col], errors="coerce")
-                        num_non_numeric_strings = df[col][
-                            temp_numeric_col.isna() & df[col].notna()
-                        ].nunique()
+                        series_for_check = df[col].copy()
+                        temp_numeric_col = pd.to_numeric(
+                            series_for_check, errors="coerce"
+                        )
+                        non_numeric_mask = (
+                            series_for_check.notna() & temp_numeric_col.isna()
+                        )
+                        num_non_numeric_strings = df[col][non_numeric_mask].nunique()
                         if num_non_numeric_strings > 0:
                             print(
                                 f"Warning: Source '{src_cfg.name}', column '{col}' contains {num_non_numeric_strings} unique non-numeric string(s) "
-                                f"(e.g., {df[col][temp_numeric_col.isna() & df[col].notna()].unique()[:3]}). "
+                                f"(e.g., {df[col][non_numeric_mask].unique()[:3]}). "
                                 f"Consider using 'clean_numeric' transformation if this column should be numeric."
                             )
                 except Exception as e:
@@ -226,7 +233,9 @@ class DataAggregator:
 
             self._source_original_columns[src_cfg.name] = list(df.columns)
             join_on_lower = [col.lower() for col in src_cfg.join_on]
-            missing_keys = [col for col in join_on_lower if col not in df.columns]
+            missing_keys = [
+                key_col for key_col in join_on_lower if key_col not in df.columns
+            ]
             if missing_keys:
                 raise KeyError(
                     f"Source '{src_cfg.name}' ({src_cfg.path}) is missing join key(s): {missing_keys}. "
@@ -236,16 +245,11 @@ class DataAggregator:
         return self
 
     def merge(self) -> pd.DataFrame:
-        """
-        Merges firm-level sources based on a primary base, then merges macro-level sources.
-        """
         if not self._frames:
             raise RuntimeError("Call load() first.")
-
         firm_source_configs = [s for s in self.cfg.sources if s.level == "firm"]
         macro_source_configs = [s for s in self.cfg.sources if s.level == "macro"]
         base_df = None
-
         if not firm_source_configs:
             if macro_source_configs:
                 print(
@@ -268,26 +272,23 @@ class DataAggregator:
                 return base_df
             else:
                 raise ValueError("No sources configured to merge.")
-
         primary_firm_config = None
         primary_firm_sources_marked = [
             s_cfg for s_cfg in firm_source_configs if s_cfg.is_primary_firm_base
         ]
         if len(primary_firm_sources_marked) == 1:
             primary_firm_config = primary_firm_sources_marked[0]
-            print(
-                f"Identified explicit primary firm-level source: {primary_firm_config.name}"
-            )
         elif len(firm_source_configs) == 1:
             primary_firm_config = firm_source_configs[0]
-            print(
-                f"Using the only firm-level source as de-facto primary: {primary_firm_config.name}"
-            )
         else:
             raise ValueError(
-                "Multiple firm-level sources are provided. Please specify exactly one as the primary base "
-                "by setting 'is_primary_firm_base: True' for that source in the YAML configuration."
+                "Multiple firm-level sources are provided. Please specify exactly one as the primary base by setting 'is_primary_firm_base: True' for that source in the YAML configuration."
             )
+        print(
+            f"Identified primary firm-level source: {primary_firm_config.name}"
+            if len(primary_firm_sources_marked) == 1
+            else f"Using the only firm-level source as de-facto primary: {primary_firm_config.name}"
+        )
         base_df = self._frames[primary_firm_config.name].copy()
         print(
             f"Starting merge with primary firm-level source: {primary_firm_config.name}"
@@ -311,10 +312,7 @@ class DataAggregator:
             base_df = base_df.merge(right_df, how="left", on=keys)
         return base_df
 
-    # apply_imputation method is removed
-
     def apply_transformations(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Sequentially apply every transformation from the YAML spec."""
         if not self.cfg.transformations:
             return df
         return functools.reduce(self._apply_one, self.cfg.transformations, df)
@@ -373,10 +371,7 @@ class DataAggregator:
                         f"Applying simple lag on '{col_to_lag}' for {tr.periods} periods."
                     )
                     df[new_lag_col_name] = df[col_to_lag].shift(tr.periods)
-
-        # FillNaGroupedConfig handler is removed
-
-        elif isinstance(tr, CleanNumericConfig):
+        elif isinstance(tr, CleanNumericConfig):  # Unchanged
             print(f"Applying 'clean_numeric' transformation for columns: {tr.columns}")
             for col_name_orig in tr.columns:
                 col_name = col_name_orig.lower()
@@ -402,18 +397,14 @@ class DataAggregator:
                     temp_numeric_series.isnull() & df[col_name].notnull()
                 )
                 non_numeric_string_count = non_numeric_string_mask.sum()
-                print(f"    Stats for '{col_name}' (before cleaning):")
-                print(f"      Total entries: {total_count}")
-                print(f"      Original NaN count: {nan_count_before}")
-                print(f"      Convertible to numeric count: {numeric_count}")
                 print(
-                    f"      Non-convertible string count (will become NaN): {non_numeric_string_count}"
+                    f"    Stats for '{col_name}' (before cleaning): Total entries: {total_count}, Original NaN: {nan_count_before}, Numeric: {numeric_count}, Non-convertible strings: {non_numeric_string_count}"
                 )
                 if non_numeric_string_count == 0 and pd.api.types.is_numeric_dtype(
                     original_dtype
                 ):
                     print(
-                        f"    Column '{col_name}' is already numeric and has no non-convertible strings. Skipping actual conversion."
+                        f"    Column '{col_name}' is already numeric. Skipping conversion."
                     )
                 elif (
                     non_numeric_string_count == 0
@@ -421,46 +412,36 @@ class DataAggregator:
                     and numeric_count + nan_count_before == total_count
                 ):
                     print(
-                        f"    Column '{col_name}' contains only numbers and NaNs but might be object type. Forcing to numeric."
+                        f"    Column '{col_name}' contains only numbers/NaNs but is object type. Forcing to numeric."
                     )
                     df[col_name] = pd.to_numeric(df[col_name], errors="coerce")
                     print(
                         f"    Column '{col_name}' converted to {df[col_name].dtype}. New NaN count: {df[col_name].isnull().sum()}"
                     )
                 elif tr.action == "to_nan":
-                    if non_numeric_string_count > 0:
-                        print(
-                            f"    Action 'to_nan': Converting {non_numeric_string_count} non-numeric string(s) in '{col_name}' to NaN."
-                        )
-                    else:
-                        print(
-                            f"    Action 'to_nan': Column '{col_name}' has no non-convertible strings to change to NaN, but ensuring it is numeric type."
-                        )
+                    print(
+                        f"    Action 'to_nan': Converting non-numeric strings in '{col_name}' to NaN and ensuring numeric type."
+                    )
                     df[col_name] = pd.to_numeric(df[col_name], errors="coerce")
                     nan_count_after = df[col_name].isnull().sum()
                     print(
-                        f"    Column '{col_name}' converted to {df[col_name].dtype}. New NaN count: {nan_count_after} (was {nan_count_before}, {non_numeric_string_count} new NaNs created from strings)."
+                        f"    Column '{col_name}' converted to {df[col_name].dtype}. New NaN count: {nan_count_after} (was {nan_count_before}, {non_numeric_string_count} new NaNs from strings)."
                     )
                 else:
                     print(
                         f"    Warning: Unknown action '{tr.action}' for clean_numeric on column '{col_name}'. Skipping action."
                     )
-
-        elif isinstance(
-            tr, GroupedFillMissingConfig
-        ):  # New handler for GroupedFillMissingConfig
+        elif isinstance(tr, GroupedFillMissingConfig):  # Unchanged
             print(
                 f"Applying 'grouped_fill_missing' (method: {tr.method}) on columns grouped by '{tr.group_by_column}'."
             )
-
             group_by_col_lower = tr.group_by_column.lower()
             if group_by_col_lower not in df.columns:
                 raise ValueError(
-                    f"GroupedFillMissingConfig: group_by_column '{group_by_col_lower}' not found in DataFrame columns: {df.columns.tolist()}."
+                    f"GroupedFillMissingConfig: group_by_column '{group_by_col_lower}' not found."
                 )
-
             cols_to_fill: List[str] = []
-            if tr.columns:  # User specified columns
+            if tr.columns:
                 print(f"  Targeting user-specified columns: {tr.columns}")
                 temp_target_cols = [col.lower() for col in tr.columns]
                 for col in temp_target_cols:
@@ -473,7 +454,7 @@ class DataAggregator:
                         # This check is important. If a column isn't numeric (e.g., after clean_numeric failed or wasn't run),
                         # mean/median will fail or produce unexpected results.
                         print(
-                            f"  Warning: Specified column '{col}' for grouped_fill_missing is not numeric (current dtype: {df[col].dtype}). Skipping this column. Ensure 'clean_numeric' was applied if needed."
+                            f"  Warning: Specified column '{col}' is not numeric (dtype: {df[col].dtype}). Skipping. Ensure 'clean_numeric' was applied."
                         )
                         continue
                     if col == group_by_col_lower:
@@ -482,7 +463,7 @@ class DataAggregator:
                         )
                         continue
                     cols_to_fill.append(col)
-            else:  # Auto-identify numeric columns
+            else:
                 print(
                     "  Auto-identifying numeric columns for grouped_fill_missing (excluding group_by_column)."
                 )
@@ -490,64 +471,100 @@ class DataAggregator:
                 cols_to_fill = [
                     col for col in all_numeric_cols if col != group_by_col_lower
                 ]
-
             if not cols_to_fill:
-                print(
-                    "  No suitable numeric columns found for grouped_fill_missing. Skipping this transformation step."
-                )
+                print("  No suitable numeric columns found. Skipping.")
                 return df
-            print(f"  Columns to be processed by grouped_fill_missing: {cols_to_fill}")
-
-            # Pre-check for missing value thresholds
-            print(
-                f"  Performing pre-check for missing value thresholds on columns, grouped by '{group_by_col_lower}'..."
-            )
+            print(f"  Columns to be processed: {cols_to_fill}")
+            print(f"  Performing pre-check for missing value thresholds...")
             for col_to_check in cols_to_fill:
 
                 def check_group_missing_ratio(group_series: pd.Series):
                     group_identifier = group_series.name
-                    if group_series.empty:
-                        return
-                    missing_count = group_series.isnull().sum()
-                    total_count = len(group_series)
-                    if total_count == 0:
-                        return
-                    missing_ratio = missing_count / total_count
-                    group_id_str = group_identifier
-                    if isinstance(group_identifier, pd.Timestamp):
-                        group_id_str = group_identifier.strftime("%Y-%m-%d")
+                    missing_ratio = (
+                        group_series.isnull().sum() / len(group_series)
+                        if len(group_series) > 0
+                        else 0
+                    )
+                    group_id_str = (
+                        group_identifier.strftime("%Y-%m-%d")
+                        if isinstance(group_identifier, pd.Timestamp)
+                        else group_identifier
+                    )
                     if missing_ratio > tr.missing_threshold_error:
                         raise ValueError(
-                            f"Error (GroupedFillMissing): Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing values, "
-                            f"exceeding error threshold of {tr.missing_threshold_error * 100:.2f}%."
+                            f"Error (GroupedFillMissing): Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing, exceeding error threshold."
                         )
                     if missing_ratio > tr.missing_threshold_warning:
-                        print(
-                            f"Warning (GroupedFillMissing): Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing values, "
-                            f"exceeding warning threshold of {tr.missing_threshold_warning * 100:.2f}%."
-                        )
+                        msg = f"Warning (GroupedFillMissing): Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing, exceeding warning threshold."
+                        warnings.warn(msg, UserWarning)
+                        print(msg)  # Both warn and print
 
                 df.groupby(group_by_col_lower, group_keys=True)[col_to_check].apply(
                     check_group_missing_ratio
                 )
-
             print(f"  Pre-check complete. Applying fill method: '{tr.method}'...")
             for col_to_impute in cols_to_fill:
-                if tr.method == "mean":
-                    fill_value_func = lambda x: x.fillna(x.mean())
-                elif tr.method == "median":
-                    fill_value_func = lambda x: x.fillna(x.median())
-                else:  # Should be caught by Pydantic
-                    raise ValueError(
-                        f"Internal Error: Invalid fill method '{tr.method}'."
-                    )
-
+                fill_value_func = (
+                    (lambda x: x.fillna(x.mean()))
+                    if tr.method == "mean"
+                    else (lambda x: x.fillna(x.median()))
+                )
                 df[col_to_impute] = df.groupby(group_by_col_lower, group_keys=False)[
                     col_to_impute
                 ].transform(fill_value_func)
-            print(
-                "  Grouped_fill_missing process completed for this transformation step."
-            )
+            print("  Grouped_fill_missing process completed.")
+
+        elif isinstance(tr, ExpandCartesianConfig):  # New transformation
+            print(f"Applying 'expand_cartesian' transformation.")
+            macro_cols_lower = [m.lower() for m in tr.macro_columns]
+            firm_cols_lower = [f.lower() for f in tr.firm_columns]
+
+            new_interaction_cols_created = []
+
+            for m_col in macro_cols_lower:
+                if m_col not in df.columns:
+                    print(
+                        f"  Warning (ExpandCartesian): Macro column '{m_col}' not found. Skipping interactions with it."
+                    )
+                    continue
+                if not pd.api.types.is_numeric_dtype(df[m_col]):
+                    print(
+                        f"  Warning (ExpandCartesian): Macro column '{m_col}' is not numeric (dtype: {df[m_col].dtype}). Skipping interactions with it. Consider 'clean_numeric'."
+                    )
+                    continue
+
+                for f_col in firm_cols_lower:
+                    if f_col not in df.columns:
+                        print(
+                            f"  Warning (ExpandCartesian): Firm column '{f_col}' not found. Skipping interactions with it."
+                        )
+                        continue
+                    if not pd.api.types.is_numeric_dtype(df[f_col]):
+                        print(
+                            f"  Warning (ExpandCartesian): Firm column '{f_col}' is not numeric (dtype: {df[f_col].dtype}). Skipping interactions with it. Consider 'clean_numeric'."
+                        )
+                        continue
+
+                    new_col_name = f"{m_col}_x_{f_col}"  # Default naming convention
+                    if new_col_name in df.columns:
+                        print(
+                            f"  Warning (ExpandCartesian): Interaction column '{new_col_name}' already exists. Overwriting."
+                        )
+
+                    print(
+                        f"  Creating interaction: {m_col} * {f_col} -> {new_col_name}"
+                    )
+                    df[new_col_name] = df[m_col].astype(float) * df[f_col].astype(float)
+                    new_interaction_cols_created.append(new_col_name)
+
+            if new_interaction_cols_created:
+                print(
+                    f"  Created {len(new_interaction_cols_created)} interaction columns: {new_interaction_cols_created[:5]}{'...' if len(new_interaction_cols_created) > 5 else ''}"
+                )
+            else:
+                print(
+                    "  No interaction columns were created by 'expand_cartesian' (e.g., due to missing or non-numeric source columns)."
+                )
         return df
 
 
@@ -561,7 +578,6 @@ def aggregate_from_yaml(
 
     agg = DataAggregator(cfg).load()
     merged_df = agg.merge()
-
     transformed_df = agg.apply_transformations(merged_df)
 
     return transformed_df, cfg

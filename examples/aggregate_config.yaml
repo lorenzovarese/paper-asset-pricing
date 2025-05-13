@@ -1,51 +1,59 @@
 sources:
   - name: crsp_returns
     connector: local
-    path: data/crsp_returns_2002_2021.csv
-    join_on: ["permno", "date"]
-    level: firm
-    date_handling:
-      frequency: monthly
+    path: data/test/ret.csv # Path to CRSP returns data
+    join_on: ["permno", "date"]          # Columns to join on
+    level: firm                          # Data level: firm-specific
+    date_handling:                       # Configuration for date processing
+      frequency: monthly                 # Assume data is monthly, align to month-end
 
   - name: firm_chars
     connector: local
-    path: data/firm_chars_2002_2021.csv
-    join_on: ["permno", "date"]
-    level: firm
-    is_primary_firm_base: true
-    date_handling:
-      frequency: monthly
+    path: data/test/firm.csv  # Path to firm characteristics data
+    join_on: ["permno", "date"]          # Columns to join on
+    level: firm                          # Data level: firm-specific
+    is_primary_firm_base: true           # This is the main firm-level table to merge onto
+    date_handling:                       # Configuration for date processing
+      frequency: monthly                 # Assume data is monthly, align to month-end
 
   - name: macro
     connector: local
-    path: data/wg_macro_2002_2021.csv
-    join_on: ["date"]
-    level: macro
-    date_handling:
-      frequency: monthly
+    path: data/test/macro.csv    # Path to macroeconomic data
+    join_on: ["date"]                    # Column to join on
+    level: macro                         # Data level: macroeconomic
+    date_handling:                       # Configuration for date processing
+      frequency: monthly                 # Assume data is monthly, align to month-end
 
-# Transformations will run BEFORE imputation
 transformations:
-  - type: clean_numeric # Add this step early for columns like 'ret'
-    columns: ["ret"]
-    action: "to_nan" # This will convert 'B', 'C', etc. in 'ret' to NaN
+  - type: clean_numeric                 # Transformation to convert columns to numeric type
+    columns: ["ret"]                    # Target the 'ret' (return) column
+    action: "to_nan"                    # Convert any non-numeric values (like 'B', 'C') in 'ret' to NaN
 
-  - type: one_hot
-    column: sic2
-    prefix: sic2_
-    drop_original: true
+  - type: one_hot                       # One-hot encode a categorical column
+    column: sic2                        # Target the 'sic2' (industry code) column
+    prefix: sic2_                       # Prefix for the new one-hot encoded columns
+    drop_original: true                 # Remove the original 'sic2' column after encoding
 
-  - type: grouped_fill_missing # This replaces both old fillna_grouped and imputation
-    method: median 
-    group_by_column: date 
-    # columns: ["ret"] # Explicitly target 'ret' or omit 'columns' to target all numerics
-    missing_threshold_warning: 0.7 
-    missing_threshold_error: 0.8   
+  - type: grouped_fill_missing          # Fill missing values within groups
+    method: median                      # Use the median of each group to fill NaNs
+    group_by_column: date               # Group data by the 'date' column
+    # columns: ["ret", "char1"]         # Optional: List of specific columns to fill. 
+                                        # If omitted (like now), all numeric columns (except group_by_column) will be targeted.
+    missing_threshold_warning: 0.7      # Issue a warning if a group has >70% missing values for a column
+    missing_threshold_error: 0.8        # Raise an error if a group has >80% missing values for a column
 
-  # Example of lagging a column
+  - type: expand_cartesian              # Create interaction terms
+    macro_columns: ["dp", "ep"]         # List of 'macro' conceptual columns for interaction
+                                        # (These columns must exist in the DataFrame at this stage)
+    firm_columns: ["char1", "ret"]      # List of 'firm' conceptual columns for interaction
+                                        # New columns will be named e.g., "dp_x_char1", "dp_x_ret", "ep_x_char1", "ep_x_ret"
+  
+  # Example of lagging a column (currently commented out)
   # - type: lag
-  #   columns: ["tbl"]
-  #   periods: 1
+  #   columns: ["tbl", "dp_x_char1"]    # Columns to lag (can include newly created interaction terms)
+  #   periods: 1                        # Number of periods to lag by
 
 output:
-  format: parquet
+  format: parquet                       # Desired output format for the final aggregated table
+  # parquet_engine: "pyarrow"           # Optional: Specify Parquet engine (e.g., "pyarrow", "fastparquet")
+  # parquet_compression: "snappy"       # Optional: Specify Parquet compression

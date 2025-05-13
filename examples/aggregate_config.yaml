@@ -6,7 +6,6 @@ sources:
     level: firm
     date_handling:
       frequency: monthly
-      # monthly_alignment: month_end # This is implicit for now if frequency is monthly
 
   - name: firm_chars
     connector: local
@@ -25,29 +24,33 @@ sources:
     date_handling:
       frequency: monthly
 
-imputation: 
-  method: median # or "mean"
-  group_by_column: "date" # Optional, defaults to "date"
-  # target_columns: ["ret", "some_other_char"] # Optional: if specified, only these numeric columns are imputed.
-                                            # If omitted, all eligible numeric columns (non-macro, non-group_by) are targeted.
-  missing_threshold_warning: 0.5 # Optional, default 0.5 (50%)
-  missing_threshold_error: 0.8   # Optional, default 0.8 (80%)
-
+# Transformations will run BEFORE imputation
 transformations:
+  - type: clean_numeric # Add this step early for columns like 'ret'
+    columns: ["ret"]
+    action: "to_nan" # This will convert 'B', 'C', etc. in 'ret' to NaN
+
   - type: one_hot
     column: sic2
     prefix: sic2_
     drop_original: true
 
   - type: fillna_grouped
-    method: median # This is now a post-imputation fill, might be for specific cases or different groups
+    method: median 
     group_by_column: date 
-    columns: ["ret"] # Example: if 'ret' still has NaNs after main imputation (e.g., a whole date group was NaN)
+    columns: ["ret"] 
 
   # Example of lagging a column
   # - type: lag
   #   columns: ["tbl"]
   #   periods: 1
+
+imputation: 
+  method: median 
+  group_by_column: "date" 
+  # target_columns: ["ret", "some_other_char"]
+  missing_threshold_warning: 0.6 
+  missing_threshold_error: 0.8   
 
 output:
   format: parquet

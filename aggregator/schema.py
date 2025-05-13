@@ -82,7 +82,24 @@ class LagConfig(BaseModel):
     periods: int
 
 
-TransformationConfig = Union[OneHotConfig, FillNaGroupedConfig, LagConfig]
+class CleanNumericConfig(BaseModel):
+    """Configuration for cleaning columns to ensure they are numeric."""
+
+    type: Literal["clean_numeric"]
+    columns: List[str]  # Specify one or more columns to clean
+    action: Literal["to_nan"] = Field(
+        default="to_nan",
+        description="Action to take for non-numeric values. 'to_nan' converts them to NaN.",
+    )
+    # We could add more actions later, e.g., 'remove_row' or specific value replacements.
+
+
+TransformationConfig = Union[
+    OneHotConfig,
+    FillNaGroupedConfig,
+    LagConfig,
+    CleanNumericConfig,  # Added CleanNumericConfig
+]
 
 
 class ImputationConfig(BaseModel):

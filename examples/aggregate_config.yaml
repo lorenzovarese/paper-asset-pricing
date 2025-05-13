@@ -1,22 +1,29 @@
 sources:
   - name: crsp_returns
     connector: local
-    path: data/test/ret.csv
+    path: data/crsp_returns_2002_2021.csv
     join_on: ["permno", "date"]
     level: firm
+    date_handling:
+      frequency: monthly
+      # monthly_alignment: month_end # This is implicit for now if frequency is monthly
 
   - name: firm_chars
     connector: local
-    path: data/test/firm.csv
+    path: data/firm_chars_2002_2021.csv
     join_on: ["permno", "date"]
     level: firm
     is_primary_firm_base: true
+    date_handling:
+      frequency: monthly
 
   - name: macro
     connector: local
-    path: data/test/macro.csv
+    path: data/wg_macro_2002_2021.csv
     join_on: ["date"]
     level: macro
+    date_handling:
+      frequency: monthly
 
 imputation: 
   method: median # or "mean"

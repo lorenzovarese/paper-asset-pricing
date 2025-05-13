@@ -3,7 +3,7 @@
 from __future__ import annotations
 import functools
 from pathlib import Path
-from typing import Union, List  # Added List
+from typing import List
 
 import pandas as pd
 import numpy as np
@@ -20,44 +20,47 @@ from .schema import (
     LagConfig,
     FillNaGroupedConfig,
     TransformationConfig,
-    ImputationConfig,
 )
 
 
 # ---- helper registry ---------------------------------------------------- #
-# ... (rest of _load_local and CONNECTOR_REGISTRY remains the same) ...
 def _load_local(path: Path) -> pd.DataFrame:
     """
     Load a file, prioritizing `load_and_preprocess` with `DATA_DIR` logic,
     but falling back to direct load with subsequent standardization if needed.
-    Ensures date columns are parsed consistently if possible.
+    Ensures date columns are parsed to datetime if possible.
+    Normalization and alignment happen later in DataAggregator.load based on config.
     """
     try:
-        # Try the custom loader first, assuming it handles dates correctly
-        # or that its output will be re-checked.
+        # Try the custom loader first
         df = load_and_preprocess(path.name)  # Assuming DATA_DIR is set correctly
-        # After load_and_preprocess, standardize columns and re-check date
-        df = _standardize_columns(df)  # Standardize here as well
+        df = _standardize_columns(df)
         date_column_name_std = "date"
-        date_format_str = "%Y%m%d"
+        # date_format_str = "%Y%m%d" # load_and_preprocess handles its default format
 
         if date_column_name_std in df.columns:
             if pd.api.types.is_datetime64_any_dtype(df[date_column_name_std]):
-                return df
+                # Already datetime, no action needed here for parsing.
+                pass
+            # load_and_preprocess should have already parsed the date column.
+            # If it's still not datetime, it might be an issue with load_and_preprocess
+            # or the column wasn't 'date' initially.
+            # For robustness, we can add a check here, but the main parsing
+            # should be in load_and_preprocess or the fallback.
             elif pd.api.types.is_integer_dtype(df[date_column_name_std]) or (
                 pd.api.types.is_object_dtype(df[date_column_name_std])
                 and df[date_column_name_std].astype(str).str.match(r"^\d{8}$").all()
             ):
                 try:
                     print(
-                        f"Info: Attempting to parse integer/string date column '{date_column_name_std}' in '{path.name}' with format '{date_format_str}'."
+                        f"Info: Attempting to parse integer/string date column '{date_column_name_std}' in '{path.name}' with format %Y%m%d (after load_and_preprocess)."
                     )
                     df[date_column_name_std] = pd.to_datetime(
-                        df[date_column_name_std], format=date_format_str
+                        df[date_column_name_std], format="%Y%m%d"
                     )
                 except ValueError as e_fmt:
                     print(
-                        f"Warning: Failed to parse '{date_column_name_std}' in '{path.name}' with format '{date_format_str}': {e_fmt}. Attempting inference."
+                        f"Warning: Failed to parse '{date_column_name_std}' in '{path.name}' with format %Y%m%d: {e_fmt}. Attempting inference."
                     )
                     try:
                         df[date_column_name_std] = pd.to_datetime(
@@ -67,10 +70,10 @@ def _load_local(path: Path) -> pd.DataFrame:
                         print(
                             f"Error: Failed to parse date column '{date_column_name_std}' in '{path.name}' even with inference: {e_infer}. Date column may not be correctly processed."
                         )
-            else:
+            else:  # Other types, attempt general inference
                 try:
                     print(
-                        f"Info: Date column '{date_column_name_std}' in '{path.name}' is not datetime, integer, or YYYYMMDD string. Attempting general date inference."
+                        f"Info: Date column '{date_column_name_std}' in '{path.name}' (after load_and_preprocess) is not standard. Attempting general date inference."
                     )
                     df[date_column_name_std] = pd.to_datetime(df[date_column_name_std])
                 except ValueError as e_general_infer:
@@ -79,19 +82,18 @@ def _load_local(path: Path) -> pd.DataFrame:
                     )
         return df
 
-    except FileNotFoundError:  # This will catch if load_and_preprocess fails due to DATA_DIR issue or file not found
+    except FileNotFoundError:
         print(
             f"Info: load_and_preprocess failed for '{path.name}'. Falling back to direct CSV load for '{path}'."
         )
-        # Ensure path is absolute or relative to current working directory for fallback
         df_fallback = pd.read_csv(path)
         df_fallback = _standardize_columns(df_fallback)
         date_column_name_std = "date"
-        date_format_str = "%Y%m%d"
+        date_format_str = "%Y%m%d"  # For fallback, assume this common format
 
         if date_column_name_std in df_fallback.columns:
             if pd.api.types.is_datetime64_any_dtype(df_fallback[date_column_name_std]):
-                return df_fallback
+                pass  # Already datetime
             elif pd.api.types.is_integer_dtype(df_fallback[date_column_name_std]) or (
                 pd.api.types.is_object_dtype(df_fallback[date_column_name_std])
                 and df_fallback[date_column_name_std]
@@ -118,7 +120,7 @@ def _load_local(path: Path) -> pd.DataFrame:
                         print(
                             f"Error: Failed to parse date column '{date_column_name_std}' in fallback load of '{path}' even with inference: {e_infer_fb}. Date column may not be correctly processed."
                         )
-            else:
+            else:  # Other types, attempt general inference
                 try:
                     print(
                         f"Info: Date column '{date_column_name_std}' in fallback load of '{path}' is not datetime, integer, or YYYYMMDD string. Attempting general date inference."
@@ -146,10 +148,10 @@ class DataAggregator:
     def __init__(self, cfg: AggregationConfig) -> None:
         self.cfg = cfg
         self._frames: dict[str, pd.DataFrame] = {}
-        self._source_original_columns: dict[str, List[str]] = {}  # Added
+        self._source_original_columns: dict[str, List[str]] = {}
 
     def load(self) -> "DataAggregator":
-        """Read every data source into memory."""
+        """Read every data source into memory and apply date handling."""
         for src_cfg in self.cfg.sources:
             loader = CONNECTOR_REGISTRY[src_cfg.connector]
             df = loader(
@@ -161,6 +163,53 @@ class DataAggregator:
 
             # Standardize column names after loading and potential index reset
             df.columns = df.columns.str.lower()
+
+            # Ensure 'date' column is datetime before any alignment
+            if "date" in df.columns:
+                if not pd.api.types.is_datetime64_any_dtype(df["date"]):
+                    # This should ideally be caught by _load_local, but as a safeguard:
+                    print(
+                        f"Warning: Column 'date' in source '{src_cfg.name}' is not datetime after load. Attempting robust conversion."
+                    )
+                    try:
+                        # Try common format first, then general inference
+                        df["date"] = pd.to_datetime(
+                            df["date"], format="%Y%m%d", errors="raise"
+                        )
+                    except (ValueError, TypeError):
+                        try:
+                            df["date"] = pd.to_datetime(df["date"], errors="raise")
+                        except (ValueError, TypeError) as e:
+                            raise ValueError(
+                                f"Critical: Failed to convert 'date' column to datetime for source '{src_cfg.name}': {e}. Cannot proceed with date handling."
+                            )
+
+                # Apply date handling if configured
+                if src_cfg.date_handling:
+                    print(
+                        f"Applying date handling for source '{src_cfg.name}': {src_cfg.date_handling.model_dump_json(exclude_none=True)}"
+                    )
+                    if src_cfg.date_handling.frequency == "monthly":
+                        # Convert to period (YYYY-MM), then to the last day of that month
+                        # This standardizes all monthly dates to month-end.
+                        df["date"] = (
+                            df["date"].dt.to_period("M").dt.to_timestamp(how="end")
+                        )
+                        print(
+                            f"  Source '{src_cfg.name}' dates aligned to month-end. Min: {df['date'].min() if not df['date'].empty else 'N/A'}, Max: {df['date'].max() if not df['date'].empty else 'N/A'}"
+                        )
+                    # elif src_cfg.date_handling.frequency == "daily": # Example for future extension
+                    #     df["date"] = df["date"].dt.normalize()
+                    #     print(f"  Source '{src_cfg.name}' dates normalized to midnight (daily).")
+                    # Add yearly or other frequencies as needed
+                else:
+                    # Default: normalize to midnight if no specific handling and column is datetime
+                    if pd.api.types.is_datetime64_any_dtype(df["date"]):
+                        df["date"] = df["date"].dt.normalize()
+                        print(
+                            f"Info: 'date' column in source '{src_cfg.name}' (no specific date_handling) normalized to midnight. Min: {df['date'].min() if not df['date'].empty else 'N/A'}, Max: {df['date'].max() if not df['date'].empty else 'N/A'}"
+                        )
+
             # Store standardized column names for later reference (e.g., macro checks)
             self._source_original_columns[src_cfg.name] = list(df.columns)
 
@@ -174,7 +223,6 @@ class DataAggregator:
                     f"Available columns after lowercasing and reset_index: {list(df.columns)[:10]}..."
                 )
             self._frames[src_cfg.name] = df
-        # print("Stop here") # Removed debug print
         return self
 
     def merge(self) -> pd.DataFrame:
@@ -291,9 +339,31 @@ class DataAggregator:
                         if df[col_name].isnull().any():
                             num_nans = df[col_name].isnull().sum()
                             total_rows = len(df)
+
+                            # Enhanced error message with example dates
+                            nan_rows_for_macro_col = df[df[col_name].isnull()]
+                            example_dates_with_nan_str = "N/A"
+                            if (
+                                "date" in nan_rows_for_macro_col.columns
+                                and pd.api.types.is_datetime64_any_dtype(
+                                    nan_rows_for_macro_col["date"]
+                                )
+                            ):
+                                example_dates_list = (
+                                    nan_rows_for_macro_col["date"].dropna().unique()[:5]
+                                )
+                                if len(example_dates_list) > 0:
+                                    example_dates_with_nan_str = ", ".join(
+                                        [
+                                            pd.Timestamp(d).strftime("%Y-%m-%d")
+                                            for d in example_dates_list
+                                        ]
+                                    )
+
                             raise ValueError(
                                 f"Error: Data column '{col_name}' from macro source '{src_cfg_iter.name}' contains {num_nans} missing values "
-                                f"(out of {total_rows}) in the merged DataFrame. Macro data columns must be complete after joins."
+                                f"(out of {total_rows}) in the merged DataFrame. Macro data columns must be complete after joins. "
+                                f"Example dates with missing '{col_name}': [{example_dates_with_nan_str}]"
                             )
         print(
             "Macro column check complete: No NaNs found in non-join key columns from macro sources."
@@ -381,14 +451,20 @@ class DataAggregator:
 
                 missing_ratio = missing_count / total_count
 
+                group_id_str = group_identifier
+                if isinstance(
+                    group_identifier, pd.Timestamp
+                ):  # Format timestamp for readability
+                    group_id_str = group_identifier.strftime("%Y-%m-%d")
+
                 if missing_ratio > imp_cfg.missing_threshold_error:
                     raise ValueError(
-                        f"Error: Column '{col_to_check}' in group '{group_by_col_lower}={group_identifier}' has {missing_ratio * 100:.2f}% missing values, "
+                        f"Error: Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing values, "
                         f"exceeding error threshold of {imp_cfg.missing_threshold_error * 100:.2f}%."
                     )
                 if missing_ratio > imp_cfg.missing_threshold_warning:
                     print(
-                        f"Warning: Column '{col_to_check}' in group '{group_by_col_lower}={group_identifier}' has {missing_ratio * 100:.2f}% missing values, "
+                        f"Warning: Column '{col_to_check}' in group '{group_by_col_lower}={group_id_str}' has {missing_ratio * 100:.2f}% missing values, "
                         f"exceeding warning threshold of {imp_cfg.missing_threshold_warning * 100:.2f}%."
                     )
 
@@ -402,13 +478,9 @@ class DataAggregator:
         # 4. Actual imputation using transform
         for col_to_impute in target_cols_for_imputation:
             if imp_cfg.method == "mean":
-
-                def fill_value_func(x):
-                    return x.fillna(x.mean())
+                fill_value_func = lambda x: x.fillna(x.mean())
             elif imp_cfg.method == "median":
-
-                def fill_value_func(x):
-                    return x.fillna(x.median())
+                fill_value_func = lambda x: x.fillna(x.median())
             else:  # Should be caught by Pydantic Literal type
                 raise ValueError(
                     f"Internal Error: Invalid imputation method '{imp_cfg.method}' despite schema validation."
@@ -460,34 +532,27 @@ class DataAggregator:
                     sort_keys = (
                         group_keys + ["date"] if "date" in df.columns else group_keys
                     )
-                    # Check if all sort_keys are present before attempting to sort
+
                     if not all(key in df.columns for key in sort_keys):
                         print(
                             f"Warning: Not all sort keys ({sort_keys}) found for grouped lag on '{col_to_lag}'. Applying simple shift."
                         )
                         df[new_lag_col_name] = df[col_to_lag].shift(tr.periods)
                     else:
-                        # Using group_keys=False to prevent adding group keys to index of the result of shift
+                        # For grouped lags, it's crucial that data is sorted by the time dimension (date)
+                        # within each group before applying the shift.
+                        # Assigning the result of shift on a sorted version ensures correctness.
+                        # Pandas' groupby().shift() itself respects the order within groups if the DataFrame
+                        # is already sorted. If not, sorting first is essential.
                         df[new_lag_col_name] = (
-                            df.sort_values(by=sort_keys)
-                            .groupby(group_keys, group_keys=False)[col_to_lag]
+                            df.sort_values(by=sort_keys)  # Sort by group keys and date
+                            .groupby(group_keys, group_keys=False)[
+                                col_to_lag
+                            ]  # group_keys=False to avoid multi-index in result
                             .shift(tr.periods)
                         )
-                        # Reindex to match original df's index if sorting changed order significantly
-                        # However, pandas assignment by column name usually handles index alignment.
-                        # If df was not sorted by group_keys, date initially, this could be an issue.
-                        # A safer assignment after sorting and grouping:
-                        # lagged_series = df.sort_values(by=sort_keys).groupby(group_keys)[col_to_lag].shift(tr.periods)
-                        # df[new_lag_col_name] = lagged_series # relies on pandas index alignment
-                        # The current approach of assigning directly to df[new_name] after a groupby().shift()
-                        # on a (potentially sorted) copy is generally fine due to pandas' index alignment.
-                        # For clarity and safety, ensure the groupby operation for shift is on a DataFrame
-                        # that has the same index as the original `df` or can be aligned.
-                        # The current code: df.groupby(...).shift() assigns based on original df's index.
-                        df[new_lag_col_name] = df.groupby(group_keys, group_keys=False)[
-                            col_to_lag
-                        ].shift(tr.periods)
-
+                        # The above assignment relies on pandas aligning the shifted series (which has a potentially
+                        # reordered index from sort_values) back to the original df's index. This is standard.
                 else:
                     print(
                         f"Applying simple lag on '{col_to_lag}' for {tr.periods} periods."
@@ -557,9 +622,7 @@ def aggregate_from_yaml(
 
     agg = DataAggregator(cfg).load()
     merged_df = agg.merge()
-    imputed_df = agg.apply_imputation(merged_df)  # New imputation step
-    transformed_df = agg.apply_transformations(
-        imputed_df
-    )  # Apply transformations on imputed_df
+    imputed_df = agg.apply_imputation(merged_df)
+    transformed_df = agg.apply_transformations(imputed_df)
 
     return transformed_df, cfg

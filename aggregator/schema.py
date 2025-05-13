@@ -7,6 +7,27 @@ from typing import List, Literal, Optional, Sequence, Union
 from pydantic import BaseModel, Field, validator
 
 
+class DateHandlingConfig(BaseModel):
+    """Configuration for how date columns are processed and aligned."""
+
+    frequency: Literal["daily", "monthly", "yearly"] = Field(
+        description="The intended frequency of the data in the source."
+    )
+    # For monthly, how to align the date (e.g., to month end or month start)
+    # For now, we'll implicitly align monthly to month_end if frequency is 'monthly'
+    # More options like 'month_start' or specific day can be added later.
+    # monthly_alignment: Optional[Literal["month_end", "month_start"]] = "month_end"
+    # Let's make it simpler for now: if frequency is monthly, it implies alignment.
+
+    @validator("frequency")
+    def monthly_is_supported(cls, v):
+        if v not in ["monthly"]:  # Extend this list as you add support
+            raise ValueError(
+                f"Frequency '{v}' is not yet supported. Currently only 'monthly' is implemented."
+            )
+        return v
+
+
 class SourceConfig(BaseModel):
     """Location and merge-key information for a single data source."""
 
@@ -20,6 +41,10 @@ class SourceConfig(BaseModel):
         description="If True, this firm-level source is used as the base for merging other firm-level data. "
         "Only one firm-level source can be marked as primary. "
         "If multiple firm sources exist and none are marked primary, an error will be raised during merge.",
+    )
+    date_handling: Optional[DateHandlingConfig] = Field(
+        default=None,
+        description="Specifies how to handle and align date columns for this source, e.g., for monthly data.",
     )
 
 
@@ -118,11 +143,29 @@ class AggregationConfig(BaseModel):
         primary_firm_sources_marked = [
             s for s in sources if s.level == "firm" and s.is_primary_firm_base
         ]
-
         if len(primary_firm_sources_marked) > 1:
             primary_names = [s.name for s in primary_firm_sources_marked]
             raise ValueError(
                 f"Configuration error: Only one firm-level source can be marked as 'is_primary_firm_base: True'. "
                 f"Found: {primary_names}"
             )
+
+        # Validate that if date_handling is used, 'date' is a join key
+        for src in sources:
+            if src.date_handling and "date" not in [key.lower() for key in src.join_on]:
+                raise ValueError(
+                    f"Source '{src.name}': If 'date_handling' is specified, 'date' must be one of the 'join_on' keys."
+                )
+            if src.date_handling and src.date_handling.frequency == "monthly":
+                # For now, we only support 'date' as the sole join key for monthly macro,
+                # or 'permno', 'date' for monthly firm.
+                # This is a simplification; more complex scenarios might need more thought.
+                join_keys_lower = {key.lower() for key in src.join_on}
+                if src.level == "macro" and join_keys_lower != {"date"}:
+                    print(
+                        f"Warning: Source '{src.name}' is 'macro' with 'monthly' date_handling. "
+                        f"Expected 'join_on: [\"date\"]'. Found: {src.join_on}. This might lead to unexpected merge behavior if other keys are present."
+                    )
+                # No specific check for firm level yet, as ['permno', 'date'] is common.
+
         return sources

@@ -297,7 +297,7 @@ def test_one_hot_encoding(base_config_dict_paths_as_filenames, tmp_path):
     assert row["industry_1"].iloc[0] == 1 and row["industry_64"].iloc[0] == 0
 
 
-def test_fillna_grouped_median_specific_column(
+def test_grouped_fill_missing_median_specific_column(
     base_config_dict_paths_as_filenames, tmp_path
 ):
     config_dict = base_config_dict_paths_as_filenames.copy()
@@ -333,7 +333,7 @@ def test_fillna_grouped_median_specific_column(
     config_dict["sources"][0]["is_primary_firm_base"] = True
     config_dict["transformations"] = [
         {
-            "type": "fillna_grouped",
+            "type": "grouped_fill_missing",
             "method": "median",
             "group_by_column": "date",
             "columns": ["ret"],
@@ -358,7 +358,9 @@ def test_fillna_grouped_median_specific_column(
     firm_custom_file_path.unlink()  # Clean up
 
 
-def test_fillna_grouped_all_numeric(base_config_dict_paths_as_filenames, tmp_path):
+def test_grouped_fill_missing_all_numeric(
+    base_config_dict_paths_as_filenames, tmp_path
+):
     config_dict = base_config_dict_paths_as_filenames.copy()
     # Use crsp_returns as primary to get NaNs in char columns
     config_dict["sources"][1]["is_primary_firm_base"] = True
@@ -366,7 +368,7 @@ def test_fillna_grouped_all_numeric(base_config_dict_paths_as_filenames, tmp_pat
 
     config_dict["transformations"] = [
         {
-            "type": "fillna_grouped",
+            "type": "grouped_fill_missing",
             "method": "mean",
             "group_by_column": "date",  # No "columns" specified
         }
@@ -430,7 +432,7 @@ def test_full_pipeline_from_yaml(base_config_dict_paths_as_filenames, tmp_path):
             "drop_original": True,
         },
         {
-            "type": "fillna_grouped",
+            "type": "grouped_fill_missing",
             "method": "median",
             "group_by_column": "date",
             "columns": ["ret"],

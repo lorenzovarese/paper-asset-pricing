@@ -24,7 +24,7 @@ except ImportError:
     paper_tools_version = "unknown"
 
 app = typer.Typer(
-    name="paper-tools",
+    name="paper",
     help="P.A.P.E.R Tools: Initialize and execute P.A.P.E.R research project phases.",
     add_completion=False,
     no_args_is_help=True,
@@ -43,70 +43,6 @@ MODELS_COMPONENT_CONFIG_FILENAME = "models-config.yaml"
 PORTFOLIO_COMPONENT_CONFIG_FILENAME = "portfolio-config.yaml"
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
-
-
-def _get_project_root() -> Path:
-    """
-    Retrieve the current working directory path, which is assumed to be the project root.
-
-    Returns:
-        Path: The absolute path to the current working directory.
-    """
-    return Path.cwd()
-
-
-def _load_project_config(project_root: Path) -> dict | None:
-    """
-    Load the main project configuration file (paper-project.yaml) from the 'configs' directory.
-
-    Args:
-        project_root (Path): The root directory of the P.A.P.E.R project.
-
-    Returns:
-        dict | None:
-            A dictionary representing the loaded YAML configuration if successful;
-            None if the configuration file does not exist or an error occurs during loading.
-
-    Side Effects:
-        Prints error messages to stderr if the configuration file is missing or cannot be parsed.
-
-    """
-    config_path = project_root / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
-    if not config_path.exists():
-        typer.secho(
-            f"Error: Project configuration file not found at '{config_path}'.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        typer.secho(
-            f"Please ensure you are in a P.A.P.E.R project directory and '{DEFAULT_PROJECT_CONFIG_NAME}' "
-            f"exists in '{CONFIGS_DIR_NAME}/'.",
-            err=True,
-        )
-        return None
-    try:
-        with open(config_path, "r") as f:
-            return yaml.safe_load(f)
-    except Exception as e:
-        typer.secho(
-            f"Error loading project configuration '{config_path}': {e}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        return None
-
-
-def _check_component_cli_exists(cli_name: str) -> bool:
-    """
-    Check whether a given CLI tool is available in the system PATH.
-
-    Args:
-        cli_name (str): The name of the CLI executable to verify.
-
-    Returns:
-        bool: True if the executable is found in the PATH; False otherwise.
-    """
-    return shutil.which(cli_name) is not None
 
 
 def _render_template(template_name: str, context: dict, output_path: Path):
@@ -379,7 +315,7 @@ def init(
         raise typer.Exit(code=1)
 
 
-# --- `execute` Command Group (Portfolio command simplified) ---
+# --- `execute` Command Group  ---
 execute_app = typer.Typer(
     name="execute",
     help="Execute P.A.P.E.R project phases.",
@@ -389,251 +325,30 @@ app.add_typer(execute_app)
 
 
 @execute_app.command("data")
-def execute_data_phase(ctx: typer.Context):
-    """
-    Execute the data processing phase using the configured 'paper-data' component.
-
-    This command:
-      1. Locates and loads the main project configuration (paper-project.yaml).
-      2. Retrieves the 'components.data' section to find the CLI tool name, command, and
-         relative path to the data component's configuration file.
-      3. Resolves the absolute path of the component config file.
-      4. Invokes the external component CLI using _run_component_cli.
-
-    Args:
-        ctx (typer.Context): The Typer context (unused but required by Typer signature).
-
-    Raises:
-        typer.Exit: If the project configuration is missing, if the 'components.data'
-            section is absent or malformed, or if required fields are not specified.
-    """
-    project_root = _get_project_root()
-    project_config = _load_project_config(project_root)
-    if not project_config:
-        raise typer.Exit(code=1)
-
-    data_cfg = project_config.get("components", {}).get("data")
-    if not data_cfg:
-        typer.secho(
-            "Error: 'components.data' configuration missing in 'paper-project.yaml'.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    config_file_rel_path = data_cfg.get("config_file")
-    cli_tool_name = data_cfg.get("cli_tool", "paper-data")
-    cli_main_command = data_cfg.get(
-        "cli_command", "process"
-    )  # Allow overriding 'process'
-
-    if not config_file_rel_path:
-        typer.secho(
-            "Error: 'components.data.config_file' path missing in 'paper-project.yaml'.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    component_config_abs_path = (project_root / config_file_rel_path).resolve()
-    _run_component_cli(
-        cli_tool_name, cli_main_command, component_config_abs_path, project_root
+def execute_data_phase():
+    typer.secho(
+        "Data phase execution is not yet implemented.",
+        fg=typer.colors.YELLOW,
     )
+    typer.Exit(code=0)
 
 
 @execute_app.command("models")
-def execute_models_phase(ctx: typer.Context):
-    """
-    Execute the modeling phase using the configured 'paper-model' component.
-
-    This command:
-      1. Loads the main project configuration.
-      2. Retrieves the 'components.models' section for CLI details.
-      3. Resolves the model component's configuration file path.
-      4. Invokes the external modeling CLI via _run_component_cli.
-
-    Args:
-        ctx (typer.Context): The Typer context (unused but required by Typer signature).
-
-    Raises:
-        typer.Exit: If the project configuration or required 'components.models'
-            entry or config_file path is missing.
-    """
-    project_root = _get_project_root()
-    project_config = _load_project_config(project_root)
-    if not project_config:
-        raise typer.Exit(code=1)
-
-    models_cfg = project_config.get("components", {}).get("models")
-    if not models_cfg:
-        typer.secho(
-            "Error: 'components.models' configuration missing in 'paper-project.yaml'.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    config_file_rel_path = models_cfg.get("config_file")
-    cli_tool_name = models_cfg.get("cli_tool", "paper-model")
-    cli_main_command = models_cfg.get("cli_command", "process")
-
-    if not config_file_rel_path:
-        typer.secho(
-            "Error: 'components.models.config_file' path missing in 'paper-project.yaml'.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    component_config_abs_path = (project_root / config_file_rel_path).resolve()
-    _run_component_cli(
-        cli_tool_name, cli_main_command, component_config_abs_path, project_root
+def execute_models_phase():
+    typer.secho(
+        "Models phase execution is not yet implemented.",
+        fg=typer.colors.YELLOW,
     )
+    typer.Exit(code=0)
 
 
 @execute_app.command("portfolio")
-def execute_portfolio_phase(ctx: typer.Context):
-    """
-    Execute the portfolio analysis phase using the configured 'paper-portfolio' component.
-
-    This command:
-      1. Loads the main project configuration.
-      2. Retrieves the 'components.portfolio' section for CLI details.
-      3. Resolves the portfolio component's configuration file path.
-      4. Invokes the external portfolio CLI via _run_component_cli.
-
-    Args:
-        ctx (typer.Context): The Typer context (unused but required by Typer signature).
-
-    Raises:
-        typer.Exit: If the project configuration or required 'components.portfolio'
-            entry or config_file path is missing.
-    """
-    project_root = _get_project_root()
-    project_config = _load_project_config(project_root)
-    if not project_config:
-        raise typer.Exit(code=1)
-
-    portfolio_cfg = project_config.get("components", {}).get("portfolio")
-    if not portfolio_cfg:
-        typer.secho(
-            "Error: 'components.portfolio' configuration missing in 'paper-project.yaml'.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    config_file_rel_path = portfolio_cfg.get("config_file")
-    cli_tool_name = portfolio_cfg.get("cli_tool", "paper-portfolio")
-    cli_main_command = portfolio_cfg.get("cli_command", "process")
-
-    if not config_file_rel_path:
-        typer.secho(
-            "Error: 'components.portfolio.config_file' path missing in 'paper-project.yaml'.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    component_config_abs_path = (project_root / config_file_rel_path).resolve()
-    _run_component_cli(
-        cli_tool_name, cli_main_command, component_config_abs_path, project_root
+def execute_portfolio_phase():
+    typer.secho(
+        "Portfolio phase execution is not yet implemented.",
+        fg=typer.colors.YELLOW,
     )
-
-
-def _run_component_cli(
-    component_cli_name: str,
-    component_main_command: str,
-    component_config_file: Path,
-    project_root: Path,
-):
-    """
-    Invoke an external component CLI tool with a specified main command and configuration.
-
-    Args:
-        component_cli_name (str): The name of the component CLI executable.
-        component_main_command (str): The subcommand or action to pass to the CLI.
-        component_config_file (Path): The path to the component's YAML configuration file.
-        project_root (Path): The root directory of the P.A.P.E.R project.
-
-    Raises:
-        typer.Exit: If the CLI executable is not found or returns a non-zero exit status.
-
-    Side Effects:
-        - Prints a warning if the configuration file does not exist.
-        - Constructs and prints the command to be executed.
-        - Executes the command via subprocess.
-        - Prints stdout, stderr, and success/failure messages accordingly.
-    """
-    if not _check_component_cli_exists(component_cli_name):
-        typer.secho(
-            f"Error: Component CLI '{component_cli_name}' not found in PATH.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        typer.secho(
-            f"Please ensure '{component_cli_name}' (from package like {component_cli_name.replace('-', '_')}) "
-            f"is installed and accessible.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    if not component_config_file.exists():
-        typer.secho(
-            f"Warning: Component configuration file '{component_config_file}' not found.",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
-        typer.secho(
-            f"  The component '{component_cli_name}' might fail or use default behavior if its config is optional.",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
-
-    cmd = [
-        component_cli_name,
-        component_main_command,
-        "--config",
-        str(component_config_file),
-        "--project-root",
-        str(project_root),
-    ]
-
-    typer.secho(f"Executing: {' '.join(cmd)}", fg=typer.colors.BLUE)
-    try:
-        result = subprocess.run(
-            cmd, cwd=project_root, check=True, text=True, capture_output=True
-        )
-        if result.stdout:
-            typer.echo(result.stdout)
-        if result.stderr:
-            typer.secho("Component output (stderr):", fg=typer.colors.YELLOW, err=True)
-            typer.echo(result.stderr, err=True)
-        typer.secho(
-            f"'{component_cli_name} {component_main_command}' executed successfully.",
-            fg=typer.colors.GREEN,
-        )
-    except subprocess.CalledProcessError as e:
-        typer.secho(
-            f"Error executing '{component_cli_name} {component_main_command}': "
-            f"Command returned non-zero exit status {e.returncode}.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        if e.stdout:
-            typer.secho("Stdout:", fg=typer.colors.YELLOW, err=True)
-            typer.echo(e.stdout, err=True)
-        if e.stderr:
-            typer.secho("Stderr:", fg=typer.colors.YELLOW, err=True)
-            typer.echo(e.stderr, err=True)
-        raise typer.Exit(code=1)
-    except Exception as e:
-        typer.secho(
-            f"An unexpected error occurred while running '{component_cli_name} {component_main_command}': {e}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
+    typer.Exit(code=0)
 
 
 @app.callback()

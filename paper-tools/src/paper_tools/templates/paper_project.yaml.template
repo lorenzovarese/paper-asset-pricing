@@ -7,16 +7,12 @@ description: "P.A.P.E.R project: {{project_name}}"
 
 components:
   data:
-    config_file: "{{CONFIGS_DIR_NAME}}/{{DATA_COMPONENT_CONFIG_FILENAME}}"
-    raw_dir: "{{DATA_DIR_NAME}}/raw"
-    processed_dir: "{{DATA_DIR_NAME}}/processed"
+    config_file: "{{DATA_COMPONENT_CONFIG_FILENAME}}"
   models:
-    config_file: "{{CONFIGS_DIR_NAME}}/{{MODELS_COMPONENT_CONFIG_FILENAME}}"
-    saved_dir: "{{MODELS_DIR_NAME}}/saved"
+    config_file: "{{MODELS_COMPONENT_CONFIG_FILENAME}}"
   portfolio:
-    config_file: "{{CONFIGS_DIR_NAME}}/{{PORTFOLIO_COMPONENT_CONFIG_FILENAME}}"
-    results_dir: "{{PORTFOLIOS_DIR_NAME}}/results"
+    config_file: "{{PORTFOLIO_COMPONENT_CONFIG_FILENAME}}"
 
 logging:
-  log_file: "{{LOG_FILE_NAME}}" # Relative to project root
+  log_file: "{{LOG_FILE_NAME}}"
   level: "INFO"

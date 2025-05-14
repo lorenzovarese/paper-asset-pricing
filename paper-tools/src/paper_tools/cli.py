@@ -318,21 +318,7 @@ def init(
                 f.write(
                     "# Please refer to the respective component's documentation for structure.\n"
                 )
-                if conf_filename == DATA_COMPONENT_CONFIG_FILENAME:
-                    f.write(
-                        f"""\
-# Example structure for {DATA_COMPONENT_CONFIG_FILENAME}:
-# sources:
-#   - name: my_data
-#     connector: local
-#     path: "{DATA_DIR_NAME}/raw/your_data.csv"
-# transformations:
-#   # - type: ...
-# output:
-#   format: parquet
-#   # ...
-"""
-                    )
+                # Optionally, we could render a more complex template here if needed
             typer.secho(
                 f"✓ Created placeholder component config: "
                 f"{placeholder_conf_path.relative_to(Path.cwd())}",

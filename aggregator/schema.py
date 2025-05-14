@@ -7,7 +7,7 @@ from typing import List, Literal, Optional, Sequence, Union
 from pydantic import (
     BaseModel,
     Field,
-    field_validator,  # Keep if used elsewhere, not for column_suffix anymore
+    root_validator,
     validator,
 )
 
@@ -102,12 +102,40 @@ class ExpandCartesianConfig(BaseModel):
     )
 
 
+class DropColumnsConfig(BaseModel):
+    type: Literal["drop_columns"]
+    macro_columns: Optional[List[str]] = Field(
+        default=None,
+        description="Base names of macro-level columns to drop (e.g., 'dp' will target 'dp_macro').",
+    )
+    firm_columns: Optional[List[str]] = Field(
+        default=None,
+        description="Base names of firm-level columns to drop (e.g., 'beta' will target 'beta_firm').",
+    )
+    columns: Optional[List[str]] = Field(
+        default=None,
+        description="Exact names of columns to drop (e.g., 'permno', 'specific_suffixed_col').",
+    )
+
+    @root_validator(skip_on_failure=True)
+    def check_at_least_one_column_list_provided(cls, values):
+        macro_cols = values.get("macro_columns")
+        firm_cols = values.get("firm_columns")
+        exact_cols = values.get("columns")
+        if not macro_cols and not firm_cols and not exact_cols:
+            raise ValueError(
+                "For 'drop_columns' transformation, at least one of 'macro_columns', 'firm_columns', or 'columns' must be specified."
+            )
+        return values
+
+
 TransformationConfig = Union[
     OneHotConfig,
     LagConfig,
     CleanNumericConfig,
     GroupedFillMissingConfig,
     ExpandCartesianConfig,
+    DropColumnsConfig,
 ]
 
 

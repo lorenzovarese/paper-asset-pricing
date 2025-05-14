@@ -1,7 +1,7 @@
 sources:
   - name: crsp_returns
     connector: local
-    path: data/test/ret.csv # Path to CRSP returns data
+    path: data/crsp_returns_2002_2021.csv # Path to CRSP returns data
     join_on: ["permno", "date"]          # Columns to join on
     level: firm                          # Data level: firm-specific. Auto-suffix: _firm
     date_handling:                       # Configuration for date processing
@@ -9,7 +9,7 @@ sources:
 
   - name: firm_chars
     connector: local
-    path: data/test/firm.csv  # Path to firm characteristics data
+    path: data/firm_chars_2002_2021.csv  # Path to firm characteristics data
     join_on: ["permno", "date"]          # Columns to join on
     level: firm                          # Data level: firm-specific. Auto-suffix: _firm
     is_primary_firm_base: true           # This is the main firm-level table to merge onto
@@ -18,7 +18,7 @@ sources:
 
   - name: macro_data # Renamed from 'macro' for clarity in example
     connector: local
-    path: data/test/macro.csv    # Path to macroeconomic data
+    path: data/wg_macro_2002_2021.csv   # Path to macroeconomic data
     join_on: ["date"]                    # Column to join on
     level: macro                         # Data level: macroeconomic. Auto-suffix: _macro
     date_handling:                       # Configuration for date processing
@@ -63,6 +63,11 @@ transformations:
   # - type: lag
   #   columns: ["tbl", "dp_x_mvel1"] # User provides base names for lag. Code finds 'tbl_macro', 'dp_macro_x_mvel1_firm'
   #   periods: 1
+
+  - type: drop_columns
+    macro_columns: ["dp", "ep", "bm", "ntis", "tbl", "tms", "dfy", "svar"] # User provides base names. Code finds 'dp_macro', 'ep_macro', etc.
+  #   firm_columns: Example -> ["eb", "dc9"] # User provides base names. Code finds 'eb_firm', 'dc9_firm'
+  #   columns: Example -> ["permno", "bm_macro", "bm_firm"] # User can provide the full name
 
 output:
   format: parquet

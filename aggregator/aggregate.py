@@ -3,7 +3,7 @@
 from __future__ import annotations
 import functools
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 import warnings
 
 import pandas as pd
@@ -24,6 +24,7 @@ from .schema import (
     GroupedFillMissingConfig,
     ExpandCartesianConfig,
     SourceConfig,
+    DropColumnsConfig,
 )
 
 
@@ -214,12 +215,11 @@ class DataAggregator:
                     print(
                         f"Applying monthly date handling for source '{src_cfg.name}'."
                     )
-                    df[date_col_to_handle] = (
+                    df[date_col_to_handle] = pd.Series(
                         df[date_col_to_handle]
                         .dt.to_period("M")
                         .dt.to_timestamp(how="end")
-                        .dt.normalize()
-                    )
+                    ).dt.normalize()
                     print(
                         f"  Source '{src_cfg.name}' dates aligned to month-end (normalized)."
                     )
@@ -560,6 +560,84 @@ class DataAggregator:
                 )
             else:
                 print("  No interaction columns were created by 'expand_cartesian'.")
+
+        elif isinstance(tr, DropColumnsConfig):
+            print("Applying 'drop_columns' transformation.")
+            cols_to_drop_final: Set[str] = set()
+
+            if tr.macro_columns:
+                print(f"  Identifying macro_columns to drop: {tr.macro_columns}")
+                for base_col in tr.macro_columns:
+                    actual_col = self._find_actual_column_name(
+                        df,
+                        base_col.lower(),
+                        self.cfg.sources,
+                        self._source_col_rename_map,
+                        "macro",
+                    )
+                    if actual_col and actual_col in df.columns:
+                        cols_to_drop_final.add(actual_col)
+                        print(f"    Found '{actual_col}' for base '{base_col}'.")
+                    else:
+                        print(
+                            f"    Warning: Macro column base '{base_col}' (expected as '{base_col.lower()}_macro' or similar) not found in DataFrame. Skipping."
+                        )
+
+            if tr.firm_columns:
+                print(f"  Identifying firm_columns to drop: {tr.firm_columns}")
+                for base_col in tr.firm_columns:
+                    actual_col = self._find_actual_column_name(
+                        df,
+                        base_col.lower(),
+                        self.cfg.sources,
+                        self._source_col_rename_map,
+                        "firm",
+                    )
+                    if actual_col and actual_col in df.columns:
+                        cols_to_drop_final.add(actual_col)
+                        print(f"    Found '{actual_col}' for base '{base_col}'.")
+                    else:
+                        print(
+                            f"    Warning: Firm column base '{base_col}' (expected as '{base_col.lower()}_firm' or similar) not found in DataFrame. Skipping."
+                        )
+
+            if tr.columns:
+                print(f"  Identifying exact columns to drop: {tr.columns}")
+                for col_name in tr.columns:
+                    # For exact names, we still use _find_actual_column_name without preferred_level.
+                    # This handles cases where user provides an exact suffixed name, a join key,
+                    # or even a base name that should be resolved to its suffixed version.
+                    actual_col = self._find_actual_column_name(
+                        df,
+                        col_name.lower(),
+                        self.cfg.sources,
+                        self._source_col_rename_map,
+                        None,
+                    )
+                    if actual_col and actual_col in df.columns:
+                        cols_to_drop_final.add(actual_col)
+                        print(
+                            f"    Found '{actual_col}' for specified name '{col_name}'."
+                        )
+                    else:
+                        # If _find_actual_column_name didn't find it, it means neither the name itself
+                        # nor any potential suffixed version (if col_name was a base) exists.
+                        print(
+                            f"    Warning: Specified column '{col_name}' not found in DataFrame. Skipping."
+                        )
+
+            if cols_to_drop_final:
+                columns_to_drop_list = sorted(list(cols_to_drop_final))
+                print(f"  Dropping columns: {columns_to_drop_list}")
+                df = df.drop(
+                    columns=columns_to_drop_list, errors="ignore"
+                )  # errors='ignore' is a safeguard
+                print(f"  Successfully dropped {len(columns_to_drop_list)} columns.")
+            else:
+                print(
+                    "  No columns identified for dropping by 'drop_columns' transformation."
+                )
+
         return df
 
     @staticmethod
@@ -605,7 +683,7 @@ class DataAggregator:
         """
         base_col_l = base_col_name.lower()
 
-        # 1. If preferred_level_for_inference is given (typically when infer_suffix=true for expand_cartesian)
+        # 1. If preferred_level_for_inference is given (typically when infer_suffix=true for expand_cartesian or for drop_columns)
         if preferred_level_for_inference:
             auto_suffix = f"_{preferred_level_for_inference}"
             suffixed_name_attempt = f"{base_col_l}{auto_suffix}"
@@ -613,22 +691,29 @@ class DataAggregator:
                 return suffixed_name_attempt
             # Fallback: if user provided a name that already IS suffixed (e.g. "dp_macro")
             # and that exists, use it. This handles cases where infer_suffix=true but user is already specific.
+            # Or, if the preferred level column was a join key and thus not suffixed.
             if base_col_l in df.columns:
                 # Check if this base_col_l was indeed a result of suffixing from the preferred_level
+                # or if it's an unsuffixed column from a source of that preferred_level (e.g. a join key)
+                is_from_preferred_level_source = False
                 for src_name, rename_map in source_rename_maps.items():
                     src_cfg = next(
                         (s for s in all_sources_cfg if s.name == src_name), None
                     )
                     if src_cfg and src_cfg.level == preferred_level_for_inference:
-                        for original, suffixed in rename_map.items():
-                            if (
-                                suffixed == base_col_l
-                            ):  # User provided the already suffixed name
-                                return base_col_l
-                # If not from preferred level, but exists, it might be an unsuffixed join key or from another level.
-                # This case is tricky. For now, if suffixed version not found, and base_col_l exists, we'll return it.
-                # A more robust system might require explicit naming if ambiguity is high.
-                # print(f"  Info: Suffixed version for '{base_col_l}' with preferred_level '{preferred_level_for_inference}' not found. Checking for direct match '{base_col_l}'.")
+                        # Check if base_col_l is a suffixed name from this source OR an original (unsuffixed) name from this source
+                        if (
+                            base_col_l in rename_map.values()
+                            or base_col_l in rename_map.keys()
+                        ):
+                            # More accurately, check if base_col_l is an actual column name that originated from this source level
+                            if base_col_l in self._source_final_columns.get(
+                                src_cfg.name, []
+                            ):
+                                is_from_preferred_level_source = True
+                                break
+                if is_from_preferred_level_source:
+                    return base_col_l
 
         # 2. General check: if base_col_name itself exists (could be a join key or already suffixed by user)
         if base_col_l in df.columns:
@@ -637,7 +722,9 @@ class DataAggregator:
         # 3. If not found yet, and we were NOT specifically inferring for a level,
         #    try to find if it was suffixed by *any* source. This is for transformations
         #    like clean_numeric, lag, etc., where user gives a base name.
-        if not preferred_level_for_inference:
+        if (
+            not preferred_level_for_inference
+        ):  # This block is also hit if preferred_level search failed above
             for src_name, rename_map in source_rename_maps.items():
                 # Check if base_col_l was an original name in this source
                 if base_col_l in rename_map:
@@ -645,6 +732,19 @@ class DataAggregator:
                     if actual_name in df.columns:
                         return actual_name
 
+        # If preferred_level_for_inference was provided, but the specific suffixed version wasn't found,
+        # and the base_col_l itself wasn't found (or wasn't confirmed from that level),
+        # we do one last check: was base_col_l an original name from a source of the preferred_level that got suffixed?
+        if preferred_level_for_inference:
+            for src_name, rename_map in source_rename_maps.items():
+                src_cfg = next((s for s in all_sources_cfg if s.name == src_name), None)
+                if src_cfg and src_cfg.level == preferred_level_for_inference:
+                    if base_col_l in rename_map:  # base_col_l was an original name
+                        actual_name = rename_map[
+                            base_col_l
+                        ]  # This is its suffixed name
+                        if actual_name in df.columns:
+                            return actual_name
         return None
 
 

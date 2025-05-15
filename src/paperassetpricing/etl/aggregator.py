@@ -1,29 +1,28 @@
 """Core data-aggregation logic."""
 
 from __future__ import annotations
-import functools
 from pathlib import Path
 from typing import List, Dict, Optional, Set
 import warnings
+import functools
 
 import pandas as pd
 import numpy as np
 import yaml
-
-from connectors.local.local_loader import load_and_preprocess
-from connectors.local.local_loader import (
+from paperassetpricing.connectors.local.local_loader import (
+    load_and_preprocess,
     _standardize_columns,
 )
 
-from .schema import (
+from paperassetpricing.etl.schema import (
     AggregationConfig,
+    SourceConfig,
+    TransformationConfig,
     OneHotConfig,
     LagConfig,
-    TransformationConfig,
     CleanNumericConfig,
     GroupedFillMissingConfig,
     ExpandCartesianConfig,
-    SourceConfig,
     DropColumnsConfig,
 )
 

@@ -1,15 +1,8 @@
-"""Typed configuration objects used to validate YAML aggregation specs."""
-
 from __future__ import annotations
 from pathlib import Path
 from typing import List, Literal, Optional, Sequence, Union
 
-from pydantic import (
-    BaseModel,
-    Field,
-    root_validator,
-    validator,
-)
+from pydantic import BaseModel, Field, root_validator, validator
 
 
 class DateHandlingConfig(BaseModel):

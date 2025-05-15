@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
-from core.settings import DATA_DIR
+from paperassetpricing.settings import DATA_DIR
 
 VERBOSE = True
 

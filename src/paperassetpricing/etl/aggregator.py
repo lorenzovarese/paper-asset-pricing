@@ -24,6 +24,7 @@ from paperassetpricing.etl.schema import (
     GroupedFillMissingConfig,
     ExpandCartesianConfig,
     DropColumnsConfig,
+    CutByDateConfig,
 )
 
 
@@ -636,7 +637,36 @@ class DataAggregator:
                 print(
                     "  No columns identified for dropping by 'drop_columns' transformation."
                 )
+        elif isinstance(tr, CutByDateConfig):
+            print(
+                f"Applying 'cut_by_date' from {tr.start_date} to {tr.end_date or tr.start_date}"
+            )
+            if "date" not in df.columns:
+                raise ValueError("cut_by_date: no 'date' column in DataFrame.")
+            # parse and align to month-end if possible
+            start = pd.to_datetime(tr.start_date)
+            end = pd.to_datetime(tr.end_date) if tr.end_date else start
+            try:
+                # if data are monthly, align to month-end
+                start = start.to_period("M").to_timestamp(how="end").normalize()
+                end = end.to_period("M").to_timestamp(how="end").normalize()
+            except Exception:
+                # fallback for daily data
+                start = start.normalize()
+                end = end.normalize()
 
+            overall_min = df["date"].min()
+            overall_max = df["date"].max()
+            if start < overall_min or end > overall_max:
+                raise ValueError(
+                    f"cut_by_date: requested range {start.date()}–{end.date()} "
+                    f"outside data span {overall_min.date()}–{overall_max.date()}."
+                )
+
+            before_n = len(df)
+            df = df[(df["date"] >= start) & (df["date"] <= end)].copy()
+            after_n = len(df)
+            print(f"  Rows filtered: {before_n} → {after_n}")
         return df
 
     @staticmethod

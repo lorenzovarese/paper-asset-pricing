@@ -1,0 +1,22 @@
+# configs/train_config_huber.yaml
+data:
+  path: "data/expanded_2002_2021.parquet" # Path to your aggregated data
+  target_column: "ret_firm"             # Ensure this is r_i,t+1
+  id_columns: ["permno", "date"]          # Columns to exclude if 'feature_columns' is not set
+
+model:
+  name: "Huber"
+  params:
+    epsilon: 1.35      # Default from sklearn, common choice for Huber loss
+    alpha: 0.0001      # L2 regularization strength (can be tuned)
+    fit_intercept: True
+    # You can add other HuberRegressor parameters here if needed, e.g.:
+    # max_iter: 100
+
+evaluation:
+  # Parameters for Rolling-Forward Validation
+  # As per the paper: 7 years training, 2 years validation, 2 years testing, roll by 2 years.
+  train_years: 7
+  val_years: 2   # Validation set could be used to tune 'epsilon' or 'alpha' if desired
+  test_years: 2
+  roll_years: 2  # How many years to slide the window forward

@@ -1,30 +1,47 @@
 [project]
 name = "paper-asset-pricing"
 version = "0.1.0"
-description = "Add your description here"
+description = "P.A.P.E.R.: Platform for Asset Pricing Experiment & Research"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.2.2",
+    "fastparquet>=2024.11.0",
     "numpy>=2.2.5",
     "pandas>=2.2.3",
     "polars>=1.29.0",
+    "pyarrow>=20.0.0",
+    "pydantic>=2.11.4",
+    "pyyaml>=6.0.2",
     "scikit-learn>=1.6.1",
     "sqlalchemy>=2.0.40",
     "statsmodels>=0.14.4",
     "torch>=2.7.0",
     "tqdm>=4.67.1",
+    "typer>=0.15.4",
     "wrds>=3.3.0",
     "xgboost>=3.0.0",
 ]
 
 [dependency-groups]
 dev = [
+    "ipykernel>=6.29.5",
     "pandas-stubs>=2.2.3.250308",
     "pytest>=8.3.5",
     "ruff>=0.11.8",
+    "types-pyyaml>=6.0.12.20250402",
     "types-tqdm>=4.67.0.20250417",
 ]
 
-# [tool.pytest.ini_options]
-# pythonpath = "src"
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
+
+[project.scripts]
+paper = "paperassetpricing.cli:app"
+
+[tool.pytest.ini_options]
+pythonpath = "src"

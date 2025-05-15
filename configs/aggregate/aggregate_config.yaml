@@ -1,0 +1,73 @@
+sources:
+  - name: crsp_returns
+    connector: local
+    path: data/crsp_returns_2002_2021.csv # Path to CRSP returns data
+    join_on: ["permno", "date"]          # Columns to join on
+    level: firm                          # Data level: firm-specific. Auto-suffix: _firm
+    date_handling:                       # Configuration for date processing
+      frequency: monthly                 # Assume data is monthly, align to month-end
+
+  - name: firm_chars
+    connector: local
+    path: data/firm_chars_2002_2021.csv  # Path to firm characteristics data
+    join_on: ["permno", "date"]          # Columns to join on
+    level: firm                          # Data level: firm-specific. Auto-suffix: _firm
+    is_primary_firm_base: true           # This is the main firm-level table to merge onto
+    date_handling:                       # Configuration for date processing
+      frequency: monthly                 # Assume data is monthly, align to month-end
+
+  - name: macro_data # Renamed from 'macro' for clarity in example
+    connector: local
+    path: data/wg_macro_2002_2021.csv   # Path to macroeconomic data
+    join_on: ["date"]                    # Column to join on
+    level: macro                         # Data level: macroeconomic. Auto-suffix: _macro
+    date_handling:                       # Configuration for date processing
+      frequency: monthly                 # Assume data is monthly, align to month-end
+
+transformations:
+  - type: clean_numeric                 # Transformation to convert columns to numeric type
+    columns: ["ret"]                    # User provides base name 'ret'. Code will find 'ret_firm' (assuming 'ret' is from a firm source)
+    action: "to_nan"
+
+  - type: one_hot                       # One-hot encode a categorical column
+    column: "sic2"                      # User provides base name 'sic2'. Code will find 'sic2_firm'
+    prefix: sic2_
+    drop_original: true
+
+  - type: grouped_fill_missing
+    method: median
+    group_by_column: date
+    # columns: ["ret", "beta"]           # User provides base names. Code finds 'ret_firm', 'beta_firm'
+    missing_threshold_warning: 0.7
+    missing_threshold_error: 0.8
+
+  - type: expand_cartesian
+    infer_suffix: true                  # Default is true, but explicit here for clarity
+    macro_columns: ["dp", "ep", "bm", "ntis", "tbl", "tms", "dfy", "svar"] # Base names
+    firm_columns: [                     # Base names
+        "mvel1", "beta", "betasq", "chmom", "dolvol", "idiovol", "indmom", "mom1m", 
+        "mom6m", "mom12m", "mom36m", "pricedelay", "turn", "absacc", "acc", "age", 
+        "agr", "bm", "bm_ia", "cashdebt", "cashpr", "cfp", "cfp_ia", "chatoia", 
+        "chcsho", "chempia", "chinv", "chpmia", "convind", "currat", "depr", "divi", 
+        "divo", "dy", "egr", "ep", "gma", "grcapx", "grltnoa", "herf", "hire", 
+        "invest", "lev", "lgr", "mve_ia", "operprof", "orgcap", "pchcapx_ia", 
+        "pchcurrat", "pchdepr", "pchgm_pchsale", "pchquick", "pchsale_pchinvt", 
+        "pchsale_pchrect", "pchsale_pchxsga", "pchsaleinv", "pctacc", "ps", "quick", 
+        "rd", "rd_mve", "rd_sale", "realestate", "roic", "salecash", "saleinv", 
+        "salerec", "secured", "securedind", "sgr", "sin", "sp", "tang", "tb", 
+        "aeavol", "cash", "chtx", "cinvest", "ear", "nincr", "roaq", "roavol", 
+        "roeq", "rsup", "stdacc", "stdcf", "ms", "baspread", "ill", "maxret", 
+        "retvol", "std_dolvol", "std_turn", "zerotrade"
+      ]
+  
+  # - type: lag
+  #   columns: ["tbl", "dp_x_mvel1"] # User provides base names for lag. Code finds 'tbl_macro', 'dp_macro_x_mvel1_firm'
+  #   periods: 1
+
+  - type: drop_columns
+    macro_columns: ["dp", "ep", "bm", "ntis", "tbl", "tms", "dfy", "svar"] # User provides base names. Code finds 'dp_macro', 'ep_macro', etc.
+  #   firm_columns: Example -> ["eb", "dc9"] # User provides base names. Code finds 'eb_firm', 'dc9_firm'
+  #   columns: Example -> ["permno", "bm_macro", "bm_firm"] # User can provide the full name
+
+output:
+  format: parquet

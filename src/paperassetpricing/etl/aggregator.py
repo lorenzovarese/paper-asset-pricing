@@ -350,7 +350,7 @@ class DataAggregator:
                     df[new_lag_col_name] = df[col_to_lag_actual].shift(tr.periods)
 
         elif isinstance(tr, CleanNumericConfig):
-            print(f"Applying 'clean_numeric' transformation.")
+            print("Applying 'clean_numeric' transformation.")
             for col_name_base in tr.columns:
                 actual_col = self._find_actual_column_name(
                     df,

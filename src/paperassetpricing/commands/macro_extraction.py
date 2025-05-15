@@ -8,7 +8,6 @@ The link was last checked on 2024-05-10 from Amit Goyal's website: https://sites
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Dict
 import math
 import re

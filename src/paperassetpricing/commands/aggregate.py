@@ -1,7 +1,6 @@
 from pathlib import Path
 import typer
 import yaml
-import pandas as pd
 
 from paperassetpricing.etl.schema import AggregationConfig
 from paperassetpricing.etl.aggregator import DataAggregator

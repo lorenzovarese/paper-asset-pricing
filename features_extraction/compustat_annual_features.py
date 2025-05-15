@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-import wrds
+import wrds  # type: ignore
 
 
 def load_and_filter_initial_data(comp_company_df, comp_funda_df):
@@ -1114,7 +1114,7 @@ if __name__ == "__main__":
     wrds_conn = open_wrds_connection()
 
     initial_df_from_wrds = None
-    comp_adsprate_df = None
+    # comp_adsprate_df = None
 
     if wrds_conn:
         try:

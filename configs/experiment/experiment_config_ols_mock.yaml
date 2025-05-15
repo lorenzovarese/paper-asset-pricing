@@ -1,0 +1,16 @@
+dataset:
+  path: "data/out_mock.parquet"
+  date_column: "date"
+  id_column: "permno"
+
+model:
+  name: "ols" # matches @register_model("ols")
+  target: "ret_firm"
+  params: {} # any LinearRegression kwargs
+  output_path: "models/ols.joblib"
+
+evaluation:
+  train_years: 2
+  val_years: 1
+  test_years: 1
+  roll_years: 1

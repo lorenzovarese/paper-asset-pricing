@@ -16,6 +16,10 @@ class BaseModel(abc.ABC):
 
     def save(self, path: Path) -> None:
         """
-        Persist the fitted model to disk.
+        Persist the fitted model to disk, creating parent directories if needed.
         """
+        path = Path(path)
+        if path.parent:
+            path.parent.mkdir(parents=True, exist_ok=True)
+
         joblib.dump(self, path)

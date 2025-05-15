@@ -23,7 +23,7 @@ def experiment(
     1. Load pre-aggregated dataset lazily (Parquet) or eagerly (CSV)
     2. Instantiate & fit a registered model
     3. Rolling-forward evaluation, only loading each window
-    4. Save the final trained model
+    4. Save the final trained model and a CSV of windowed metrics
     """
     exp = yaml.safe_load(config.read_text(encoding="utf-8"))
     ds_conf = exp["dataset"]
@@ -35,7 +35,6 @@ def experiment(
     is_parquet = data_path.suffix.lower() in {".parquet", ".pq"}
     if is_parquet:
         ds = pl.scan_parquet(data_path)
-        # compute overall min/max dates without loading full data
         stats = ds.select(
             [
                 pl.col(date_col).min().alias("start"),
@@ -67,24 +66,22 @@ def experiment(
 
     # --- rolling-forward parameters ---
     ev = exp["evaluation"]
-    t_years, v_years, test_years, roll_years = (
-        ev["train_years"],
-        ev["val_years"],
-        ev["test_years"],
-        ev["roll_years"],
-    )
+    t_years = ev["train_years"]
+    v_years = ev["val_years"]
+    test_years = ev["test_years"]
+    roll_years = ev["roll_years"]
 
-    # --- loop over windows, but only load each slice into pandas ---
+    # --- loop over windows & collect metrics ---
+    results = []
     start = window_start
     while True:
         train_end = start + pd.DateOffset(years=t_years) - pd.Timedelta(days=1)
         test_end = train_end + pd.DateOffset(years=v_years + test_years)
-
         if test_end > window_end:
             break
 
+        # load only this window
         if is_parquet:
-            # Polars lazy filter + collect
             train_pl = (
                 ds.filter(pl.col(date_col).is_between(start, train_end, closed="both"))
                 .select([*features, target])
@@ -109,7 +106,6 @@ def experiment(
             test_df = df_all.loc[mask_te, features + [target]]
             del df_all
 
-        # prepare arrays, fit, predict, evaluate
         X_train, y_train = train_df[features].values, train_df[target].values
         X_test, y_test = test_df[features].values, test_df[target].values
 
@@ -122,9 +118,25 @@ def experiment(
             f"Window {start.date()}→{test_end.date()}: MSE={mse:.4f}, R²={r2:.4f}"
         )
 
+        results.append(
+            {
+                "train_start": start.date(),
+                "train_end": train_end.date(),
+                "test_end": test_end.date(),
+                "mse": mse,
+                "r2": r2,
+            }
+        )
+
         start = start + pd.DateOffset(years=roll_years)
 
     # --- save final model ---
-    out = Path(exp["model"]["output_path"])
-    model.save(out)
-    typer.secho(f"✅ Final model saved to {out}", fg=typer.colors.GREEN)
+    model_path = Path(exp["model"]["output_path"])
+    model.save(model_path)
+    typer.secho(f"✅ Final model saved to {model_path}", fg=typer.colors.GREEN)
+
+    # --- save metrics to CSV ---
+    results_df = pd.DataFrame(results)
+    csv_path = model_path.parent / f"{model_path.stem}_results.csv"
+    results_df.to_csv(csv_path, index=False)
+    typer.secho(f"✅ Experiment results written to {csv_path}", fg=typer.colors.GREEN)

@@ -14,6 +14,8 @@ from paperassetpricing.connectors.local.local_loader import (
     _standardize_columns,
 )
 
+from paperassetpricing.helpers.date_utils import parse_and_normalize_date
+
 from paperassetpricing.etl.schema import (
     AggregationConfig,
     SourceConfig,
@@ -643,17 +645,10 @@ class DataAggregator:
             )
             if "date" not in df.columns:
                 raise ValueError("cut_by_date: no 'date' column in DataFrame.")
-            # parse and align to month-end if possible
-            start = pd.to_datetime(tr.start_date)
-            end = pd.to_datetime(tr.end_date) if tr.end_date else start
-            try:
-                # if data are monthly, align to month-end
-                start = start.to_period("M").to_timestamp(how="end").normalize()
-                end = end.to_period("M").to_timestamp(how="end").normalize()
-            except Exception:
-                # fallback for daily data
-                start = start.normalize()
-                end = end.normalize()
+            # parse & align both endpoints to month-end (then midnight)
+            start = parse_and_normalize_date(tr.start_date, align_to="monthly")
+            end_date = tr.end_date or tr.start_date
+            end = parse_and_normalize_date(end_date, align_to="monthly")
 
             overall_min = df["date"].min()
             overall_max = df["date"].max()

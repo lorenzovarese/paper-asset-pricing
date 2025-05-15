@@ -5,6 +5,7 @@ import typer
 import pandas as pd
 import polars as pl
 
+from paperassetpricing.helpers.date_utils import parse_and_normalize_date
 from paperassetpricing.models import get_model
 from paperassetpricing.metrics import mean_squared_error, r2_score
 
@@ -23,11 +24,18 @@ def prepare_data_source(data_path: Path, date_col: str):
                 pl.col(date_col).max().alias("end"),
             ]
         ).collect()
-        return True, ds, stats["start"][0], stats["end"][0], list(ds.schema.keys())
+        raw_start, raw_end = stats["start"][0], stats["end"][0]
+        start = parse_and_normalize_date(raw_start, align_to="monthly")
+        end = parse_and_normalize_date(raw_end, align_to="monthly")
+        return True, ds, start, end, list(ds.schema.keys())
     else:
         df = pd.read_csv(data_path, parse_dates=[date_col])
+        # align column itself
         df[date_col] = pd.to_datetime(df[date_col])
-        return False, None, df[date_col].min(), df[date_col].max(), df.columns.tolist()
+        raw_start, raw_end = df[date_col].min(), df[date_col].max()
+        start = parse_and_normalize_date(raw_start, align_to="monthly")
+        end = parse_and_normalize_date(raw_end, align_to="monthly")
+        return False, None, start, end, df.columns.tolist()
 
 
 def get_features_and_target(cfg: dict, all_cols: list[str]):

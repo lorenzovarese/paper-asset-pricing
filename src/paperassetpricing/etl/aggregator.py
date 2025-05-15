@@ -14,6 +14,8 @@ from paperassetpricing.connectors.local.local_loader import (
     _standardize_columns,
 )
 
+from paperassetpricing.helpers.date_utils import parse_and_normalize_date
+
 from paperassetpricing.etl.schema import (
     AggregationConfig,
     SourceConfig,
@@ -24,6 +26,7 @@ from paperassetpricing.etl.schema import (
     GroupedFillMissingConfig,
     ExpandCartesianConfig,
     DropColumnsConfig,
+    CutByDateConfig,
 )
 
 
@@ -636,7 +639,29 @@ class DataAggregator:
                 print(
                     "  No columns identified for dropping by 'drop_columns' transformation."
                 )
+        elif isinstance(tr, CutByDateConfig):
+            print(
+                f"Applying 'cut_by_date' from {tr.start_date} to {tr.end_date or tr.start_date}"
+            )
+            if "date" not in df.columns:
+                raise ValueError("cut_by_date: no 'date' column in DataFrame.")
+            # parse & align both endpoints to month-end (then midnight)
+            start = parse_and_normalize_date(tr.start_date, align_to="monthly")
+            end_date = tr.end_date or tr.start_date
+            end = parse_and_normalize_date(end_date, align_to="monthly")
 
+            overall_min = df["date"].min()
+            overall_max = df["date"].max()
+            if start < overall_min or end > overall_max:
+                raise ValueError(
+                    f"cut_by_date: requested range {start.date()}–{end.date()} "
+                    f"outside data span {overall_min.date()}–{overall_max.date()}."
+                )
+
+            before_n = len(df)
+            df = df[(df["date"] >= start) & (df["date"] <= end)].copy()
+            after_n = len(df)
+            print(f"  Rows filtered: {before_n} → {after_n}")
         return df
 
     @staticmethod

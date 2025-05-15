@@ -2,7 +2,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Literal, Optional, Sequence, Union
 
-from pydantic import BaseModel, Field, root_validator, validator
+from datetime import date
+from pydantic import BaseModel, Field, root_validator, validator, model_validator
 
 
 class DateHandlingConfig(BaseModel):
@@ -122,6 +123,22 @@ class DropColumnsConfig(BaseModel):
         return values
 
 
+class CutByDateConfig(BaseModel):
+    type: Literal["cut_by_date"]
+    start_date: date
+    end_date: Optional[date] = None
+
+    @model_validator(mode="after")
+    def check_date_order(self) -> "CutByDateConfig":
+        # if end_date is missing, treat it as start_date
+        end = self.end_date or self.start_date
+        if end < self.start_date:
+            raise ValueError(
+                f"`end_date` ({end!r}) must be on or after `start_date` ({self.start_date!r})."
+            )
+        return self
+
+
 TransformationConfig = Union[
     OneHotConfig,
     LagConfig,
@@ -129,6 +146,7 @@ TransformationConfig = Union[
     GroupedFillMissingConfig,
     ExpandCartesianConfig,
     DropColumnsConfig,
+    CutByDateConfig,
 ]
 
 

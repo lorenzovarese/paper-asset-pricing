@@ -1,0 +1,58 @@
+#
+# This is a mock configuration file for testing purposes.
+# Run with: 
+#   paper aggregate \
+#   -c configs/aggregate/aggregate_config_mock.yaml \
+#   -o data/out_mock.parquet
+sources:
+- name: crsp_returns
+  connector: local
+  path: data/test/ret.csv
+  join_on: [ "permno", "date" ]
+  level: firm
+  date_handling:
+    frequency: monthly
+
+- name: firm_"chars"
+  connector: local
+  path: data/test/firm.csv
+  join_on: [ "permno", "date" ]
+  level: firm
+  is_primary_firm_base: true
+  date_handling:
+    frequency: monthly
+
+- name: macro_data
+  connector: local
+  path: data/test/macro.csv
+  join_on: [ "date" ]
+  level: macro
+  date_handling:
+    frequency: monthly
+
+transformations:
+- type: clean_numeric
+  columns: [ "ret" ]
+  action: "to_nan"
+
+- type: one_hot
+  column: "sic2"
+  prefix: sic2_
+  drop_original: true
+
+- type: grouped_fill_missing
+  method: median
+  group_by_column: date
+  missing_threshold_warning: 0.7
+  missing_threshold_error: 0.8
+
+- type: expand_cartesian
+  infer_suffix: true
+  macro_columns: [ "dp", "ep", "bm", "ntis", "tbl", "tms", "dfy", "identical_name" ]
+  firm_columns: [ "char1", "char2", "char3", "char4", "char5", "char6", "identical_name" ]
+
+- type: drop_columns
+  macro_columns: [ "dp", "ep", "bm", "ntis", "tbl", "tms", "dfy", "identical_name" ]
+
+output:
+  format: parquet

@@ -3,7 +3,6 @@ import yaml
 from pathlib import Path
 import pandas as pd
 import numpy as np
-import polars as pl
 from typer import BadParameter
 
 from paperassetpricing.commands.experiment import (

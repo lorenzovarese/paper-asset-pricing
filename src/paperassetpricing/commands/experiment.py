@@ -31,8 +31,28 @@ def prepare_data_source(data_path: Path, date_col: str):
 
 
 def get_features_and_target(cfg: dict, all_cols: list[str]):
-    target = cfg["model"]["target"]
-    exclude = set(cfg["model"].get("exclude", [])) | {
+    """
+    If cfg['model']['include_features'] is present, use exactly those columns.
+    Otherwise use every column in `all_cols` except:
+      - the `target`
+      - the dataset id_column
+      - the dataset date_column
+    """
+    mconf = cfg["model"]
+    target = mconf["target"]
+
+    include = mconf.get("include_features")
+    if include:
+        # sanity check
+        missing = set(include) - set(all_cols)
+        if missing:
+            raise typer.BadParameter(
+                f"include_features not found in dataset: {missing}. \n\nThe available columns are: {all_cols}"
+            )
+        return include, target
+
+    # default: every column except the identifiers+target
+    exclude = {
         target,
         cfg["dataset"].get("id_column", "permno"),
         cfg["dataset"].get("date_column", "date"),

@@ -1,0 +1,21 @@
+# configs/train_config_ols3.yaml
+data:
+  path: "data/expanded_2002_2021.parquet" # Path to your aggregated data
+  target_column: "ret_firm"             # Ensure this is r_i,t+1
+  id_columns: ["permno", "date"]          # Columns to exclude if 'feature_columns' is not set
+
+model:
+  name: "OLS-3"
+  params:
+    # These MUST be the exact column names present in your aggregated data after suffixing
+    # Adjust these based on your actual aggregated column names for size, B/M, and momentum
+    feature_names: ["mvel1_firm", "bm_firm", "mom1m_firm"]
+    fit_intercept: True
+
+evaluation:
+  # Parameters for Rolling-Forward Validation
+  # As per the paper: 7 years training, 2 years validation, 2 years testing, roll by 2 years.
+  train_years: 7
+  val_years: 2   # Validation set for potential hyperparameter tuning (not used by OLS-3 directly)
+  test_years: 2
+  roll_years: 2  # How many years to slide the window forward

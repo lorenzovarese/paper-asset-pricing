@@ -263,7 +263,7 @@ def init(
             f"  2. Place raw data in '{DATA_DIR_NAME}/raw/'.", fg=typer.colors.CYAN
         )
         typer.secho(
-            "  3. Run phases using `paper execute <phase>` (Note: command changed from `paper-tools` to `paper`).",
+            "  3. Run phases using `paper execute <phase>`.",
             fg=typer.colors.CYAN,
         )
 

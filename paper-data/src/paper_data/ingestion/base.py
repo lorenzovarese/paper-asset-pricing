@@ -27,5 +27,5 @@ class DataConnector(ABC):
         return self.get_data().lazy()
 
 
-# Backwards-compatibility alias.
+# Backwards-compatibility alias. # TODO: remove when we update other connectors supporting this.
 BaseConnector = DataConnector

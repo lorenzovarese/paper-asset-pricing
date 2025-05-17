@@ -14,10 +14,10 @@ import pandas as pd
 import polars as pl
 import wrds  # type: ignore[import-untyped]
 
-from .base import BaseConnector
+from . import DataConnector
 
 
-class WRDSConnector(BaseConnector):
+class WRDSConnector(DataConnector):
     """
     Connector for the Wharton Research Data Services (WRDS) platform.
     Requires `wrds` package and valid credentials.

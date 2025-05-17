@@ -8,10 +8,10 @@ from __future__ import annotations
 import polars as pl
 from datasets import Dataset, DatasetDict, load_dataset  # type: ignore[import-untyped]
 
-from .base import BaseConnector
+from .base import DataConnector
 
 
-class HuggingFaceConnector(BaseConnector):
+class HuggingFaceConnector(DataConnector):
     """
     Connector for datasets hosted on the Hugging Face Hub.
     Requires `datasets>=2.0`.

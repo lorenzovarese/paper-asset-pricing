@@ -12,7 +12,7 @@ import requests
 import polars as pl
 
 
-from .base import BaseConnector
+from .base import DataConnector
 
 
 _DRIVE_FILE_ID_RE = re.compile(r"(?:file/d/|id=)([a-zA-Z0-9_-]{10,})")
@@ -25,7 +25,7 @@ def _extract_file_id(url: str) -> str:
     return m.group(1)
 
 
-class GoogleDriveConnector(BaseConnector):
+class GoogleDriveConnector(DataConnector):
     """
     Connector that downloads a file shared via a Google Drive link.
     """

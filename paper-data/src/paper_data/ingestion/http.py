@@ -10,10 +10,10 @@ import polars as pl
 from tqdm import tqdm  # type: ignore[import-untyped]
 from urllib.parse import urlparse, parse_qs
 
-from .base import BaseConnector
+from .base import DataConnector
 
 
-class HTTPConnector(BaseConnector):
+class HTTPConnector(DataConnector):
     """
     Connector that downloads a file from any HTTP/HTTPS URL and loads it
     as a pandas DataFrame (CSV or Parquet) using LocalConnector.

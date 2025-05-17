@@ -25,7 +25,7 @@ np.random.seed(SEED)
 
 def main():
     # Generate month-end dates (inclusive of END_DATE)
-    dates = pd.date_range(end=END_DATE, periods=N_MONTHS, freq="M")
+    dates = pd.date_range(end=END_DATE, periods=N_MONTHS, freq="ME")
 
     # Assemble observations
     records = []
@@ -42,6 +42,8 @@ def main():
         columns=["date", "permco", "return", "volume", "marketcap"],
         dtype=object,  # keep numeric precision; 'date' remains datetime64
     )
+
+    df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y%m%d")
 
     # Persist to disk
     df.to_csv(CSV_OUT, index=False)

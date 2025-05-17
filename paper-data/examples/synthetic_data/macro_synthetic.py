@@ -22,7 +22,7 @@ np.random.seed(SEED)
 
 def main():
     # Generate month-end dates
-    dates = pd.date_range(end=END_DATE, periods=N_MONTHS, freq="M")
+    dates = pd.date_range(end=END_DATE, periods=N_MONTHS, freq="ME")
 
     # Draw synthetic macro indicators
     macroindicator1 = np.random.uniform(0.01, 0.40, size=N_MONTHS)
@@ -36,6 +36,8 @@ def main():
             "macroindicator2": macroindicator2,
         }
     )
+
+    df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y%m%d")
 
     # Persist to disk
     df.to_csv(CSV_OUT, index=False)

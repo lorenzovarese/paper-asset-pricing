@@ -1116,6 +1116,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/4d/ec550fbb5fe09a7c0a93a3f9b2d87446f728c1ef052f786b195eb4620def/pandera-0.24.0-py3-none-any.whl", hash = "sha256:3b7de575b43a4aa03a1561802be4ee0c7471e49153684fe327f7bbea0724b02b", size = 267092 },
 ]
 
+[package.optional-dependencies]
+polars = [
+    { name = "polars" },
+]
+
 [[package]]
 name = "paper-data"
 version = "0.1.0"
@@ -1123,7 +1128,7 @@ source = { editable = "paper-data" }
 dependencies = [
     { name = "datasets" },
     { name = "pandas" },
-    { name = "pandera" },
+    { name = "pandera", extra = ["polars"] },
     { name = "polars" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -1144,7 +1149,7 @@ dev = [
 requires-dist = [
     { name = "datasets", specifier = ">=3.6.0" },
     { name = "pandas", specifier = ">=2.2.3" },
-    { name = "pandera", specifier = ">=0.24.0" },
+    { name = "pandera", extras = ["polars"], specifier = ">=0.24.0" },
     { name = "polars", specifier = ">=1.30.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.32.3" },

@@ -9,5 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Directory used to simulate a user folder for downloading data and storing intermediate files
-PAPER
+# Directory used to simulate a paper projects and store temporary files
+tmp
+!tmp/.gitkeep

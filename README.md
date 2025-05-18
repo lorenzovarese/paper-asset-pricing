@@ -1,45 +1,86 @@
 # paper-asset-pricing: P.A.P.E.R.
 Platform for Asset Pricing Experiment and Research
 
+## Overview
+
+**paper-asset-pricing** (P.A.P.E.R.) is a Typer-based command-line application for systematically running rolling-window asset-pricing experiments, constructing long-short portfolios, and evaluating their performance.  It integrates:
+
+* **Data loading** via CSV or Parquet (local or WRDS connectors)
+* **Model training** with a unified `BaseModel` interface (OLS, Ridge, Lasso, XGBoost, Neural Nets, etc.)
+* **Rolling-window evaluation** (train → validation → test) using standard metrics (MSE, out-of-sample R², adjusted R²)
+* **Portfolio backtesting** month-by-month (e.g. 90th/10th quantile long-short, value- or equally-weighted)
+* **Performance reporting** (annualized return, volatility, Sharpe, max drawdown)
+* **Optional W\&B logging** and a `--verbose` mode for detailed output
+
+Once installed, all commands are exposed under the `paper` entry point.
+
+## CLI
+
 ```bash
-.
-├── data/                               # raw or parquet asset-pricing data
-├── configs/                            # YAML specs for each workflow
-│   ├── aggregate/                      # aggregate-dataset configurations
-│   ├── experiment/                     # experiment (train/val/test) configs
-│   └── portfolio/                      # portfolio backtest configs (VAL90, VAL95…)
-├── LICENSE
-├── pyproject.toml                      # project metadata & dependencies
-├── README.md
-├── ruff.toml
-├── src/paperassetpricing/              # core library
-│   ├── cli.py                          # entry-point (Typer)
-│   ├── commands/                       # CLI commands
-│   │   ├── aggregate.py
-│   │   ├── experiment.py               # run rolling-window experiments
-│   │   ├── generate_mock_data.py
-│   │   ├── macro_extraction.py
-│   │   ├── portfolio.py                # portfolio backtest command
-│   │   └── split_dataset_by_date.py
-│   ├── connectors/                     # data loaders (local CSV, WRDS…)
-│   ├── etl/                            # aggregation pipelines & schemas
-│   ├── helpers/                        # utilities (date alignment, etc.)
-│   ├── metrics/                        # regression & portfolio metrics
-│   ├── models/                         # modeling interfaces & implementations
-│   │   ├── base_model.py
-│   │   ├── linear_model.py
-│   │   ├── neural_network_model.py     # your new NN with ReLU
-│   │   └── model_registry.py
-│   ├── pipelines/                      # custom DAGs or Prefect flows
-│   ├── portfolios/                     # backtest & performance code
-│   │   └── performance.py
-│   └── settings.py
-├── tests/                              # pytest suites for each module
-│   ├── test_aggregator.py
-│   ├── test_experiment.py
-│   └── test_portfolio.py
-└── uv.lock                             # lockfile for reproducible builds
+# show global help
+paper --help
+
+# aggregate: build a panel dataset from raw files
+paper aggregate \
+  -c configs/aggregate/aggregate_config.yaml -out data/out.parquet
+
+# experiment: train & evaluate a model over rolling windows
+paper experiment \
+  -c configs/experiment/experiment_config.yaml \
+  [-v|--verbose] [--wandb]
+
+# portfolio: backtest long-short portfolios using experiment logic
+paper portfolio \
+  -e configs/experiment/experiment_config.yaml \
+  -p configs/portfolio/portfolio_config_VAL90.yaml \
+  [-v|--verbose] [--wandb]
+
 ```
+
+## Examples
+
+### 1. Run an OLS experiment
+
+```bash
+paper experiment \
+  -c configs/experiment/experiment_config_ols.yaml
+```
+
+This will:
+
+1. Load `data/expanded_2002_2021_drop.parquet`.
+2. Train a 7-year OLS model, validate 2 years, test 2 years, rolling forward 2-year increments.
+3. Output `models/ols.joblib` and `models/ols_results.csv` with MSE, R²\_oos, R²\_adj\_oos for each window.
+
+### 2. Backtest a 90% long-short portfolio
+
+```bash
+paper portfolio \
+  -e configs/experiment/experiment_config_ols.yaml \
+  -p configs/portfolio/portfolio_config_VAL90.yaml
+```
+
+This will:
+
+* Use the same rolling windows as above
+* For each month in each test window, sort stocks by predicted return, go long top 10% and short bottom 10%, value-weight by `bm_ratio`
+* Save `portfolios/results/portfolio_monthly_returns.csv`, `portfolio_performance.csv`, and `cumulative_returns.png`.
+
+### 3. Train a ReLU-NN with verbose logging and W\&B
+
+```bash
+paper experiment \
+  -c configs/experiment/experiment_config_NN_RELU.yaml \
+  -v --wandb
+```
+
+* Prints per-epoch training loss (`-v`)
+* Streams window-by-window metrics to your Weights & Biases project (`--wandb`).
+
+---
+
+Feel free to explore the other commands via `paper <command> --help`.
+
 
 # Data
 
@@ -116,9 +157,44 @@ As noted above, the authors extracted all firm characteristics themselves, but t
 
    * Use the platform to merge this data with the firm characteristics dataset. See the implementation details in [local_loader.py](connectors/local/local_loader.py) if needed but a configuration file will be supported.
 
-# Troubleshooting
+# Project Structure
 
-Mock data generation available in the [scripts](scripts) folder:
 ```bash
-uv run python -m scripts.generate_mock_data
+.
+├── data/                               # raw or parquet asset-pricing data
+├── configs/                            # YAML specs for each workflow
+│   ├── aggregate/                      # aggregate-dataset configurations
+│   ├── experiment/                     # experiment (train/val/test) configs
+│   └── portfolio/                      # portfolio backtest configs (VAL90, VAL95…)
+├── LICENSE
+├── pyproject.toml                      # project metadata & dependencies
+├── README.md
+├── ruff.toml
+├── src/paperassetpricing/              # core library
+│   ├── cli.py                          # entry-point (Typer)
+│   ├── commands/                       # CLI commands
+│   │   ├── aggregate.py
+│   │   ├── experiment.py               # run rolling-window experiments
+│   │   ├── generate_mock_data.py
+│   │   ├── macro_extraction.py
+│   │   ├── portfolio.py                # portfolio backtest command
+│   │   └── split_dataset_by_date.py
+│   ├── connectors/                     # data loaders (local CSV, WRDS…)
+│   ├── etl/                            # aggregation pipelines & schemas
+│   ├── helpers/                        # utilities (date alignment, etc.)
+│   ├── metrics/                        # regression & portfolio metrics
+│   ├── models/                         # modeling interfaces & implementations
+│   │   ├── base_model.py
+│   │   ├── linear_model.py
+│   │   ├── neural_network_model.py     # your new NN with ReLU
+│   │   └── model_registry.py
+│   ├── pipelines/                      # custom DAGs or Prefect flows
+│   ├── portfolios/                     # backtest & performance code
+│   │   └── performance.py
+│   └── settings.py
+├── tests/                              # pytest suites for each module
+│   ├── test_aggregator.py
+│   ├── test_experiment.py
+│   └── test_portfolio.py
+└── uv.lock                             # lockfile for reproducible builds
 ```

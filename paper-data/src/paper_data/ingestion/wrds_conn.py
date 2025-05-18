@@ -8,7 +8,6 @@ By default uses the WRDS CLI credentials in ~/.pgpass or ~/.wrds.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any
 import os
 import pandas as pd
 import polars as pl

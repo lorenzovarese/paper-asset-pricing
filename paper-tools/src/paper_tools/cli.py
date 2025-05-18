@@ -457,7 +457,7 @@ def execute_data_phase(
             f"Data phase completed successfully. Additional information in '{project_root / log_file_name}'",
             fg=typer.colors.GREEN,
         )
-        logger.info(f"Data phase completed successfully.")
+        logger.info("Data phase completed successfully.")
         for name, df in processed_datasets.items():
             logger.info(f"  Final processed dataset '{name}' shape: {df.shape}")
 

@@ -7,7 +7,7 @@ import polars as pl
 
 from paperassetpricing.helpers.date_utils import parse_and_normalize_date
 from paperassetpricing.models import get_model
-from paperassetpricing.metrics import mean_squared_error, r2_score
+from paperassetpricing.metrics import mean_squared_error, r2_out_of_sample
 
 
 def load_config(path: Path) -> dict:
@@ -119,7 +119,7 @@ def evaluate_window(model, train_df, test_df, features, target):
     X_te, y_te = test_df[features].values, test_df[target].values
     model.fit(X_tr, y_tr)
     y_pred = model.predict(X_te)
-    return mean_squared_error(y_te, y_pred), r2_score(y_te, y_pred)
+    return mean_squared_error(y_te, y_pred), r2_out_of_sample(y_te, y_pred)
 
 
 def save_model_and_metrics(model, results: list[dict], model_path: Path):

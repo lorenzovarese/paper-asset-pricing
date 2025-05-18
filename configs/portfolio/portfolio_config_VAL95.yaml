@@ -1,0 +1,10 @@
+portfolio:
+  signal_column: "model_prediction"
+  return_column: "ret_firm"
+  weight_mode: "value" # or "equal"
+  weight_column: "bm_firm" # ← use the book‐to‐market ratio as portfolio weights
+  long_lower_quantile: 0.90
+  long_upper_quantile: 0.95
+  short_lower_quantile: 0.05
+  short_upper_quantile: 0.10
+  output_path: "portfolio_results/resultsVAL95"

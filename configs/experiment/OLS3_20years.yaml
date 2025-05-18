@@ -1,0 +1,20 @@
+dataset:
+  path: "data/expanded_2002_2021_drop.parquet"
+  date_column: "date"
+  id_column: "permno"
+
+model:
+  name: "ols"
+  target: "ret_firm"
+  include_features:
+  - "bm_firm"
+  - "mvel1_firm"
+  - "mom12m_firm"
+  params: {}
+  output_path: "models/ols.joblib"
+
+evaluation:
+  train_years: 7
+  val_years: 2
+  test_years: 2
+  roll_years: 2

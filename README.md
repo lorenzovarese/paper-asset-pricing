@@ -1,90 +1,121 @@
-# P.A.P.E.R Monorepo
+# P.A.P.E.R: Platform for Asset Pricing Experimentation and Research 📈🔬
 
-This repository contains all components of the P.A.P.E.R (Project for Asset Pricing, Evaluation, and Research) framework:
+Welcome to **P.A.P.E.R** (Platform for Asset Pricing Experimentation and Research)! This monorepo is a comprehensive suite of tools designed to streamline the entire workflow of quantitative asset pricing research, from raw data ingestion to portfolio construction and performance analysis.
 
-- **paper-tools**: Orchestrator CLI to initialize and run project phases.
-- **paper-data**: Data ingestion, validation, and preprocessing tools.
-- **paper-model**: Modeling utilities (stub).
-- **paper-portfolio**: Portfolio analysis utilities (stub).
-- **paper-data**, **paper-model**, and **paper-portfolio** each include:
-  - `src/` package code
-  - `tests/` for unit tests
-- Top-level files:
-  - `pyproject.toml` – workspace configuration
-  - `pytest.ini`, `ruff.toml` – linting and testing settings
-  - `test.py` – quick smoke test
+Our goal is to provide a modular, reproducible, and efficient framework for academics and practitioners to conduct rigorous asset pricing studies.
 
-## Getting Started
+---
 
-1. **Install all components**  
-```bash
-   pip install .[all]
-````
+## 🌳 Monorepo Structure
 
-2. **Initialize a new research project**
-
-```bash
-   paper init <ProjectName>
-   cd <ProjectName>
-```
-
-3. **Configure components**
-
-   * Edit `configs/paper-project.yaml`
-   * Provide data, models, portfolio configs under `configs/`
-
-4. **Run project phases**
-
-```bash
-   paper execute data
-   paper execute models
-   paper execute portfolio
-```
-
-## Repository Layout
+This repository is organized as a monorepo, housing several interconnected Python packages. This structure allows for cohesive development, shared tooling, and easy management of inter-package dependencies, while still enabling independent deployment and installation of individual components.
 
 ```
 .
-├── paper-tools/         # CLI orchestrator
-├── paper-data/          # Data ingestion & preprocessing
-├── paper-model/         # Modeling library
-├── paper-portfolio/     # Portfolio analysis library
-├── pyproject.toml       # Monorepo build & dependency specs
-├── pytest.ini
-├── ruff.toml
-└── README.md            # ← this file
+├── LICENSE
+├── paper-data/             # 📊 Data Ingestion & Preprocessing
+├── paper-model/            # 🧠 Model Implementation & Evaluation
+├── paper-portfolio/        # 💰 Portfolio Construction & Analysis
+├── paper-tools/            # 🚀 CLI & Orchestration
+├── pyproject.toml          # uv workspace configuration
+└── README.md               # You are here!
 ```
 
-## Testing
+### Core Components:
 
-Run all tests across subpackages:
+*   **`paper-tools`**: The central command-line interface (CLI) and orchestrator for the entire P.A.P.E.R platform. It handles project initialization, manages configurations, and executes various research phases (data, models, portfolio).
+    *   **Key Features:** Project scaffolding, phase execution (`paper execute data/models/portfolio`), centralized logging.
+    *   **Learn More:** See [`paper-tools/README.md`](./paper-tools/README.md)
+*   **`paper-data`**: Dedicated to data ingestion, cleaning, and preprocessing. It provides a flexible, configuration-driven pipeline to transform raw financial and economic data into clean, analysis-ready datasets.
+    *   **Key Features:** Connectors for local files, HTTP, Google Drive, Hugging Face, WRDS; monthly imputation, scaling, merging, lagging, interaction terms.
+    *   **Learn More:** See [`paper-data/README.md`](./paper-data/README.md)
+*   **`paper-model`**: (Under Development) This module will focus on the implementation of various asset pricing models. Its primary goal will be to generate model evaluations and checkpoints for subsequent portfolio construction.
+    *   **Key Features (Planned):** Factor model estimation, machine learning models for return prediction, model evaluation metrics.
+*   **`paper-portfolio`**: (Under Development) A lightweight module designed to utilize the processed data from `paper-data` and model outputs from `paper-model` to construct long-short portfolios and visualize their cross-sectional performance.
+    *   **Key Features (Planned):** Portfolio sorting, performance attribution, characteristic-managed portfolios.
+
+---
+
+## 🚀 Getting Started
+
+To get started with P.A.P.E.R, we recommend using `uv` for dependency management within the monorepo.
+
+### 1. Clone the Repository
 
 ```bash
-pytest
+git clone https://github.com/your-username/paper-asset-pricing.git
+cd paper-asset-pricing
 ```
 
-## Publishing Workflow
+### 2. Set up the `uv` Environment
 
-1.  **Ensure LICENSE files:** Place a `LICENSE` file in each of the sub-project directories (`paper-data/LICENSE`, `paper-model/LICENSE`, etc.).
-2.  **Build each package:**
-    *   `cd paper-data && uv build` (or `python -m build`)
-    *   `cd ../paper-model && uv build`
-    *   `cd ../paper-portfolio && uv build`
-    *   `cd ../paper-tools && uv build`
-    Each command will create `.whl` and `.tar.gz` files in its respective `dist/` directory.
-3.  **Publish to PyPI (order matters for dependencies):**
-    *   Use `twine` for uploading. First time, you might want to use TestPyPI.
-    *   `twine upload paper-data/dist/*`
-    *   `twine upload paper-model/dist/*`
-    *   `twine upload paper-portfolio/dist/*` (depends on paper-data, paper-model)
-    *   `twine upload paper-tools/dist/*` (depends on the others via extras)
+`uv` is used to manage the monorepo's dependencies efficiently. Ensure you have `uv` installed (e.g., `pip install uv`).
 
-This setup allows users to:
+```bash
+# Install all dependencies for the entire monorepo, including optional ones
+uv pip install -e ".[all]"
 
-*   `pip install paper-tools` (installs the minimal suite package)
-*   `pip install paper-tools[data]` (installs `paper-tools` and `paper-data`, making `paper-data` CLI available)
-*   `pip install paper-tools[models]` (installs `paper-tools` and `paper-model`, making its CLI available)
-*   `pip install paper-tools[portfolio]` (installs `paper-tools` and `paper-portfolio`, which in turn pulls `paper-data` and `paper-model`. `paper-portfolio`'s CLI becomes available).
-*   `pip install paper-data` (installs just the data tools)
+# This command will:
+# - Install all core dependencies defined in the root pyproject.toml.
+# - Install all packages in editable mode (`-e .`) within the workspace.
+# - Install all optional dependencies (e.g., paper-data's dependencies) via `[all]`.
+```
 
-This structure is robust and scalable for the project. Remember to manage version numbers carefully, especially in the dependency specifications (e.g., `paper-data~=0.1.0`).
+### 3. Initialize Your First Project
+
+Use the `paper-tools` CLI to create a new research project with a standardized directory structure. Let's call our first project `ThesisExample`:
+
+```bash
+paper init ThesisExample
+```
+
+This command will create a new directory `ThesisExample/` with all the necessary subdirectories (`configs/`, `data/`, `models/`, `portfolios/`) and placeholder configuration files.
+
+### 4. Prepare Your Data
+
+Place your raw data files (e.g., CSVs, Parquet) into the `ThesisExample/data/raw/` directory.
+
+Next, edit the `ThesisExample/configs/data-config.yaml` file to define how `paper-data` should ingest, wrangle, and export your data. Refer to the [`paper-data/README.md`](./paper-data/README.md) for detailed configuration options and examples.
+
+### 5. Run the Data Processing Pipeline
+
+Once your `data-config.yaml` is set up and raw data is in place, you can execute the data processing phase:
+
+```bash
+# Navigate into your project directory
+cd ThesisExample
+
+# Execute the data phase
+paper execute data
+```
+
+**What to Expect:**
+*   The console output will be minimal, indicating the start and successful completion of the data phase.
+*   All detailed logs, including progress and intermediate steps, will be written to `ThesisExample/logs.log`.
+*   Your processed data will be saved in `ThesisExample/data/processed/` as specified in your `data-config.yaml`.
+
+### 6. Continue Your Research!
+
+With your data processed, you're ready to move on to the modeling and portfolio construction phases (as `paper-model` and `paper-portfolio` become available).
+
+---
+
+## 🛠️ Development & Contribution
+
+We welcome contributions from the community! If you're interested in contributing to P.A.P.E.R, please refer to the individual `README.md` files within each sub-package for specific development guidelines and contribution processes.
+
+### Running Tests
+
+To run tests for all packages in the monorepo:
+
+```bash
+uv run pytest
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the top-level `LICENSE` file for details.
+
+---

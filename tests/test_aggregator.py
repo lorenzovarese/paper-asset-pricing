@@ -457,11 +457,11 @@ def test_merge_firm_chars_primary_auto_suffix(base_config_dict_no_suffix, tmp_pa
     cfg_file = create_yaml_config_file(config_dict, tmp_path)
     df_merged, _ = aggregate_from_yaml(cfg_file)
     raw_firm_df = get_raw_test_df("firm.csv")
+    # Convert to datetime first
+    raw_firm_df["date"] = pd.to_datetime(raw_firm_df["date"])
+    # Then convert to period and back to timestamp
     raw_firm_df["date"] = (
-        pd.to_datetime(raw_firm_df["date"])
-        .dt.to_period("M")
-        .dt.to_timestamp(how="end")
-        .dt.normalize()
+        raw_firm_df["date"].dt.to_period("M").dt.to_timestamp(how="end")
     )
     expected_len = len(raw_firm_df.drop_duplicates(subset=["permno", "date"]))
     assert len(df_merged) == expected_len

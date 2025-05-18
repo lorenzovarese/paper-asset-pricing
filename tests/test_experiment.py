@@ -208,8 +208,10 @@ def test_evaluate_window_constant():
     df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 1, 1]})
     mse, r2_oos, r2_adj_oos = evaluate_window(DummyModel(), df, df, ["x"], "y")
     assert pytest.approx(mse) == 0.0
-    assert pytest.approx(r2_oos) == 0.0
-    assert pytest.approx(r2_adj_oos) == 0.0
+    # perfect fit against a zero‐forecast baseline yields R²ₒₒₛ = 1
+    assert pytest.approx(r2_oos) == 1.0
+    # adjusted will also be 1.0 when the fit is perfect
+    assert pytest.approx(r2_adj_oos) == 1.0
 
 
 def test_save_model_and_metrics(tmp_path):

@@ -99,7 +99,12 @@ def compute_performance_metrics(
     r = returns.dropna()
     ann_ret = r.mean() * periods_per_year
     ann_vol = r.std(ddof=0) * np.sqrt(periods_per_year)
-    sharpe = ann_ret / ann_vol if ann_vol and not np.isnan(ann_vol) else np.nan
+    # force exact zero if the computed vol is just floating-point noise
+    if np.isclose(ann_vol, 0.0):
+        ann_vol = 0.0
+        sharpe = np.nan
+    else:
+        sharpe = ann_ret / ann_vol
 
     cum = (1 + r).cumprod()
     drawdown = (cum / cum.cummax() - 1).min()

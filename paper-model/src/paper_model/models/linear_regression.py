@@ -81,7 +81,7 @@ class SimpleLinearRegression(BaseModel):
         self.ids_test = ids_test  # Store identifiers for test set to create checkpoint
 
         self.model = LinearRegression()
-        self.model.fit(self.X_train, self.y_train)
+        self.model.fit(self.X_train, self.y_train)  # type: ignore[call-arg]
         logger.info("Linear Regression Model training complete.")
 
     def evaluate(self, data: pl.DataFrame) -> Dict[str, Any]:

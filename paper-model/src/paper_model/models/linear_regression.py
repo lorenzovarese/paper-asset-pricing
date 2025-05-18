@@ -2,12 +2,15 @@ from __future__ import annotations
 import polars as pl
 import numpy as np
 from sklearn.linear_model import LinearRegression  # type: ignore[import-untyped]
-from sklearn.model_selection import train_test_split  # type: ignore[import-untyped]
 import logging
 from typing import Any, Dict
 
 from .base import BaseModel
-from paper_model.evaluation.metrics import calculate_r_squared, calculate_mse
+from paper_model.evaluation.metrics import (
+    r2_out_of_sample,
+    mean_squared_error,
+    r2_adj_out_of_sample,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +24,6 @@ class SimpleLinearRegression(BaseModel):
         super().__init__(name, config)
         self.target_col = config.get("target_column", "return")
         self.feature_cols = config.get("feature_columns", [])
-        self.test_size = config.get("test_size", 0.2)
         self.random_state = config.get("random_state", 42)
 
         if not self.feature_cols:
@@ -30,26 +32,16 @@ class SimpleLinearRegression(BaseModel):
             )
 
         self.model: LinearRegression | None = None
-        self.X_train: np.ndarray | None = None
-        self.y_train: np.ndarray | None = None
-        self.X_test: np.ndarray | None = None
-        self.y_test: np.ndarray | None = None
-        self.predicted_returns: pl.DataFrame | None = None
 
     def train(self, data: pl.DataFrame) -> None:
         """
-        Trains the Linear Regression model.
-        Splits data into training and testing sets.
+        Trains the Linear Regression model on the provided data.
         """
         logger.info(f"Training Simple Linear Regression Model '{self.name}'...")
 
         required_cols = [self.target_col] + self.feature_cols
-        missing_cols = [col for col in required_cols if col not in data.columns]
-        if missing_cols:
-            raise ValueError(f"Missing required columns for training: {missing_cols}")
-
-        # Drop rows with any nulls in target or features for training
         clean_data = data.drop_nulls(subset=required_cols)
+
         if clean_data.is_empty():
             logger.warning("No clean data available for training after dropping nulls.")
             self.model = None
@@ -57,78 +49,109 @@ class SimpleLinearRegression(BaseModel):
 
         X = clean_data.select(self.feature_cols).to_numpy()
         y = clean_data.select(self.target_col).to_numpy().flatten()
-        identifiers = clean_data.select(
-            [
-                self.config.get("date_column", "date"),
-                self.config.get("id_column", "permco"),
-            ]
-        )
 
         if len(X) < 2:
             logger.warning("Not enough samples to train a linear regression model.")
             self.model = None
             return
 
-        # Split data for training and testing
-        X_train, X_test, y_train, y_test, ids_train, ids_test = train_test_split(
-            X, y, identifiers, test_size=self.test_size, random_state=self.random_state
-        )
-
-        self.X_train = X_train
-        self.y_train = y_train
-        self.X_test = X_test
-        self.y_test = y_test
-        self.ids_test = ids_test  # Store identifiers for test set to create checkpoint
-
         self.model = LinearRegression()
-        self.model.fit(self.X_train, self.y_train)  # type: ignore[call-arg]
+        self.model.fit(X, y)
         logger.info("Linear Regression Model training complete.")
 
-    def evaluate(self, data: pl.DataFrame) -> Dict[str, Any]:
+    def predict(self, data: pl.DataFrame) -> pl.Series:
         """
-        Evaluates the trained Linear Regression model on the test set.
+        Generates predictions using the trained Linear Regression model.
         """
-        logger.info(f"Evaluating Simple Linear Regression Model '{self.name}'...")
-        if self.model is None or self.X_test is None or self.y_test is None:
-            logger.warning(
-                "Model not trained or test data not available for evaluation."
+        if self.model is None:
+            logger.warning("Model not trained. Cannot generate predictions.")
+            return pl.Series(name=f"{self.target_col}_predicted", values=[])
+
+        missing_cols = [col for col in self.feature_cols if col not in data.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required feature columns for prediction: {missing_cols}"
             )
-            return {"r_squared": np.nan, "mse": np.nan}
 
-        y_pred = self.model.predict(self.X_test)
+        # Drop nulls only for the feature columns used for prediction
+        # This ensures that we only predict for rows where features are available
+        data_for_prediction = data.drop_nulls(subset=self.feature_cols)
 
-        r_squared = calculate_r_squared(self.y_test, y_pred)
-        mse = calculate_mse(self.y_test, y_pred)
-
-        self.evaluation_results = {"r_squared": r_squared, "mean_squared_error": mse}
-        logger.info(f"Evaluation complete. R-squared: {r_squared:.4f}, MSE: {mse:.4f}")
-        return self.evaluation_results
-
-    def generate_checkpoint(self, data: pl.DataFrame) -> pl.DataFrame:
-        """
-        Generates a checkpoint DataFrame containing predicted returns for the test set.
-        """
-        logger.info(
-            f"Generating checkpoint for Simple Linear Regression Model '{self.name}'..."
-        )
-        if self.model is None or self.X_test is None or self.ids_test is None:
+        if data_for_prediction.is_empty():
             logger.warning(
-                "Model not trained or test data not available to generate checkpoint."
+                "No valid data for prediction after dropping nulls in features."
             )
-            return pl.DataFrame()
+            return pl.Series(name=f"{self.target_col}_predicted", values=[])
 
-        predicted_values = self.model.predict(self.X_test)
+        X_pred = data_for_prediction.select(self.feature_cols).to_numpy()
+        predicted_values = self.model.predict(X_pred)
 
-        checkpoint_df = pl.DataFrame(
+        # Create a Polars DataFrame with original identifiers and predictions
+        # Then join back to the original 'data' to ensure alignment and handle missing predictions
+        # for rows that had null features.
+        prediction_df = pl.DataFrame(
             {
-                self.config.get("date_column", "date"): self.ids_test.select(
+                self.config.get("date_column", "date"): data_for_prediction.select(
                     self.config.get("date_column", "date")
                 ).to_series(),
-                self.config.get("id_column", "permco"): self.ids_test.select(
+                self.config.get("id_column", "permco"): data_for_prediction.select(
                     self.config.get("id_column", "permco")
                 ).to_series(),
                 f"{self.target_col}_predicted": predicted_values,
             }
         )
-        logger.info(f"Checkpoint generated with shape: {checkpoint_df.shape}")
-        return checkpoint_df
+
+        # Join back to the original data to ensure the output series has the same length and alignment
+        # as the input data's target column. Rows without predictions will have nulls.
+        full_predictions = data.select(
+            [
+                self.config.get("date_column", "date"),
+                self.config.get("id_column", "permco"),
+            ]
+        ).join(
+            prediction_df,
+            on=[
+                self.config.get("date_column", "date"),
+                self.config.get("id_column", "permco"),
+            ],
+            how="left",
+        )
+
+        return full_predictions[f"{self.target_col}_predicted"]
+
+    def evaluate(self, y_true: pl.Series, y_pred: pl.Series) -> Dict[str, Any]:
+        """
+        Evaluates the trained Linear Regression model using provided true and predicted values.
+        """
+        logger.info(f"Evaluating Simple Linear Regression Model '{self.name}'...")
+
+        # Filter out NaNs from either series to ensure valid comparison
+        combined_df = pl.DataFrame({"y_true": y_true, "y_pred": y_pred}).drop_nulls()
+
+        if combined_df.is_empty():
+            logger.warning("No valid data points for evaluation after dropping nulls.")
+            return {"mse": np.nan, "r2_oos": np.nan, "r2_adj_oos": np.nan}
+
+        y_true_np = combined_df["y_true"].to_numpy()
+        y_pred_np = combined_df["y_pred"].to_numpy()
+
+        if len(y_true_np) < 2:
+            logger.warning("Not enough data points for meaningful evaluation.")
+            return {"mse": np.nan, "r2_oos": np.nan, "r2_adj_oos": np.nan}
+
+        mse = mean_squared_error(y_true_np, y_pred_np)  # type: ignore[arg-type]
+        r2_oos = r2_out_of_sample(y_true_np, y_pred_np)
+
+        # For adjusted R2, we need the number of predictors.
+        n_predictors = len(self.feature_cols)
+        r2_adj_oos = r2_adj_out_of_sample(y_true_np, y_pred_np, n_predictors)
+
+        metrics = {
+            "mse": mse,
+            "r2_oos": r2_oos,
+            "r2_adj_oos": r2_adj_oos,
+        }
+        logger.info(
+            f"Evaluation complete. MSE: {mse:.4f}, R2_oos: {r2_oos:.4f}, R2_adj_oos: {r2_adj_oos:.4f}"
+        )
+        return metrics

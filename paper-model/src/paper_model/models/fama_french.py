@@ -8,7 +8,11 @@ import logging
 from typing import Any, Dict
 
 from .base import BaseModel
-from paper_model.evaluation.metrics import calculate_r_squared
+from paper_model.evaluation.metrics import (
+    r2_out_of_sample,
+    mean_squared_error,
+    r2_adj_out_of_sample,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +25,7 @@ class FamaFrench3FactorModel(BaseModel):
 
     This implementation performs a cross-sectional regression for each time period
     or a pooled regression, depending on configuration. For simplicity, we'll
-    assume a pooled regression for now, or individual regressions per firm.
-    The example will focus on individual firm regressions.
+    assume individual regressions per firm.
     """
 
     def __init__(self, name: str, config: Dict[str, Any]):
@@ -38,13 +41,11 @@ class FamaFrench3FactorModel(BaseModel):
 
         self.firm_models: Dict[Any, RegressionResultsWrapper] = {}
         self.firm_betas: Dict[Any, Dict[str, float]] = {}
-        self.firm_predicted_returns: pl.DataFrame | None = None
 
     def train(self, data: pl.DataFrame) -> None:
         """
-        Trains the Fama-French 3-Factor model for each unique firm (permco).
-        Assumes `data` contains `date_col`, `id_col`, `target_return_col`,
-        `risk_free_rate_col`, and `factor_cols`.
+        Trains the Fama-French 3-Factor model for each unique firm (permco)
+        within the provided training data.
         """
         logger.info(f"Training Fama-French 3-Factor Model '{self.name}'...")
 
@@ -64,7 +65,6 @@ class FamaFrench3FactorModel(BaseModel):
             )
         )
 
-        # Prepare features (factors) and target
         X_cols = self.factor_cols
         y_col = self.excess_return_col
 
@@ -78,26 +78,30 @@ class FamaFrench3FactorModel(BaseModel):
 
         # Convert to Pandas for statsmodels
         pdf = data_with_excess_return.to_pandas()
-        pdf[self.date_col] = pd.to_datetime(pdf[self.date_col])
+        # Ensure date column is datetime for proper indexing if needed, though not strictly for OLS
+        if self.date_col in pdf.columns:
+            pdf[self.date_col] = pd.to_datetime(pdf[self.date_col])
         pdf = pdf.set_index([self.date_col, self.id_col])
 
         unique_firms = pdf.index.get_level_values(self.id_col).unique()
 
-        all_predictions = []
+        self.firm_models = {}  # Clear previous models
+        self.firm_betas = {}  # Clear previous betas
+
         for firm_id in unique_firms:
             firm_data = pdf.loc[(slice(None), firm_id), :].dropna(
                 subset=X_cols + [y_col]
             )
 
             if firm_data.empty:
-                logger.warning(
-                    f"Skipping firm {firm_id}: No valid data for regression."
+                logger.debug(
+                    f"Skipping firm {firm_id}: No valid data for regression in training window."
                 )
                 continue
             if (
                 len(firm_data) < len(X_cols) + 2
             ):  # Need at least k+1 observations for k features + intercept
-                logger.warning(
+                logger.debug(
                     f"Skipping firm {firm_id}: Not enough observations ({len(firm_data)}) for regression with {len(X_cols)} factors."
                 )
                 continue
@@ -108,112 +112,121 @@ class FamaFrench3FactorModel(BaseModel):
             try:
                 model = sm.OLS(y, X)
                 results = model.fit()
-                self.firm_models[firm_id] = results  # Store results object
-                self.firm_betas[firm_id] = results.params.drop(
-                    "const"
-                ).to_dict()  # Store betas
-
-                # Generate predictions for this firm
-                predictions = results.predict(X)
-                firm_predictions_df = pl.DataFrame(
-                    {
-                        self.date_col: firm_data.index.get_level_values(
-                            self.date_col
-                        ).to_list(),
-                        self.id_col: firm_id,
-                        f"{self.target_return_col}_predicted": predictions.values
-                        + firm_data[
-                            self.risk_free_rate_col
-                        ].values,  # Add back risk-free rate
-                    }
-                ).with_columns(pl.col(self.date_col).cast(pl.Date))
-                all_predictions.append(firm_predictions_df)
-
+                self.firm_models[firm_id] = results
+                self.firm_betas[firm_id] = results.params.drop("const").to_dict()
             except Exception as e:
                 logger.error(f"Error training FF3 model for firm {firm_id}: {e}")
                 continue
+        logger.info(f"FF3 Model training complete for {len(self.firm_models)} firms.")
+
+    def predict(self, data: pl.DataFrame) -> pl.Series:
+        """
+        Generates predictions for the given data using the trained firm-specific models.
+        Returns predicted *total* returns.
+        """
+        if not self.firm_models:
+            logger.warning("Model not trained. Cannot generate predictions.")
+            return pl.Series(name=f"{self.target_return_col}_predicted", values=[])
+
+        # Calculate excess returns for factors in the prediction data
+        if self.risk_free_rate_col not in data.columns:
+            raise ValueError(
+                f"Risk-free rate column '{self.risk_free_rate_col}' not found in prediction data."
+            )
+
+        X_cols = self.factor_cols
+        missing_cols = [col for col in X_cols if col not in data.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required factor columns for prediction: {missing_cols}"
+            )
+
+        pdf = data.to_pandas()
+        if self.date_col in pdf.columns:
+            pdf[self.date_col] = pd.to_datetime(pdf[self.date_col])
+        pdf = pdf.set_index([self.date_col, self.id_col])
+
+        all_predictions = []
+        for firm_id, firm_model in self.firm_models.items():
+            firm_data = pdf.loc[(slice(None), firm_id), :].dropna(subset=X_cols)
+            if firm_data.empty:
+                continue
+
+            X_pred = sm.add_constant(firm_data[X_cols])
+            try:
+                # Predict excess returns
+                excess_return_predictions = firm_model.predict(X_pred)
+                # Add back risk-free rate to get total predicted returns
+                total_return_predictions = (
+                    excess_return_predictions + firm_data[self.risk_free_rate_col]
+                )
+                all_predictions.append(
+                    pl.DataFrame(
+                        {
+                            self.date_col: firm_data.index.get_level_values(
+                                self.date_col
+                            ).to_list(),
+                            self.id_col: firm_id,
+                            f"{self.target_return_col}_predicted": total_return_predictions.values,
+                        }
+                    ).with_columns(pl.col(self.date_col).cast(pl.Date))
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Could not generate prediction for firm {firm_id} in FF3 model: {e}"
+                )
+                continue
 
         if all_predictions:
-            self.firm_predicted_returns = pl.concat(all_predictions)
-            logger.info(
-                f"FF3 Model training complete for {len(self.firm_models)} firms."
-            )
+            # Concatenate all firm predictions and join back to original data structure
+            # to ensure predictions align with the original data's date/id structure.
+            predicted_df = pl.concat(all_predictions)
+            # Join with original data to ensure all original rows are present,
+            # and missing predictions are null.
+            # This is crucial for evaluation where y_true and y_pred must align.
+            full_predictions = data.select(
+                [self.date_col, self.id_col, self.target_return_col]
+            ).join(predicted_df, on=[self.date_col, self.id_col], how="left")
+            return full_predictions[f"{self.target_return_col}_predicted"]
         else:
-            logger.warning("No firms were successfully trained for FF3 model.")
-            self.firm_predicted_returns = pl.DataFrame(
-                {
-                    self.date_col: [],
-                    self.id_col: [],
-                    f"{self.target_return_col}_predicted": [],
-                }
-            ).with_columns(
-                [
-                    pl.col(self.date_col).cast(pl.Date),
-                    pl.col(self.id_col).cast(pl.Int64),
-                    pl.col(f"{self.target_return_col}_predicted").cast(pl.Float64),
-                ]
-            )
+            logger.warning("No predictions generated for any firm.")
+            return pl.Series(name=f"{self.target_return_col}_predicted", values=[])
 
-    def evaluate(self, data: pl.DataFrame) -> Dict[str, Any]:
+    def evaluate(self, y_true: pl.Series, y_pred: pl.Series) -> Dict[str, Any]:
         """
-        Evaluates the Fama-French 3-Factor model.
-        Calculates R-squared for each firm and averages them.
+        Evaluates the Fama-French 3-Factor model using provided true and predicted values.
         """
         logger.info(f"Evaluating Fama-French 3-Factor Model '{self.name}'...")
-        if not self.firm_models or self.firm_predicted_returns is None:
-            logger.warning(
-                "Model not trained or no predictions available for evaluation."
-            )
-            return {"r_squared_avg": np.nan}
 
-        # Merge actual returns with predicted returns
-        eval_df = data.select(
-            [self.date_col, self.id_col, self.target_return_col]
-        ).join(
-            self.firm_predicted_returns, on=[self.date_col, self.id_col], how="inner"
-        )
+        # Ensure y_true and y_pred are aligned and clean
+        # Filter out NaNs from either series to ensure valid comparison
+        combined_df = pl.DataFrame({"y_true": y_true, "y_pred": y_pred}).drop_nulls()
 
-        if eval_df.is_empty():
-            logger.warning(
-                "No overlapping data for evaluation after merging predictions."
-            )
-            return {"r_squared_avg": np.nan}
+        if combined_df.is_empty():
+            logger.warning("No valid data points for evaluation after dropping nulls.")
+            return {"mse": np.nan, "r2_oos": np.nan, "r2_adj_oos": np.nan}
 
-        r_squared_values = []
-        for firm_id in eval_df[self.id_col].unique().to_list():
-            firm_eval_data = eval_df.filter(pl.col(self.id_col) == firm_id)
-            actual = firm_eval_data[self.target_return_col]
-            predicted = firm_eval_data[f"{self.target_return_col}_predicted"]
+        y_true_np = combined_df["y_true"].to_numpy()
+        y_pred_np = combined_df["y_pred"].to_numpy()
 
-            if (
-                len(actual) > 1 and not actual.std() == 0
-            ):  # Ensure variance for R-squared calculation
-                r2 = calculate_r_squared(actual.to_numpy(), predicted.to_numpy())
-                r_squared_values.append(r2)
-            else:
-                logger.warning(
-                    f"Skipping R-squared for firm {firm_id}: Insufficient data or zero variance."
-                )
+        if len(y_true_np) < 2:
+            logger.warning("Not enough data points for meaningful evaluation.")
+            return {"mse": np.nan, "r2_oos": np.nan, "r2_adj_oos": np.nan}
 
-        avg_r_squared = np.mean(r_squared_values) if r_squared_values else np.nan
-        self.evaluation_results = {"average_r_squared": avg_r_squared}
-        logger.info(f"Evaluation complete. Average R-squared: {avg_r_squared:.4f}")
-        return self.evaluation_results
+        mse = mean_squared_error(y_true_np, y_pred_np)  # type: ignore[call-arg]
+        r2_oos = r2_out_of_sample(y_true_np, y_pred_np)
 
-    def generate_checkpoint(self, data: pl.DataFrame) -> pl.DataFrame:
-        """
-        Generates a checkpoint DataFrame containing predicted returns.
-        """
+        # For adjusted R2, we need the number of predictors.
+        # In FF3, it's typically 3 (MKT-RF, SMB, HML).
+        n_predictors = len(self.factor_cols)
+        r2_adj_oos = r2_adj_out_of_sample(y_true_np, y_pred_np, n_predictors)
+
+        metrics = {
+            "mse": mse,
+            "r2_oos": r2_oos,
+            "r2_adj_oos": r2_adj_oos,
+        }
         logger.info(
-            f"Generating checkpoint for Fama-French 3-Factor Model '{self.name}'..."
+            f"Evaluation complete. MSE: {mse:.4f}, R2_oos: {r2_oos:.4f}, R2_adj_oos: {r2_adj_oos:.4f}"
         )
-        if self.firm_predicted_returns is None:
-            logger.warning("No predicted returns available to generate checkpoint.")
-            return pl.DataFrame()
-
-        # Add factor exposures (betas) to the checkpoint if desired
-        # For simplicity, we'll just output predicted returns for now.
-        # A more complex checkpoint might include firm_id, date, predicted_return, beta_MKT, beta_SMB, beta_HML
-        checkpoint_df = self.firm_predicted_returns.clone()
-        logger.info(f"Checkpoint generated with shape: {checkpoint_df.shape}")
-        return checkpoint_df
+        return metrics

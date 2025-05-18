@@ -69,7 +69,7 @@ if __name__ == "__main__":
         root_logger.info(f"Project root: {paper_project_root.resolve()}")
 
         manager = ModelManager(config_path=models_config_path)
-        generated_checkpoints = manager.run(project_root=paper_project_root)
+        generated_predictions = manager.run(project_root=paper_project_root)
 
         # Final success message to console
         print(
@@ -78,12 +78,12 @@ if __name__ == "__main__":
         root_logger.info("Model pipeline completed successfully.")
 
         # Log information about the final processed datasets to the file
-        root_logger.info("\n--- Final Generated Checkpoints ---")
-        for name, df in generated_checkpoints.items():
-            root_logger.info(f"Checkpoint '{name}':")
+        root_logger.info("\n--- Final Generated Prediction Results ---")
+        for name, df in generated_predictions.items():
+            root_logger.info(f"Predictions for '{name}':")
             root_logger.info(f"  Shape: {df.shape}")
             root_logger.info(f"  Columns: {df.columns}")
-            root_logger.info(f"Head {df.head()}")
+            root_logger.info(f"Head:\n{df.head()}")
             root_logger.info("-" * 30)
 
     except FileNotFoundError as e:

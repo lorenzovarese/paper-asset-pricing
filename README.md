@@ -2,19 +2,43 @@
 Platform for Asset Pricing Experiment and Research
 
 ```bash
-├── core/           # abstract interfaces
-│   ├─ model.py
-│   └─ portfolio.py         # abstract PortfolioConstructor
-├── datasets/       # CRSP loader stub (user‑provided CSVs) - connectors (WRDS, OSAP, CRSP, custom CSV)
-├── models/         # OLS, OLS‑3, Ridge, Lasso, Enet, XGBoost, NN, RNN, LSTM - concrete implementations (CAPM, FF3, ML…)
-├── portfolios/             # concrete portfolio implementations
-│   ├─ long_short_90.py
-│   ├─ long_short_95.py
-│   └─ …  
-├── pipelines/      # CLI or Prefect/airflow DAGs
-├── metrics/        # Sharpe, RMSE, GRS, α‑t‑stats, out-of-sample R² …
-├── experiments/    # YAML specs wiring data+model+metrics
-└─ ui/              # optional Streamlit or REST interface
+.
+├── data/                               # raw or parquet asset-pricing data
+├── configs/                            # YAML specs for each workflow
+│   ├── aggregate/                      # aggregate-dataset configurations
+│   ├── experiment/                     # experiment (train/val/test) configs
+│   └── portfolio/                      # portfolio backtest configs (VAL90, VAL95…)
+├── LICENSE
+├── pyproject.toml                      # project metadata & dependencies
+├── README.md
+├── ruff.toml
+├── src/paperassetpricing/              # core library
+│   ├── cli.py                          # entry-point (Typer)
+│   ├── commands/                       # CLI commands
+│   │   ├── aggregate.py
+│   │   ├── experiment.py               # run rolling-window experiments
+│   │   ├── generate_mock_data.py
+│   │   ├── macro_extraction.py
+│   │   ├── portfolio.py                # portfolio backtest command
+│   │   └── split_dataset_by_date.py
+│   ├── connectors/                     # data loaders (local CSV, WRDS…)
+│   ├── etl/                            # aggregation pipelines & schemas
+│   ├── helpers/                        # utilities (date alignment, etc.)
+│   ├── metrics/                        # regression & portfolio metrics
+│   ├── models/                         # modeling interfaces & implementations
+│   │   ├── base_model.py
+│   │   ├── linear_model.py
+│   │   ├── neural_network_model.py     # your new NN with ReLU
+│   │   └── model_registry.py
+│   ├── pipelines/                      # custom DAGs or Prefect flows
+│   ├── portfolios/                     # backtest & performance code
+│   │   └── performance.py
+│   └── settings.py
+├── tests/                              # pytest suites for each module
+│   ├── test_aggregator.py
+│   ├── test_experiment.py
+│   └── test_portfolio.py
+└── uv.lock                             # lockfile for reproducible builds
 ```
 
 # Data

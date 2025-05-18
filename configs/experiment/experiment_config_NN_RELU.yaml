@@ -19,7 +19,7 @@ model:
     lr: 0.001
     epochs: 100
     batch_size: 32
-    device: "cuda" # or "cpu"
+    device: "cpu" # or "cuda"
   output_path: "models/nn_relu.pt"
 
 evaluation:

@@ -3,7 +3,7 @@ import polars as pl
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm  # type: ignore[import-untyped]
-from statsmodels.regression.linear_model import OLSResults  # type: ignore[import-untyped]
+from statsmodels.regression.linear_model import RegressionResultsWrapper  # type: ignore[import-untyped]
 import logging
 from typing import Any, Dict
 
@@ -36,7 +36,7 @@ class FamaFrench3FactorModel(BaseModel):
         )  # R_it - R_ft
         self.risk_free_rate_col = config.get("risk_free_rate_col", "rf")  # R_ft
 
-        self.firm_models: Dict[Any, OLSResults] = {}
+        self.firm_models: Dict[Any, RegressionResultsWrapper] = {}
         self.firm_betas: Dict[Any, Dict[str, float]] = {}
         self.firm_predicted_returns: pl.DataFrame | None = None
 
@@ -126,10 +126,7 @@ class FamaFrench3FactorModel(BaseModel):
                             self.risk_free_rate_col
                         ].values,  # Add back risk-free rate
                     }
-                ).with_columns(
-                    # --- ADD THIS LINE TO EXPLICITLY CAST TO pl.Date ---
-                    pl.col(self.date_col).cast(pl.Date)
-                )
+                ).with_columns(pl.col(self.date_col).cast(pl.Date))
                 all_predictions.append(firm_predictions_df)
 
             except Exception as e:

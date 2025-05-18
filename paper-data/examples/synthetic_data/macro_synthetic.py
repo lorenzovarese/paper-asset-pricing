@@ -11,8 +11,8 @@ import pandas as pd
 import numpy as np
 
 # --- Configuration ---------------------------------------------------------
-END_DATE = "2025-06-30"  # last month-end observation
-N_MONTHS = 24  # number of months
+END_DATE = "2025-12-31"  # last month-end date
+N_MONTHS = 25  # total number of months
 SEED = 306  # reproducibility
 CSV_OUT = "macro_synthetic.csv"
 # ---------------------------------------------------------------------------

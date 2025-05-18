@@ -354,7 +354,7 @@ class DataManager:
     def _export_data(self):
         """
         Exports processed dataframes based on the 'export' section of the config.
-        Currently supports 'parquet' format with 'year' or 'null' partitioning.
+        Currently supports 'parquet' format with 'year' or 'none' partitioning.
         """
         if self._project_root is None:
             raise ValueError("Project root must be set before exporting data.")
@@ -378,7 +378,7 @@ class DataManager:
                     self._export_parquet_partitioned_by_year(
                         df_to_export, output_dir, output_filename_base, dataset_name
                     )
-                elif partition_by is None or partition_by == "null":
+                elif partition_by is None or partition_by == "none":
                     output_path = output_dir / f"{output_filename_base}.parquet"
                     df_to_export.write_parquet(output_path)
                     print(f"Exported '{dataset_name}' to '{output_path}'.")

@@ -29,15 +29,15 @@ logger = logging.getLogger(__name__)
 # --- Try to import from sub-packages ---
 # This allows paper-tools to function (e.g., `init`) even if optional components aren't installed.
 try:
-    from paper_data.main import run_data_pipeline_from_config
+    from paper_data.manager import DataManager  # type: ignore
 
     PAPER_DATA_AVAILABLE = True
-    logger.debug("paper_data.main.run_data_pipeline_from_config imported successfully.")
+    logger.debug("paper_data.manager.DataManager imported successfully.")
 except ImportError:
     PAPER_DATA_AVAILABLE = False
-    run_data_pipeline_from_config = None  # type: ignore # Make linters happy
+    DataManager = None  # type: ignore
     logger.debug(
-        "Failed to import paper_data.main.run_data_pipeline_from_config. PAPER_DATA_AVAILABLE=False"
+        "Failed to import paper_data.manager.DataManager. PAPER_DATA_AVAILABLE=False"
     )
 
 
@@ -366,7 +366,7 @@ def execute_data_phase(
     """
     Executes the data processing phase using the 'paper-data' component.
     """
-    if not PAPER_DATA_AVAILABLE or run_data_pipeline_from_config is None:
+    if not PAPER_DATA_AVAILABLE or DataManager is None:
         typer.secho(
             "Error: The 'paper-data' component is not installed or importable. "
             "Please install it, e.g., `pip install paper-tools[data]` or `pip install paper-data`.",
@@ -385,8 +385,6 @@ def execute_data_phase(
         raise  # Propagate exit if helper failed
 
     # Determine the data component's config file path
-    # For now, we assume it's the default name. A more advanced setup might get this
-    # from project_config.
     data_config_filename = (
         project_config.get("components", {})
         .get("data", {})
@@ -411,30 +409,32 @@ def execute_data_phase(
     logger.info(f"Using data configuration: {component_config_path}")
 
     try:
-        result = run_data_pipeline_from_config(
-            config_path=component_config_path, project_root_path=project_root
+        # Instantiate DataManager and run the pipeline
+        manager = DataManager(config_path=component_config_path)
+        processed_datasets = manager.run(project_root=project_root)
+
+        typer.secho("Data phase completed successfully.", fg=typer.colors.GREEN)
+        # Log information about the final processed datasets
+        for name, df in processed_datasets.items():
+            logger.info(f"  Final processed dataset '{name}' shape: {df.shape}")
+
+    except FileNotFoundError as e:
+        typer.secho(
+            f"Error: {e}. Please ensure the config file and raw data paths are correct.",
+            fg=typer.colors.RED,
+            err=True,
         )
-
-        if result and result.get("status") == "success":
-            typer.secho(f"Data phase completed successfully.", fg=typer.colors.GREEN)
-            if "output_path" in result and result["output_path"]:
-                typer.secho(
-                    f"Output generated at: {result['output_path']}",
-                    fg=typer.colors.GREEN,
-                )
-            else:
-                typer.secho(
-                    "No output path reported by data phase.", fg=typer.colors.YELLOW
-                )
-        else:
-            error_message = "Unknown error in paper-data."
-            if result and "message" in result:
-                error_message = result["message"]
-            typer.secho(
-                f"Data phase failed: {error_message}", fg=typer.colors.RED, err=True
-            )
-            raise typer.Exit(code=1)
-
+        raise typer.Exit(code=1)
+    except ValueError as e:
+        typer.secho(
+            f"Configuration Error in data phase: {e}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1)
+    except NotImplementedError as e:
+        typer.secho(
+            f"Feature Not Implemented in data phase: {e}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1)
     except Exception as e:
         typer.secho(
             f"An unexpected error occurred while running the data phase: {e}",

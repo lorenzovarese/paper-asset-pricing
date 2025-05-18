@@ -233,7 +233,11 @@ class DataManager:
             elif operation_type == "lag":
                 periods = operation_config["periods"]
                 columns_to_lag_config = operation_config["columns_to_lag"]
-                drop_after_lag = operation_config.get("drop_after_lag", False)
+                drop_original_cols_after_lag = operation_config.get(
+                    "drop_original_cols_after_lag", False
+                )
+                restore_names = operation_config.get("restore_names", False)
+                drop_generated_nans = operation_config.get("drop_generated_nans", False)
                 output_name = operation_config["output_name"]
 
                 if dataset_name not in self.datasets:
@@ -248,6 +252,14 @@ class DataManager:
                 if periods < 1:
                     raise ValueError(
                         f"Lag operation currently only supports periods greater or equal to 1. Found '{periods}'."
+                    )
+
+                # Validation: If restore_names is true, drop_original_cols_after_lag must be true
+                if restore_names and not drop_original_cols_after_lag:
+                    raise ValueError(
+                        "Configuration Error for 'lag' operation: "
+                        "If 'restore_names' is true, 'drop_original_cols_after_lag' must also be true "
+                        "to avoid column name conflicts."
                     )
 
                 df_to_lag = self.datasets[dataset_name]
@@ -269,7 +281,14 @@ class DataManager:
                     f"Performing lag operation on dataset '{dataset_name}' for columns: {cols_to_lag} with periods={periods}..."
                 )
                 lagged_df = lag_columns(
-                    df_to_lag, date_col, id_col, cols_to_lag, periods, drop_after_lag
+                    df_to_lag,
+                    date_col,
+                    id_col,
+                    cols_to_lag,
+                    periods,
+                    drop_original_cols_after_lag,
+                    restore_names,
+                    drop_generated_nans,
                 )
                 self.datasets[output_name] = lagged_df
                 # Update metadata for the new dataset

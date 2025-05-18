@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import polars as pl
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-def _print_null_count(df: pl.DataFrame, col_name: str) -> None:
+def _log_null_count(df: pl.DataFrame, col_name: str) -> None:
     """
     Prints the number of null values in a specified column of a Polars DataFrame.
 
@@ -20,16 +23,16 @@ def _print_null_count(df: pl.DataFrame, col_name: str) -> None:
         The name of the column for which to count and print nulls.
     """
     if col_name not in df.columns:
-        print(
+        logger.warning(
             f"  Warning: Column '{col_name}' not found in DataFrame. Skipping null count."
         )
         return
 
     null_count = df[col_name].null_count()
     if null_count > 0:
-        print(f"  Column '{col_name}' has {null_count} nulls to fill.")
+        logger.info(f"  Column '{col_name}' has {null_count} nulls to fill.")
     else:
-        print(f"  Column '{col_name}' has no nulls to fill.")
+        logger.info(f"  Column '{col_name}' has no nulls to fill.")
 
 
 def impute_monthly(
@@ -91,18 +94,18 @@ def impute_monthly(
 
     # Apply numeric imputation (median)
     if numeric_cols:
-        print(f"Imputing numeric columns by monthly median: {numeric_cols}")
+        logger.info(f"Imputing numeric columns by monthly median: {numeric_cols}")
         for col in numeric_cols:
-            _print_null_count(out, col)
+            _log_null_count(out, col)
             out = out.with_columns(
                 pl.col(col).fill_null(pl.col(col).median().over(month_key_expr))
             )
 
     # Apply categorical imputation (mode)
     if categorical_cols:
-        print(f"Imputing categorical columns by monthly mode: {categorical_cols}")
+        logger.info(f"Imputing categorical columns by monthly mode: {categorical_cols}")
         for col in categorical_cols:
-            _print_null_count(out, col)
+            _log_null_count(out, col)
             out = out.with_columns(
                 pl.col(col).fill_null(pl.col(col).mode().first().over(month_key_expr))
             )
@@ -166,7 +169,7 @@ def scale_to_range(
     target_range_span = target_max - target_min
     target_midpoint = (target_min + target_max) / 2.0
 
-    print(f"Scaling columns {cols} to range [{target_min}, {target_max}]...")
+    logger.info(f"Scaling columns {cols} to range [{target_min}, {target_max}]...")
 
     expressions = []
     for col in cols:

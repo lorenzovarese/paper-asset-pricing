@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import polars as pl
+import logging
 
 
 from .base import DataConnector
+
+logger = logging.getLogger(__name__)
 
 
 class CSVLoader(DataConnector):
@@ -66,7 +69,7 @@ class CSVLoader(DataConnector):
                 df = df.with_columns(
                     pl.col(self._date_col).cast(pl.Utf8).alias(self._date_col)
                 )
-                print(
+                logger.info(
                     f"Info: Date column '{self._date_col}' was numeric, cast to string for parsing."
                 )
 

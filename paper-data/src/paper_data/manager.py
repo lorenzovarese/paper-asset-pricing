@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import polars as pl
+import logging
 
 from paper_data.config_parser import load_config
 from paper_data.ingestion.local import CSVLoader
@@ -14,6 +15,8 @@ from paper_data.wrangling.cleaner import (
     impute_monthly,
     scale_to_range,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DataManager:
@@ -70,15 +73,15 @@ class DataManager:
                 # For macro data, 'date' can serve as a unique identifier per row
                 # in the absence of a specific entity ID like 'permco'.
                 id_col = "date"
-                print(
-                    f"Info: For dataset '{name}', 'id_col' is not specified in config. Using '{id_col}' as a fallback. Ensure this is appropriate for your data."
+                logger.info(
+                    f"For dataset '{name}', 'id_col' is not specified in config. Using '{id_col}' as a fallback. Ensure this is appropriate for your data."
                 )
             else:
                 # If no specific ID column is defined, use the date column as a fallback.
                 # This might be appropriate for time-series data without an entity ID.
                 # Consider adding a more robust way to specify id_col in config if needed.
-                print(
-                    f"Warning: Dataset '{name}' does not have a specific 'id_col' defined. Using '{date_col_name}' as a fallback. Please verify this is appropriate for your data structure."
+                logger.warning(
+                    f"Dataset '{name}' does not have a specific 'id_col' defined. Using '{date_col_name}' as a fallback. Please verify this is appropriate for your data structure."
                 )
                 id_col = date_col_name
 
@@ -148,7 +151,9 @@ class DataManager:
 
                 df_to_impute = self.datasets[dataset_name]
 
-                print(f"Performing monthly imputation on dataset '{dataset_name}'...")
+                logger.info(
+                    f"Performing monthly imputation on dataset '{dataset_name}'..."
+                )
                 imputed_df = impute_monthly(
                     df_to_impute, date_col, numeric_columns, categorical_columns
                 )
@@ -158,7 +163,7 @@ class DataManager:
                     "date_column": date_col,
                     "id_column": id_col,
                 }
-                print(
+                logger.info(
                     f"Monthly imputation complete. Resulting shape: {imputed_df.shape}"
                 )
 
@@ -188,7 +193,7 @@ class DataManager:
                 target_min = float(range_config["min"])
                 target_max = float(range_config["max"])
 
-                print(
+                logger.info(
                     f"Performing monthly scaling on dataset '{dataset_name}' for columns {cols_to_scale}..."
                 )
                 scaled_df = scale_to_range(
@@ -200,7 +205,7 @@ class DataManager:
                     "date_column": date_col,
                     "id_column": id_col,
                 }
-                print(f"Scaling complete. Resulting shape: {scaled_df.shape}")
+                logger.info(f"Scaling complete. Resulting shape: {scaled_df.shape}")
 
             elif operation_type == "merge":
                 left_dataset_name = operation_config["left_dataset"]
@@ -229,7 +234,7 @@ class DataManager:
                     self._ingestion_metadata[output_name] = self._ingestion_metadata[
                         left_dataset_name
                     ]
-                print(f"Merge complete. Resulting shape: {merged_df.shape}")
+                logger.info(f"Merge complete. Resulting shape: {merged_df.shape}")
 
             elif operation_type == "lag":
                 periods = operation_config["periods"]
@@ -278,7 +283,7 @@ class DataManager:
                         f"Unsupported lag method: '{lag_method}'. Only 'all_except' is currently supported."
                     )
 
-                print(
+                logger.info(
                     f"Performing lag operation on dataset '{dataset_name}' for columns: {cols_to_lag} with periods={periods}..."
                 )
                 lagged_df = lag_columns(
@@ -297,7 +302,9 @@ class DataManager:
                     "date_column": date_col,
                     "id_column": id_col,
                 }
-                print(f"Lag operation complete. Resulting shape: {lagged_df.shape}")
+                logger.info(
+                    f"Lag operation complete. Resulting shape: {lagged_df.shape}"
+                )
 
             elif operation_type == "create_macro_interactions":
                 macro_columns = operation_config.get("macro_columns", [])
@@ -320,7 +327,7 @@ class DataManager:
 
                 df_to_interact = self.datasets[dataset_name]
 
-                print(
+                logger.info(
                     f"Creating macro-firm interaction columns for dataset '{dataset_name}'..."
                 )
                 interactions_df = create_macro_firm_interactions(
@@ -332,7 +339,7 @@ class DataManager:
                     self._ingestion_metadata[output_name] = self._ingestion_metadata[
                         dataset_name
                     ]
-                print(
+                logger.info(
                     f"Macro-firm interaction creation complete. Resulting shape: {interactions_df.shape}"
                 )
 
@@ -376,7 +383,9 @@ class DataManager:
             )
 
         unique_years = df_to_export["year"].unique().sort().to_list()
-        print(f"Exporting '{dataset_name}' by year to separate files: {unique_years}")
+        logger.info(
+            f"Exporting '{dataset_name}' by year to separate files: {unique_years}"
+        )
 
         for year in unique_years:
             # Filter data for the current year
@@ -387,7 +396,7 @@ class DataManager:
 
             # Write the filtered DataFrame to the specific year file
             df_year.write_parquet(file_path)
-            print(f"  Exported data for year {year} to '{file_path}'.")
+            logger.info(f"  Exported data for year {year} to '{file_path}'.")
 
     def _export_data(self):
         """
@@ -419,7 +428,7 @@ class DataManager:
                 elif partition_by is None or partition_by == "none":
                     output_path = output_dir / f"{output_filename_base}.parquet"
                     df_to_export.write_parquet(output_path)
-                    print(f"Exported '{dataset_name}' to '{output_path}'.")
+                    logger.info(f"Exported '{dataset_name}' to '{output_path}'.")
                 else:
                     raise NotImplementedError(
                         f"Partitioning by '{partition_by}' not supported yet."
@@ -440,20 +449,20 @@ class DataManager:
             A dictionary of the final processed Polars DataFrames.
         """
         self._project_root = Path(project_root).expanduser()
-        print(f"Running data pipeline for project: {self._project_root}")
+        logger.info(f"Running data pipeline for project: {self._project_root}")
 
-        print("--- Ingesting Data ---")
+        logger.info("--- Ingesting Data ---")
         self._ingest_data()
         for name, df in self.datasets.items():
-            print(f"Dataset '{name}' ingested. Shape: {df.shape}")
+            logger.info(f"Dataset '{name}' ingested. Shape: {df.shape}")
 
-        print("\n--- Wrangling Data ---")
+        logger.info("--- Wrangling Data ---")
         self._wrangle_data()
         for name, df in self.datasets.items():
-            print(f"Dataset '{name}' after wrangling. Shape: {df.shape}")
+            logger.info(f"Dataset '{name}' after wrangling. Shape: {df.shape}")
 
-        print("\n--- Exporting Data ---")
+        logger.info("--- Exporting Data ---")
         self._export_data()
-        print("Data pipeline completed successfully.")
+        logger.info("Data pipeline completed successfully.")
 
         return self.datasets

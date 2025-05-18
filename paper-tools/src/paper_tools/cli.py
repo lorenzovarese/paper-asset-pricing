@@ -15,15 +15,12 @@ import sys
 from jinja2 import Environment, FileSystemLoader
 import logging
 
-# --- Configure logging for paper-tools ---
-# This helps see logs from both paper-tools and imported libraries like paper-data
-# if they also use logging.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout,  # Send logs to stdout
-)
+# --- Initial logger for paper-tools, before project-specific logging is set up ---
+# This logger will initially print to stdout, but will be reconfigured later.
+# It's important that this is NOT basicConfig, as basicConfig configures the root logger
+# and we want more control.
 logger = logging.getLogger(__name__)
+# No handlers are added here initially. Typer.secho will handle early console output.
 
 
 # --- Try to import from sub-packages ---
@@ -87,6 +84,35 @@ def _render_template(template_name: str, context: dict, output_path: Path):
     rendered_content = template.render(context)
     with open(output_path, "w") as f:
         f.write(rendered_content)
+
+
+def _configure_project_logging(project_root: Path, log_file_name: str, level: str):
+    """
+    Configures the root logger to write to the project's log file.
+    Removes any existing handlers to prevent duplicate output.
+    """
+    log_file_path = project_root / log_file_name
+    log_file_path.parent.mkdir(
+        parents=True, exist_ok=True
+    )  # Ensure log directory exists
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level.upper())
+
+    # Clear existing handlers to prevent duplicate output (e.g., from previous basicConfig or runs)
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Add a FileHandler
+    file_handler = logging.FileHandler(log_file_path, mode="a")  # Append mode
+    file_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+
+    # No StreamHandler is added here, as per the requirement to only print
+    # the final success message and errors to console via typer.secho.
 
 
 @app.command()
@@ -375,6 +401,7 @@ def execute_data_phase(
         )
         raise typer.Exit(code=1)
 
+    # Initial message to stdout, before logging is fully configured to file
     typer.secho(">>> Executing Data Phase <<<", fg=typer.colors.CYAN, bold=True)
 
     try:
@@ -383,6 +410,15 @@ def execute_data_phase(
         )
     except typer.Exit:
         raise  # Propagate exit if helper failed
+
+    # Configure logging to the project's log file based on project_config
+    log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
+    log_level = project_config.get("logging", {}).get("level", "INFO")
+    _configure_project_logging(project_root, log_file_name, log_level)
+
+    # Now, all subsequent logger.info/warning/error calls will go to the file.
+    logger.info(f"Starting Data Phase for project: {project_root.name}")
+    logger.info(f"Project root: {project_root}")
 
     # Determine the data component's config file path
     data_config_filename = (
@@ -396,16 +432,19 @@ def execute_data_phase(
     component_config_path = project_root / CONFIGS_DIR_NAME / data_config_filename
 
     if not component_config_path.exists():
-        typer.secho(
-            f"Error: Data component config file '{component_config_path.name}' "
+        logger.error(  # Changed to logger.error
+            f"Data component config file '{component_config_path.name}' "
             f"not found in '{project_root / CONFIGS_DIR_NAME}'. "
-            f"Ensure '{DATA_COMPONENT_CONFIG_FILENAME}' exists after running `paper init`.",
+            f"Ensure '{DATA_COMPONENT_CONFIG_FILENAME}' exists after running `paper init`."
+        )
+        typer.secho(  # Still print to console for immediate error feedback
+            f"Error: Data component config file '{component_config_path.name}' not found. "
+            f"Check logs for details: '{project_root / log_file_name}'",
             fg=typer.colors.RED,
             err=True,
         )
         raise typer.Exit(code=1)
 
-    logger.info(f"Using project root: {project_root}")
     logger.info(f"Using data configuration: {component_config_path}")
 
     try:
@@ -413,37 +452,50 @@ def execute_data_phase(
         manager = DataManager(config_path=component_config_path)
         processed_datasets = manager.run(project_root=project_root)
 
-        typer.secho("Data phase completed successfully.", fg=typer.colors.GREEN)
-        # Log information about the final processed datasets
+        # ONLY this message should go to stdout
+        typer.secho(
+            f"Data phase completed successfully. Additional information in '{project_root / log_file_name}'",
+            fg=typer.colors.GREEN,
+        )
+        logger.info(f"Data phase completed successfully.")
         for name, df in processed_datasets.items():
             logger.info(f"  Final processed dataset '{name}' shape: {df.shape}")
 
     except FileNotFoundError as e:
+        logger.error(f"File not found error during data phase: {e}", exc_info=True)
         typer.secho(
-            f"Error: {e}. Please ensure the config file and raw data paths are correct.",
+            f"Error: A required file was not found. Check logs for details: '{project_root / log_file_name}'",
             fg=typer.colors.RED,
             err=True,
         )
         raise typer.Exit(code=1)
     except ValueError as e:
+        logger.error(f"Configuration error during data phase: {e}", exc_info=True)
         typer.secho(
-            f"Configuration Error in data phase: {e}", fg=typer.colors.RED, err=True
-        )
-        raise typer.Exit(code=1)
-    except NotImplementedError as e:
-        typer.secho(
-            f"Feature Not Implemented in data phase: {e}", fg=typer.colors.RED, err=True
-        )
-        raise typer.Exit(code=1)
-    except Exception as e:
-        typer.secho(
-            f"An unexpected error occurred while running the data phase: {e}",
+            f"Error: Configuration issue. Check logs for details: '{project_root / log_file_name}'",
             fg=typer.colors.RED,
             err=True,
         )
-        import traceback
-
-        traceback.print_exc(file=sys.stderr)
+        raise typer.Exit(code=1)
+    except NotImplementedError as e:
+        logger.error(
+            f"Feature not implemented error during data phase: {e}", exc_info=True
+        )
+        typer.secho(
+            f"Error: A feature is not yet implemented. Check logs for details: '{project_root / log_file_name}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    except Exception as e:
+        logger.exception(
+            f"An unexpected error occurred while running the data phase: {e}"
+        )
+        typer.secho(
+            f"An unexpected error occurred during the data phase. Check logs for details: '{project_root / log_file_name}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
         raise typer.Exit(code=1)
 
 
@@ -457,6 +509,8 @@ def execute_models_phase(
         show_default=False,
     ),
 ):
+    # This command also needs to configure logging if it's to write to logs.log
+    # For now, keeping it simple as it's not implemented.
     typer.secho(
         "Models phase execution is not yet implemented. (Would import from 'paper-model')",
         fg=typer.colors.YELLOW,
@@ -474,6 +528,8 @@ def execute_portfolio_phase(
         show_default=False,
     ),
 ):
+    # This command also needs to configure logging if it's to write to logs.log
+    # For now, keeping it simple as it's not implemented.
     typer.secho(
         "Portfolio phase execution is not yet implemented. (Would import from 'paper-portfolio')",
         fg=typer.colors.YELLOW,

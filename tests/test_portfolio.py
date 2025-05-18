@@ -1,11 +1,10 @@
 import pandas as pd
 import numpy as np
 import pytest
-from datetime import datetime
 from paperassetpricing.portfolios.performance import (
     monthly_portfolio_backtest,
     compute_performance_metrics,
-)
+)  # type: ignore
 
 
 # A simple model that predicts the first feature as the signal

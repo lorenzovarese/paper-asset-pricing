@@ -15,8 +15,8 @@ from paperassetpricing.commands.experiment import (
     evaluate_window,
     save_model_and_metrics,
     experiment,
-)
-from paperassetpricing.models.linear_model import LinearModel
+)  # type: ignore
+from paperassetpricing.models.linear_model import LinearModel  # type: ignore
 
 # --- Helpers -------------------------------------------------------------
 

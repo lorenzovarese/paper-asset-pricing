@@ -312,7 +312,7 @@ class DataManager:
     ):
         """
         Exports a Polars DataFrame to Parquet, partitioned by year.
-        Creates 'year=YYYY' subdirectories.
+        Creates files named 'output_filename_base_YYYY.parquet'.
         """
         # Ensure 'date' column exists and is of Date type for year extraction
         # Use the date column identified during ingestion
@@ -331,25 +331,23 @@ class DataManager:
             )
 
         # Add a 'year' column for partitioning if not already present
+        # This column is temporary for filtering and will not be in the final output unless explicitly kept
         if "year" not in df_to_export.columns:
             df_to_export = df_to_export.with_columns(
                 pl.col(date_col_for_export).dt.year().alias("year")
             )
 
         unique_years = df_to_export["year"].unique().sort().to_list()
-        print(f"Partitioning '{dataset_name}' by year: {unique_years}")
+        print(f"Exporting '{dataset_name}' by year to separate files: {unique_years}")
 
         for year in unique_years:
-            year_dir = output_dir / f"year={year}"
-            year_dir.mkdir(parents=True, exist_ok=True)
-
             # Filter data for the current year
             df_year = df_to_export.filter(pl.col("year") == year)
 
-            # Define the output path for the current year's data
-            file_path = year_dir / f"{output_filename_base}.parquet"
+            # Define the output path for the current year's data, appending year to filename
+            file_path = output_dir / f"{output_filename_base}_{year}.parquet"
 
-            # Write the filtered DataFrame to the specific year directory
+            # Write the filtered DataFrame to the specific year file
             df_year.write_parquet(file_path)
             print(f"  Exported data for year {year} to '{file_path}'.")
 

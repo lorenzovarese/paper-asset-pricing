@@ -15,8 +15,8 @@ from paperassetpricing.commands.experiment import (
     evaluate_window,
     save_model_and_metrics,
     experiment,
-)
-from paperassetpricing.models.linear_model import LinearModel
+)  # type: ignore
+from paperassetpricing.models.linear_model import LinearModel  # type: ignore
 
 # --- Helpers -------------------------------------------------------------
 
@@ -206,9 +206,12 @@ def test_load_window_parquet(tmp_parquet):
 def test_evaluate_window_constant():
     # y is always 1 -> perfect fit of ConstantDummy -> mse=0,r2=0 by definition
     df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 1, 1]})
-    mse, r2 = evaluate_window(DummyModel(), df, df, ["x"], "y")
+    mse, r2_oos, r2_adj_oos = evaluate_window(DummyModel(), df, df, ["x"], "y")
     assert pytest.approx(mse) == 0.0
-    assert pytest.approx(r2) == 0.0
+    # perfect fit against a zero‐forecast baseline yields R²ₒₒₛ = 1
+    assert pytest.approx(r2_oos) == 1.0
+    # adjusted will also be 1.0 when the fit is perfect
+    assert pytest.approx(r2_adj_oos) == 1.0
 
 
 def test_save_model_and_metrics(tmp_path):
@@ -263,4 +266,8 @@ def test_experiment_integration_csv(tmp_path, basic_cfg):
     res_df = pd.read_csv(res_csv)
     # one window: train=2020-01-31→2021-01-30,test_end=2022-01-30
     assert len(res_df) == 1
-    assert "mse" in res_df.columns and "r2" in res_df.columns
+    assert (
+        "mse" in res_df.columns
+        and "r2_oos" in res_df.columns
+        and "r2_adj_oos" in res_df.columns
+    )

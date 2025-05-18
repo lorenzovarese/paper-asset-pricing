@@ -1,4 +1,3 @@
-# paper-data/src/paper_data/manager.py
 """Data management layer for paper data."""
 
 from pathlib import Path
@@ -8,10 +7,11 @@ from paper_data.config_parser import load_config
 from paper_data.ingestion.local import CSVLoader
 from paper_data.wrangling.augmenter import (
     merge_datasets,
+    lag_columns,
 )
 from paper_data.wrangling.cleaner import (
     impute_monthly,
-    scale_to_range,  # <--- ADD THIS IMPORT
+    scale_to_range,
 )
 
 
@@ -32,7 +32,7 @@ class DataManager:
         self._project_root: Path | None = None  # To be set by the run method
         self._ingestion_metadata: dict[
             str, dict
-        ] = {}  # Stores metadata like date_column
+        ] = {}  # Stores metadata like date_column, id_column
 
     def _resolve_data_path(self, relative_path: str) -> Path:
         """Resolves a relative data path against the project's raw data directory."""
@@ -95,8 +95,11 @@ class DataManager:
                     df = df.rename({col: col.lower() for col in df.columns})
 
                 self.datasets[name] = df
-                # Store date column name for later wrangling steps
-                self._ingestion_metadata[name] = {"date_column": date_col_name}
+                # Store date column name and id column name for later wrangling steps
+                self._ingestion_metadata[name] = {
+                    "date_column": date_col_name,
+                    "id_column": id_col,
+                }
             else:
                 raise NotImplementedError(
                     f"Ingestion format '{data_format}' not supported yet."
@@ -113,10 +116,12 @@ class DataManager:
                 "dataset"
             )  # Get dataset name for operations that need it
 
-            # Retrieve date column name from ingestion metadata
+            # Retrieve date column name and id column name from ingestion metadata
             date_col = None
+            id_col = None
             if dataset_name and dataset_name in self._ingestion_metadata:
                 date_col = self._ingestion_metadata[dataset_name]["date_column"]
+                id_col = self._ingestion_metadata[dataset_name]["id_column"]
             # For merge operations, the date column might be in left_dataset, ensure consistency
             elif operation_type == "merge":
                 left_dataset_name = operation_config["left_dataset"]
@@ -124,6 +129,7 @@ class DataManager:
                     date_col = self._ingestion_metadata[left_dataset_name][
                         "date_column"
                     ]
+                    id_col = self._ingestion_metadata[left_dataset_name]["id_column"]
 
             if operation_type == "monthly_imputation":
                 numeric_columns = operation_config.get("numeric_columns", [])
@@ -147,7 +153,10 @@ class DataManager:
                 )
                 self.datasets[output_name] = imputed_df
                 # Update metadata for the new dataset
-                self._ingestion_metadata[output_name] = {"date_column": date_col}
+                self._ingestion_metadata[output_name] = {
+                    "date_column": date_col,
+                    "id_column": id_col,
+                }
                 print(
                     f"Monthly imputation complete. Resulting shape: {imputed_df.shape}"
                 )
@@ -186,7 +195,10 @@ class DataManager:
                 )
                 self.datasets[output_name] = scaled_df
                 # Update metadata for the new dataset
-                self._ingestion_metadata[output_name] = {"date_column": date_col}
+                self._ingestion_metadata[output_name] = {
+                    "date_column": date_col,
+                    "id_column": id_col,
+                }
                 print(f"Scaling complete. Resulting shape: {scaled_df.shape}")
 
             elif operation_type == "merge":
@@ -211,12 +223,61 @@ class DataManager:
                 # Call the merge function from augmenter.py
                 merged_df = merge_datasets(left_df, right_df, on_cols, how)
                 self.datasets[output_name] = merged_df
-                # Inherit date_column metadata for the merged dataset from the left dataset
+                # Inherit date_column and id_column metadata for the merged dataset from the left dataset
                 if left_dataset_name in self._ingestion_metadata:
                     self._ingestion_metadata[output_name] = self._ingestion_metadata[
                         left_dataset_name
                     ]
                 print(f"Merge complete. Resulting shape: {merged_df.shape}")
+
+            elif operation_type == "lag":
+                periods = operation_config["periods"]
+                columns_to_lag_config = operation_config["columns_to_lag"]
+                drop_after_lag = operation_config.get("drop_after_lag", False)
+                output_name = operation_config["output_name"]
+
+                if dataset_name not in self.datasets:
+                    raise ValueError(
+                        f"Dataset '{dataset_name}' not found for lag operation."
+                    )
+                if not date_col:
+                    raise ValueError(
+                        f"Date column information for dataset '{dataset_name}' not found. Cannot perform lag without date column info."
+                    )
+
+                if periods < 1:
+                    raise ValueError(
+                        f"Lag operation currently only supports periods greater or equal to 1. Found '{periods}'."
+                    )
+
+                df_to_lag = self.datasets[dataset_name]
+                all_cols = df_to_lag.columns
+
+                # Determine columns to lag based on method
+                lag_method = columns_to_lag_config[0]["method"]
+                specified_cols = columns_to_lag_config[1]["columns"]
+
+                cols_to_lag = []
+                if lag_method == "all_except":
+                    cols_to_lag = [col for col in all_cols if col not in specified_cols]
+                else:
+                    raise ValueError(
+                        f"Unsupported lag method: '{lag_method}'. Only 'all_except' is currently supported."
+                    )
+
+                print(
+                    f"Performing lag operation on dataset '{dataset_name}' for columns: {cols_to_lag} with periods={periods}..."
+                )
+                lagged_df = lag_columns(
+                    df_to_lag, date_col, id_col, cols_to_lag, periods, drop_after_lag
+                )
+                self.datasets[output_name] = lagged_df
+                # Update metadata for the new dataset
+                self._ingestion_metadata[output_name] = {
+                    "date_column": date_col,
+                    "id_column": id_col,
+                }
+                print(f"Lag operation complete. Resulting shape: {lagged_df.shape}")
 
             else:
                 raise NotImplementedError(

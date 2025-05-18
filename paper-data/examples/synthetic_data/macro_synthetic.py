@@ -24,16 +24,25 @@ def main():
     # Generate month-end dates
     dates = pd.date_range(end=END_DATE, periods=N_MONTHS, freq="ME")
 
-    # Draw synthetic macro indicators
-    macroindicator1 = np.random.uniform(0.01, 0.40, size=N_MONTHS)
-    macroindicator2 = np.random.uniform(100, 3000, size=N_MONTHS)
+    #    ─ GDP growth:   –2 % … +8 %  (typical recession to boom range)
+    #    ─ CPI level:    start at 100 and compound monthly inflation of 0.1 % … 0.8 %
+    #    ─ Unemployment: 3 % … 12 %
+    gdp_growth = np.random.uniform(-0.02, 0.08, size=N_MONTHS)
+    monthly_cpi_rt = np.random.uniform(0.001, 0.008, size=N_MONTHS)
+    cpi_level = 100 * np.cumprod(1 + monthly_cpi_rt)
+    unemployment = np.random.uniform(0.03, 0.12, size=N_MONTHS)
+
+    gdp_growth = np.round(gdp_growth, 8)
+    cpi_level = np.round(cpi_level, 8)
+    unemployment = np.round(unemployment, 8)
 
     # Assemble DataFrame
     df = pd.DataFrame(
         {
-            "date": dates,
-            "macroindicator1": macroindicator1,
-            "macroindicator2": macroindicator2,
+            "date": dates.strftime("%Y%m%d"),
+            "gdp_growth": gdp_growth,
+            "cpi": cpi_level,
+            "unemployment": unemployment,
         }
     )
 

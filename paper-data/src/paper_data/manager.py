@@ -4,9 +4,12 @@ from pathlib import Path
 import polars as pl
 
 from paper_data.config_parser import load_config
-from paper_data.ingestion.local import CSVLoader  # Only local CSV ingestion for now
+from paper_data.ingestion.local import CSVLoader
 from paper_data.wrangling.augmenter import (
     merge_datasets,
+)
+from paper_data.wrangling.cleaner import (
+    impute_monthly,
 )
 
 
@@ -25,6 +28,7 @@ class DataManager:
         self.config = load_config(config_path)
         self.datasets: dict[str, pl.DataFrame] = {}
         self._project_root: Path | None = None  # To be set by the run method
+        self._ingestion_metadata: dict[str, dict] = {}
 
     def _resolve_data_path(self, relative_path: str) -> Path:
         """Resolves a relative data path against the project's raw data directory."""
@@ -82,6 +86,7 @@ class DataManager:
                     df = df.rename({col: col.lower() for col in df.columns})
 
                 self.datasets[name] = df
+                self._ingestion_metadata[name] = {"date_column": date_col_name}
             else:
                 raise NotImplementedError(
                     f"Ingestion format '{data_format}' not supported yet."
@@ -95,7 +100,36 @@ class DataManager:
         for operation_config in self.config.get("wrangling_pipeline", []):
             operation_type = operation_config["operation"]
 
-            if operation_type == "merge":
+            if operation_type == "monthly_imputation":
+                dataset_name = operation_config["dataset"]
+                numeric_columns = operation_config.get("numeric_columns", [])
+                categorical_columns = operation_config.get("categorical_columns", [])
+                output_name = operation_config["output_name"]
+
+                if dataset_name not in self.datasets:
+                    raise ValueError(
+                        f"Dataset '{dataset_name}' not found for monthly_imputation operation."
+                    )
+
+                # Retrieve the date column name from ingestion metadata
+                if dataset_name not in self._ingestion_metadata:
+                    raise ValueError(
+                        f"Ingestion metadata for dataset '{dataset_name}' not found. Cannot perform monthly_imputation without date column info."
+                    )
+                date_col = self._ingestion_metadata[dataset_name]["date_column"]
+
+                df_to_impute = self.datasets[dataset_name]
+
+                print(f"Performing monthly imputation on dataset '{dataset_name}'...")
+                imputed_df = impute_monthly(
+                    df_to_impute, date_col, numeric_columns, categorical_columns
+                )
+                self.datasets[output_name] = imputed_df
+                print(
+                    f"Monthly imputation complete. Resulting shape: {imputed_df.shape}"
+                )
+
+            elif operation_type == "merge":
                 left_dataset_name = operation_config["left_dataset"]
                 right_dataset_name = operation_config["right_dataset"]
                 on_cols = operation_config["on"]

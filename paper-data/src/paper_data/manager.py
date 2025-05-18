@@ -8,6 +8,7 @@ from paper_data.ingestion.local import CSVLoader
 from paper_data.wrangling.augmenter import (
     merge_datasets,
     lag_columns,
+    create_macro_firm_interactions,
 )
 from paper_data.wrangling.cleaner import (
     impute_monthly,
@@ -297,6 +298,43 @@ class DataManager:
                     "id_column": id_col,
                 }
                 print(f"Lag operation complete. Resulting shape: {lagged_df.shape}")
+
+            elif operation_type == "create_macro_interactions":
+                macro_columns = operation_config.get("macro_columns", [])
+                firm_columns = operation_config.get("firm_columns", [])
+                drop_macro_columns = operation_config.get("drop_macro_columns", False)
+                output_name = operation_config["output_name"]
+
+                if dataset_name not in self.datasets:
+                    raise ValueError(
+                        f"Dataset '{dataset_name}' not found for create_macro_interactions operation."
+                    )
+                if not macro_columns:
+                    raise ValueError(
+                        f"Operation 'create_macro_interactions' for dataset '{dataset_name}' is missing 'macro_columns'."
+                    )
+                if not firm_columns:
+                    raise ValueError(
+                        f"Operation 'create_macro_interactions' for dataset '{dataset_name}' is missing 'firm_columns'."
+                    )
+
+                df_to_interact = self.datasets[dataset_name]
+
+                print(
+                    f"Creating macro-firm interaction columns for dataset '{dataset_name}'..."
+                )
+                interactions_df = create_macro_firm_interactions(
+                    df_to_interact, macro_columns, firm_columns, drop_macro_columns
+                )
+                self.datasets[output_name] = interactions_df
+                # Inherit metadata from the input dataset
+                if dataset_name in self._ingestion_metadata:
+                    self._ingestion_metadata[output_name] = self._ingestion_metadata[
+                        dataset_name
+                    ]
+                print(
+                    f"Macro-firm interaction creation complete. Resulting shape: {interactions_df.shape}"
+                )
 
             else:
                 raise NotImplementedError(

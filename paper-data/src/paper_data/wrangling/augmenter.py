@@ -169,3 +169,65 @@ def lag_columns(
 
     print(f"Lag operation complete. Resulting shape: {out_df.shape}")
     return out_df
+
+
+def create_macro_firm_interactions(
+    df: pl.DataFrame,
+    macro_columns: list[str],
+    firm_columns: list[str],
+    drop_macro_columns: bool,
+) -> pl.DataFrame:
+    """
+    Creates interaction columns between macro characteristics and firm characteristics.
+    Each interaction column is the product of a macro column and a firm column.
+
+    Args:
+        df: The input Polars DataFrame containing both macro and firm characteristics.
+        macro_columns: A list of column names representing macro characteristics.
+        firm_columns: A list of column names representing firm characteristics.
+        drop_macro_columns: If True, the original macro columns will be dropped
+                            from the output DataFrame after creating interactions.
+
+    Returns:
+        A new Polars DataFrame with the added interaction columns.
+    """
+    out_df = df.clone()
+    interaction_expressions = []
+    new_interaction_cols = []
+
+    # Validate that all specified columns exist in the DataFrame
+    missing_macro_cols = [c for c in macro_columns if c not in out_df.columns]
+    if missing_macro_cols:
+        raise ValueError(
+            f"Macro columns specified for interaction not found in DataFrame: {missing_macro_cols}"
+        )
+    missing_firm_cols = [c for c in firm_columns if c not in out_df.columns]
+    if missing_firm_cols:
+        raise ValueError(
+            f"Firm columns specified for interaction not found in DataFrame: {missing_firm_cols}"
+        )
+
+    print(
+        f"Creating interaction columns between macro: {macro_columns} and firm: {firm_columns}..."
+    )
+
+    for firm_col in firm_columns:
+        for macro_col in macro_columns:
+            interaction_col_name = f"{firm_col}_x_{macro_col}"
+            new_interaction_cols.append(interaction_col_name)
+            interaction_expressions.append(
+                (pl.col(firm_col) * pl.col(macro_col)).alias(interaction_col_name)
+            )
+
+    if interaction_expressions:
+        out_df = out_df.with_columns(interaction_expressions)
+        print(f"Created {len(new_interaction_cols)} new interaction columns.")
+    else:
+        print("No interaction columns were created.")
+
+    if drop_macro_columns:
+        print(f"Dropping original macro columns: {macro_columns}")
+        out_df = out_df.drop(macro_columns)
+
+    print(f"Interaction creation complete. Resulting shape: {out_df.shape}")
+    return out_df

@@ -7,7 +7,11 @@ import polars as pl
 
 from paperassetpricing.helpers.date_utils import parse_and_normalize_date
 from paperassetpricing.models import get_model
-from paperassetpricing.metrics import mean_squared_error, r2_out_of_sample
+from paperassetpricing.metrics import (
+    mean_squared_error,
+    r2_out_of_sample,
+    r2_adj_out_of_sample,
+)
 
 
 def load_config(path: Path) -> dict:
@@ -115,11 +119,21 @@ def load_window(is_parquet, ds, data_path, date_col, features, target, w):
 
 
 def evaluate_window(model, train_df, test_df, features, target):
+    """
+    Fit on train_df, predict on test_df, and return:
+      (mse, r2_oos, r2_adj_oos)
+    """
     X_tr, y_tr = train_df[features].values, train_df[target].values
     X_te, y_te = test_df[features].values, test_df[target].values
     model.fit(X_tr, y_tr)
     y_pred = model.predict(X_te)
-    return mean_squared_error(y_te, y_pred), r2_out_of_sample(y_te, y_pred)
+
+    mse = mean_squared_error(y_te, y_pred)
+    r2_oos = r2_out_of_sample(y_te, y_pred)
+    # we pass len(features) as the number of predictors p_z
+    r2_adj = r2_adj_out_of_sample(y_te, y_pred, n_predictors=len(features))
+
+    return mse, r2_oos, r2_adj
 
 
 def save_model_and_metrics(model, results: list[dict], model_path: Path):
@@ -169,15 +183,21 @@ def experiment(
         train_df, test_df = load_window(
             is_parquet, ds, data_path, date_col, features, target, w
         )
-        mse, r2 = evaluate_window(model, train_df, test_df, features, target)
-        typer.echo(f"Window {w[0].date()}→{w[2].date()}: MSE={mse:.4f}, R²={r2:.4f}")
+        mse, r2_oos, r2_adj = evaluate_window(
+            model, train_df, test_df, features, target
+        )
+        typer.echo(
+            f"Window {w[0].date()}→{w[2].date()}: "
+            f"MSE={mse:.4f}, R²_oos={r2_oos:.4f}, R²_adj_oos={r2_adj:.4f}"
+        )
         results.append(
             {
                 "train_start": w[0].date(),
                 "train_end": w[1].date(),
                 "test_end": w[2].date(),
                 "mse": mse,
-                "r2": r2,
+                "r2_oos": r2_oos,
+                "r2_adj_oos": r2_adj,
             }
         )
 

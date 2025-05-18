@@ -1,3 +1,4 @@
+# paper-data/src/paper_data/manager.py
 """Data management layer for paper data."""
 
 from pathlib import Path
@@ -10,6 +11,7 @@ from paper_data.wrangling.augmenter import (
 )
 from paper_data.wrangling.cleaner import (
     impute_monthly,
+    scale_to_range,  # <--- ADD THIS IMPORT
 )
 
 
@@ -28,12 +30,15 @@ class DataManager:
         self.config = load_config(config_path)
         self.datasets: dict[str, pl.DataFrame] = {}
         self._project_root: Path | None = None  # To be set by the run method
-        self._ingestion_metadata: dict[str, dict] = {}
+        self._ingestion_metadata: dict[
+            str, dict
+        ] = {}  # Stores metadata like date_column
 
     def _resolve_data_path(self, relative_path: str) -> Path:
         """Resolves a relative data path against the project's raw data directory."""
         if self._project_root is None:
             raise ValueError("Project root must be set before resolving data paths.")
+        # Assumes raw data is in 'data/raw' relative to project root
         return self._project_root / "data" / "raw" / relative_path
 
     def _ingest_data(self):
@@ -65,12 +70,16 @@ class DataManager:
                 # in the absence of a specific entity ID like 'permco'.
                 id_col = "date"
                 print(
-                    f"Warning: For dataset '{name}', 'id_col' is not specified in config. Using '{id_col}' as a fallback. Ensure this is appropriate for your data."
+                    f"Info: For dataset '{name}', 'id_col' is not specified in config. Using '{id_col}' as a fallback. Ensure this is appropriate for your data."
                 )
             else:
-                raise ValueError(
-                    f"Dataset '{name}' requires an 'id_col' but it's not specified in config and no default is available."
+                # If no specific ID column is defined, use the date column as a fallback.
+                # This might be appropriate for time-series data without an entity ID.
+                # Consider adding a more robust way to specify id_col in config if needed.
+                print(
+                    f"Warning: Dataset '{name}' does not have a specific 'id_col' defined. Using '{date_col_name}' as a fallback. Please verify this is appropriate for your data structure."
                 )
+                id_col = date_col_name
 
             if data_format == "csv":
                 full_path = self._resolve_data_path(path)
@@ -86,6 +95,7 @@ class DataManager:
                     df = df.rename({col: col.lower() for col in df.columns})
 
                 self.datasets[name] = df
+                # Store date column name for later wrangling steps
                 self._ingestion_metadata[name] = {"date_column": date_col_name}
             else:
                 raise NotImplementedError(
@@ -99,9 +109,23 @@ class DataManager:
         """
         for operation_config in self.config.get("wrangling_pipeline", []):
             operation_type = operation_config["operation"]
+            dataset_name = operation_config.get(
+                "dataset"
+            )  # Get dataset name for operations that need it
+
+            # Retrieve date column name from ingestion metadata
+            date_col = None
+            if dataset_name and dataset_name in self._ingestion_metadata:
+                date_col = self._ingestion_metadata[dataset_name]["date_column"]
+            # For merge operations, the date column might be in left_dataset, ensure consistency
+            elif operation_type == "merge":
+                left_dataset_name = operation_config["left_dataset"]
+                if left_dataset_name in self._ingestion_metadata:
+                    date_col = self._ingestion_metadata[left_dataset_name][
+                        "date_column"
+                    ]
 
             if operation_type == "monthly_imputation":
-                dataset_name = operation_config["dataset"]
                 numeric_columns = operation_config.get("numeric_columns", [])
                 categorical_columns = operation_config.get("categorical_columns", [])
                 output_name = operation_config["output_name"]
@@ -110,13 +134,10 @@ class DataManager:
                     raise ValueError(
                         f"Dataset '{dataset_name}' not found for monthly_imputation operation."
                     )
-
-                # Retrieve the date column name from ingestion metadata
-                if dataset_name not in self._ingestion_metadata:
+                if not date_col:
                     raise ValueError(
-                        f"Ingestion metadata for dataset '{dataset_name}' not found. Cannot perform monthly_imputation without date column info."
+                        f"Date column information for dataset '{dataset_name}' not found. Cannot perform monthly_imputation without date column info."
                     )
-                date_col = self._ingestion_metadata[dataset_name]["date_column"]
 
                 df_to_impute = self.datasets[dataset_name]
 
@@ -125,9 +146,48 @@ class DataManager:
                     df_to_impute, date_col, numeric_columns, categorical_columns
                 )
                 self.datasets[output_name] = imputed_df
+                # Update metadata for the new dataset
+                self._ingestion_metadata[output_name] = {"date_column": date_col}
                 print(
                     f"Monthly imputation complete. Resulting shape: {imputed_df.shape}"
                 )
+
+            elif operation_type == "scale_to_range":
+                cols_to_scale = operation_config.get("cols_to_scale", [])
+                range_config = operation_config.get("range", {})
+                output_name = operation_config["output_name"]
+
+                if dataset_name not in self.datasets:
+                    raise ValueError(
+                        f"Dataset '{dataset_name}' not found for scale_to_range operation."
+                    )
+                if not date_col:
+                    raise ValueError(
+                        f"Date column information for dataset '{dataset_name}' not found. Cannot perform scale_to_range without date column info."
+                    )
+                if not cols_to_scale:
+                    raise ValueError(
+                        f"Operation 'scale_to_range' for dataset '{dataset_name}' is missing 'cols_to_scale'."
+                    )
+                if "min" not in range_config or "max" not in range_config:
+                    raise ValueError(
+                        f"Operation 'scale_to_range' for dataset '{dataset_name}' is missing 'range' configuration (min/max)."
+                    )
+
+                df_to_scale = self.datasets[dataset_name]
+                target_min = float(range_config["min"])
+                target_max = float(range_config["max"])
+
+                print(
+                    f"Performing monthly scaling on dataset '{dataset_name}' for columns {cols_to_scale}..."
+                )
+                scaled_df = scale_to_range(
+                    df_to_scale, cols_to_scale, date_col, target_min, target_max
+                )
+                self.datasets[output_name] = scaled_df
+                # Update metadata for the new dataset
+                self._ingestion_metadata[output_name] = {"date_column": date_col}
+                print(f"Scaling complete. Resulting shape: {scaled_df.shape}")
 
             elif operation_type == "merge":
                 left_dataset_name = operation_config["left_dataset"]
@@ -151,6 +211,13 @@ class DataManager:
                 # Call the merge function from augmenter.py
                 merged_df = merge_datasets(left_df, right_df, on_cols, how)
                 self.datasets[output_name] = merged_df
+                # Inherit date_column metadata for the merged dataset from the left dataset
+                if left_dataset_name in self._ingestion_metadata:
+                    self._ingestion_metadata[output_name] = self._ingestion_metadata[
+                        left_dataset_name
+                    ]
+                print(f"Merge complete. Resulting shape: {merged_df.shape}")
+
             else:
                 raise NotImplementedError(
                     f"Wrangling operation '{operation_type}' not supported yet."
@@ -168,17 +235,25 @@ class DataManager:
         Creates 'year=YYYY' subdirectories.
         """
         # Ensure 'date' column exists and is of Date type for year extraction
-        if "date" not in df_to_export.columns or not isinstance(
-            df_to_export["date"].dtype, pl.Date
+        # Use the date column identified during ingestion
+        date_col_for_export = self._ingestion_metadata.get(dataset_name, {}).get(
+            "date_column"
+        )
+        if (
+            not date_col_for_export
+            or date_col_for_export not in df_to_export.columns
+            or not isinstance(
+                df_to_export[date_col_for_export].dtype, (pl.Date, pl.Datetime)
+            )
         ):
             raise ValueError(
-                f"Cannot partition by 'year'. Dataset '{dataset_name}' does not have a 'date' column of type Date."
+                f"Cannot partition by 'year'. Dataset '{dataset_name}' does not have a recognized date column of type Date or Datetime."
             )
 
         # Add a 'year' column for partitioning if not already present
         if "year" not in df_to_export.columns:
             df_to_export = df_to_export.with_columns(
-                pl.col("date").dt.year().alias("year")
+                pl.col(date_col_for_export).dt.year().alias("year")
             )
 
         unique_years = df_to_export["year"].unique().sort().to_list()

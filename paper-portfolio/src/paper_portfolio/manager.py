@@ -63,7 +63,7 @@ class PortfolioManager:
         """Calculates portfolio returns for each month based on all strategies."""
         all_monthly_returns = []
 
-        for date, monthly_data in data.group_by(
+        for (date,), monthly_data in data.group_by(
             self.config.input_data.date_column, maintain_order=True
         ):
             monthly_data = monthly_data.drop_nulls(subset=["predicted_ret"])
@@ -191,10 +191,11 @@ class PortfolioManager:
                 )
                 continue
 
-            for strat_name_raw, strategy_returns in monthly_returns_df.group_by(
-                "strategy"
+            for (strat_name_raw,), strategy_returns in monthly_returns_df.group_by(
+                "strategy", maintain_order=True
             ):
                 strat_name = str(strat_name_raw)
+
                 logger.info(f"Evaluating strategy: {strat_name}")
 
                 strategy_returns = strategy_returns.sort("date")

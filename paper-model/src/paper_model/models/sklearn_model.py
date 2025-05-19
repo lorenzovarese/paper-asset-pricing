@@ -1,9 +1,8 @@
 import polars as pl
 import numpy as np
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
-from sklearn.compose import ColumnTransformer  # type: ignore
 from sklearn.linear_model import (  # type: ignore
     LinearRegression,
     ElasticNet,
@@ -11,7 +10,8 @@ from sklearn.linear_model import (  # type: ignore
     SGDRegressor,
 )
 from sklearn.pipeline import Pipeline  # type: ignore
-from sklearn.preprocessing import SplineTransformer, StandardScaler  # type: ignore
+from sklearn.preprocessing import StandardScaler, SplineTransformer  # type: ignore
+from sklearn.compose import ColumnTransformer  # type: ignore
 from sklearn.decomposition import PCA  # type: ignore
 from sklearn.cross_decomposition import PLSRegression  # type: ignore
 from sklearn.model_selection import GridSearchCV, PredefinedSplit  # type: ignore
@@ -39,12 +39,10 @@ class SklearnModel(BaseModel):
         """Helper to create a standard pipeline with a scaler."""
         model_type = self.config["type"]
 
-        # GLM has a more complex, self-contained pipeline
         if model_type == "glm":
             return model_instance
 
         steps = [("scaler", StandardScaler())]
-
         if model_type == "pcr":
             steps.append(("pcr_pipeline", model_instance))
         else:
@@ -101,10 +99,8 @@ class SklearnModel(BaseModel):
                 raise ValueError(
                     "Logically unreachable: Validation data is required for tuning."
                 )
-
             full_train_data = pl.concat([train_data, validation_data])
             clean_data = full_train_data.drop_nulls(subset=required_cols)
-
             train_indices = np.full(
                 train_data.drop_nulls(subset=required_cols).height, -1, dtype=int
             )
@@ -133,7 +129,6 @@ class SklearnModel(BaseModel):
         if is_tuning_required:
             if ps is None:
                 raise RuntimeError("PredefinedSplit was not created for tuning.")
-
             logger.info(f"Starting hyperparameter tuning for '{self.name}'...")
             param_grid: Dict[str, Any] = {}
             base_model: Any
@@ -175,11 +170,8 @@ class SklearnModel(BaseModel):
 
             elif model_type == "glm":
                 param_grid["regressor__group_reg"] = model_config["alpha"]
-
-                n_knots = model_config.get(
-                    "n_knots", 3
-                )  # Default to 3 as per Gu et al. paper
-                degree = 2  # Quadratic spline as per paper
+                n_knots = model_config.get("n_knots", 3)
+                degree = 2
                 n_splines = n_knots + degree - 1
 
                 spline_transformer = ColumnTransformer(
@@ -195,7 +187,13 @@ class SklearnModel(BaseModel):
                 )
 
                 groups = np.repeat(np.arange(len(self.feature_cols)), n_splines)
-                regressor = GroupLasso(groups=groups, random_state=random_state)
+
+                regressor = GroupLasso(
+                    groups=groups,
+                    random_state=random_state,
+                    supress_warning=True,
+                    n_iter=2000,
+                )
 
                 base_model = Pipeline(
                     [
@@ -204,7 +202,6 @@ class SklearnModel(BaseModel):
                         ("regressor", regressor),
                     ]
                 )
-                # Use the standard grid search path now
                 pipeline = base_model
                 grid_search = GridSearchCV(
                     estimator=pipeline,
@@ -235,12 +232,10 @@ class SklearnModel(BaseModel):
             self.model = grid_search.best_estimator_
 
         else:
-            # This block for non-tuned models remains largely the same
             model_instance: Any
             fit_params = {}
 
             if model_type == "ols":
-                # OLS logic as before
                 weights: Optional[np.ndarray] = None
                 weighting_scheme = model_config.get("weighting_scheme")
                 if weighting_scheme == "inv_n_stocks":
@@ -337,8 +332,13 @@ class SklearnModel(BaseModel):
                 )
 
                 groups = np.repeat(np.arange(len(self.feature_cols)), n_splines)
+
                 regressor = GroupLasso(
-                    group_reg=alpha, groups=groups, random_state=random_state
+                    group_reg=alpha,
+                    groups=groups,
+                    random_state=random_state,
+                    supress_warning=True,
+                    n_iter=2000,
                 )
 
                 model_instance = Pipeline(

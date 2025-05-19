@@ -57,3 +57,57 @@ models:
   random_state: 306
   save_model_checkpoints: true
   save_prediction_results: true
+
+# A Generalized Linear Model (GLM) with tuning for regularization strength
+- name: "glm_tuned_model"
+  type: "glm"
+  target_column: "ret"
+  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp" ]
+
+  # Number of knots is fixed at 3 as per the paper's hyperparameter table
+  n_knots: 3
+
+  # Tune over the regularization strength (λ) in the specified range
+  alpha: [ 0.0001, 0.001, 0.01, 0.1 ]
+
+  # Objective must be 'l2' for this implementation
+  objective_function: "l2"
+
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true
+
+# A Random Forest model with hyperparameter tuning
+- name: "random_forest_tuned"
+  type: "rf"
+  target_column: "ret"
+  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp" ]
+
+  # Fixed number of trees as per paper
+  n_estimators: 300
+
+  # Tune over depth (L) and features per split
+  max_depth: [ 1, 2, 3, 4, 5, 6 ]
+  max_features: [ "sqrt", 0.33, 0.5 ]
+
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true
+
+# A Gradient Boosted Regression Tree (GBRT) model with Huber loss and hyperparameter tuning
+- name: "gbrt_huber_tuned"
+  type: "gbrt"
+  target_column: "ret"
+  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp" ]
+
+  # Use Huber loss as per paper
+  objective_function: "huber"
+
+  # Tune over all three hyperparameters
+  n_estimators: [ 100, 500, 1000 ]
+  max_depth: [ 1, 2 ]
+  learning_rate: [ 0.01, 0.1 ]
+
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true

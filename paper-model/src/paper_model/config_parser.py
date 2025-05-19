@@ -1,6 +1,12 @@
 from pathlib import Path
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from typing import List, Literal, Optional, Union, Dict, Any
 from enum import Enum
 
@@ -19,6 +25,12 @@ class EvaluationImplementation(str, Enum):
 class ObjectiveFunction(str, Enum):
     L2 = "l2"
     HUBER = "huber"
+
+
+class WeightingScheme(str, Enum):
+    NONE = "none"
+    INV_N_STOCKS = "inv_n_stocks"
+    MKT_CAP = "mkt_cap"
 
 
 class InputDataConfig(BaseModel):
@@ -54,11 +66,41 @@ class BaseModelConfig(BaseModel):
 
 class OLSConfig(BaseModelConfig):
     type: Literal["ols"]
+    weighting_scheme: WeightingScheme = Field(
+        WeightingScheme.NONE,
+        description="Sample weighting scheme to use during training.",
+    )
+    market_cap_column: Optional[str] = Field(
+        None, description="Required column name for market cap weighting."
+    )
+    huber_epsilon_quantile: Optional[float] = Field(
+        None,
+        ge=0,
+        le=1,
+        description="Quantile for adaptively setting Huber loss epsilon (ξ).",
+    )
+
+    @model_validator(mode="after")
+    def _validate_config(self) -> "OLSConfig":
+        if (
+            self.weighting_scheme == WeightingScheme.MKT_CAP
+            and self.market_cap_column is None
+        ):
+            raise ValueError(
+                "'market_cap_column' must be provided when 'weighting_scheme' is 'mkt_cap'."
+            )
+        if (
+            self.huber_epsilon_quantile is not None
+            and self.objective_function != "huber"
+        ):
+            raise ValueError(
+                "'huber_epsilon_quantile' can only be set when 'objective_function' is 'huber'."
+            )
+        return self
 
 
 class ElasticNetConfig(BaseModelConfig):
     type: Literal["enet"]
-    # Allow single values or lists for tuning
     alpha: Union[float, List[float]] = Field(
         1.0, description="Regularization strength or list of strengths for tuning"
     )

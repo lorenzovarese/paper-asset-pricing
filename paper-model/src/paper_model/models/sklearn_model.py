@@ -63,7 +63,6 @@ class SklearnModel(BaseModel):
             or isinstance(model_config.get("l1_ratio"), list)
         )
 
-        # This runtime check is good practice and helps inform the logic.
         if is_tuning_required and (
             validation_data is None or validation_data.is_empty()
         ):
@@ -76,8 +75,6 @@ class SklearnModel(BaseModel):
         ps: Optional[PredefinedSplit] = None
 
         if is_tuning_required:
-            # Although the check above raises an error, this guard explicitly tells the
-            # static type checker that validation_data is a DataFrame in this block.
             if validation_data is None:
                 raise ValueError(
                     "Logically unreachable: Validation data is required for tuning."
@@ -116,7 +113,6 @@ class SklearnModel(BaseModel):
                 raise RuntimeError("PredefinedSplit was not created for tuning.")
 
             logger.info(f"Starting hyperparameter tuning for '{self.name}'...")
-
             param_grid = {}
             if isinstance(model_config.get("alpha"), list):
                 param_grid["model__alpha"] = model_config["alpha"]
@@ -124,9 +120,6 @@ class SklearnModel(BaseModel):
                 param_grid["model__l1_ratio"] = model_config["l1_ratio"]
 
             if objective == "huber":
-                logger.info(
-                    "Using SGDRegressor with Huber loss and ElasticNet penalty."
-                )
                 base_model = SGDRegressor(
                     loss="huber",
                     penalty="elasticnet",
@@ -137,7 +130,6 @@ class SklearnModel(BaseModel):
                 if not isinstance(model_config.get("l1_ratio"), list):
                     base_model.set_params(l1_ratio=model_config.get("l1_ratio"))
             else:
-                logger.info("Using standard ElasticNet regressor with L2 loss.")
                 base_model = ElasticNet(random_state=random_state)
                 if not isinstance(model_config.get("alpha"), list):
                     base_model.set_params(alpha=model_config.get("alpha"))
@@ -154,17 +146,73 @@ class SklearnModel(BaseModel):
                 n_jobs=-1,
             )
             grid_search.fit(X, y)
-
             logger.info(f"Best params for '{self.name}': {grid_search.best_params_}")
             self.model = grid_search.best_estimator_
 
         else:
-            # Standard model fitting without tuning
             model_instance: Any
+            fit_params = {}
+
             if model_type == "ols":
-                model_instance = (
-                    HuberRegressor() if objective == "huber" else LinearRegression()
-                )
+                weights: Optional[np.ndarray] = None
+                weighting_scheme = model_config.get("weighting_scheme")
+
+                if weighting_scheme == "inv_n_stocks":
+                    logger.info(
+                        f"Calculating weights for '{self.name}' using scheme: {weighting_scheme}"
+                    )
+                    date_col = self.config["date_column"]
+                    n_stocks_per_month = (
+                        clean_data.group_by(pl.col(date_col).dt.truncate("1mo"))
+                        .len()
+                        .rename({"len": "n_stocks"})
+                    )
+                    weighted_data = clean_data.join(
+                        n_stocks_per_month, on=pl.col(date_col).dt.truncate("1mo")
+                    )
+                    weights = (1 / weighted_data.get_column("n_stocks")).to_numpy()
+
+                elif weighting_scheme == "mkt_cap":
+                    logger.info(
+                        f"Calculating weights for '{self.name}' using scheme: {weighting_scheme}"
+                    )
+                    mkt_cap_col = model_config.get("market_cap_column")
+                    if mkt_cap_col not in clean_data.columns:
+                        raise ValueError(
+                            f"Market cap column '{mkt_cap_col}' not found in data."
+                        )
+                    weights = clean_data.get_column(mkt_cap_col).to_numpy()
+
+                if weights is not None:
+                    fit_params["model__sample_weight"] = weights
+
+                if objective == "huber":
+                    huber_epsilon = 1.35
+                    huber_quantile = model_config.get("huber_epsilon_quantile")
+                    if huber_quantile is not None:
+                        logger.info(
+                            f"Adaptively setting Huber epsilon for '{self.name}' at quantile: {huber_quantile}"
+                        )
+                        temp_ols = LinearRegression()
+                        temp_pipeline = Pipeline(
+                            [("scaler", StandardScaler()), ("model", temp_ols)]
+                        )
+                        temp_pipeline.fit(X, y, **fit_params)
+                        residuals = y - temp_pipeline.predict(X)
+                        huber_epsilon = np.quantile(np.abs(residuals), huber_quantile)
+                        logger.info(
+                            f"Calculated Huber epsilon (ξ) = {huber_epsilon:.4f}"
+                        )
+
+                    model_instance = SGDRegressor(
+                        loss="huber",
+                        penalty=None,  # No penalty for OLS
+                        epsilon=huber_epsilon,
+                        random_state=random_state,
+                    )
+                else:
+                    model_instance = LinearRegression()
+
             elif model_type == "enet":
                 if objective == "huber":
                     model_instance = SGDRegressor(
@@ -180,6 +228,7 @@ class SklearnModel(BaseModel):
                         l1_ratio=model_config["l1_ratio"],
                         random_state=random_state,
                     )
+
             elif model_type == "pcr":
                 regressor = (
                     HuberRegressor() if objective == "huber" else LinearRegression()
@@ -190,17 +239,19 @@ class SklearnModel(BaseModel):
                         ("regressor", regressor),
                     ]
                 )
+
             elif model_type == "pls":
                 model_instance = PLSRegression(
                     n_components=model_config["n_components"]
                 )
+
             else:
                 raise ValueError(
                     f"Unsupported model type for SklearnModel: {model_type}"
                 )
 
             self.model = self._create_pipeline(model_instance)
-            self.model.fit(X, y)
+            self.model.fit(X, y, **fit_params)
 
         logger.info(f"Model '{self.name}' training complete.")
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from typing import List, Literal, Optional, Union, Dict, Any
 from enum import Enum
 
@@ -58,8 +58,17 @@ class OLSConfig(BaseModelConfig):
 
 class ElasticNetConfig(BaseModelConfig):
     type: Literal["enet"]
-    alpha: float = Field(1.0, gt=0, description="Regularization strength")
-    l1_ratio: float = Field(0.5, ge=0, le=1, description="ElasticNet mixing parameter")
+    # Allow single values or lists for tuning
+    alpha: Union[float, List[float]] = Field(
+        1.0, description="Regularization strength or list of strengths for tuning"
+    )
+    l1_ratio: Union[float, List[float]] = Field(
+        0.5, description="ElasticNet mixing parameter or list of parameters for tuning"
+    )
+
+    @property
+    def requires_tuning(self) -> bool:
+        return isinstance(self.alpha, list) or isinstance(self.l1_ratio, list)
 
 
 class PCRConfig(BaseModelConfig):
@@ -89,12 +98,7 @@ class ModelsConfig(BaseModel):
     @field_validator("models", mode="before")
     @classmethod
     def dispatch_model_configs(cls, v: List[Dict[str, Any]]) -> List[AnyModel]:
-        """
-        Dynamically dispatches model configurations based on their 'type' field.
-        This allows Pydantic to validate against the correct specific model schema.
-        """
         dispatched: List[AnyModel] = []
-
         for model_config in v:
             model_type = model_config.get("type")
             if model_type == "ols":
@@ -108,6 +112,18 @@ class ModelsConfig(BaseModel):
             else:
                 raise ValueError(f"Unsupported model type: '{model_type}'")
         return dispatched
+
+    @model_validator(mode="after")
+    def check_validation_set_for_tuning(self) -> "ModelsConfig":
+        """Ensure validation_month is set if any model requires tuning."""
+        for model in self.models:
+            if isinstance(model, ElasticNetConfig) and model.requires_tuning:
+                if self.evaluation.validation_month <= 0:
+                    raise ValueError(
+                        f"Model '{model.name}' requires hyperparameter tuning, "
+                        "but 'evaluation.validation_month' is not set to a value greater than 0."
+                    )
+        return self
 
 
 def load_config(config_path: Union[str, Path]) -> ModelsConfig:

@@ -8,7 +8,7 @@ input_data:
 evaluation:
   implementation: "rolling window"
   train_month: 120 # Use 10 years of data to train the model.
-  validation_month: 0 # Gap between training and testing (can be used for hyperparameter tuning).
+  validation_month: 24 # Gap between training and testing (can be used for hyperparameter tuning).
   testing_month: 12 # Evaluate the trained model on each of the next 12 months, one by one.
   step_month: 12 # After the full cycle, slide the entire window forward by 1 year and repeat.
   metrics: [ "mse", "r2_oos", "r2_adj_oos" ]
@@ -24,13 +24,21 @@ models:
   save_model_checkpoints: true
   save_prediction_results: true
 
-# An Elastic Net model with specified parameters
-- name: "elastic_net_model"
+# Replicating Gu et al. (2020) ENET + Huber
+- name: "enet_huber_model"
   type: "enet"
   target_column: "ret"
   feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
-  alpha: 0.1
+
+  # Use Huber loss, as specified in the paper
+  objective_function: "huber"
+
+  # Provide a list for alpha (λ) to search over the specified range
+  alpha: [ 0.0001, 0.001, 0.01, 0.1 ]
+
+  # Provide a fixed float for l1_ratio (ρ) as specified
   l1_ratio: 0.5
+
   random_state: 306
   save_model_checkpoints: true
   save_prediction_results: true

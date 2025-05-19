@@ -2,7 +2,7 @@ import polars as pl
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Union
-import joblib  # type: ignore
+import joblib
 
 from paper_model.config_parser import ModelsConfig
 from paper_model.models.base import BaseModel
@@ -46,7 +46,9 @@ class ModelManager:
         processed_dir = self._project_root / "data" / "processed"
 
         if input_conf.splitted == "year":
-            files = list(processed_dir.glob(f"{input_conf.dataset_name}_*.parquet"))
+            files = sorted(
+                list(processed_dir.glob(f"{input_conf.dataset_name}_*.parquet"))
+            )
             if not files:
                 raise FileNotFoundError(
                     f"No data files found for {input_conf.dataset_name} in {processed_dir}"
@@ -73,6 +75,7 @@ class ModelManager:
 
             model_class = self.MODEL_REGISTRY[model_type]
 
+            # Pass the Pydantic model object itself as the config
             model_config_dict = model_config.model_dump()
             model_config_dict["date_column"] = self.config.input_data.date_column
             model_config_dict["id_column"] = self.config.input_data.id_column
@@ -117,39 +120,54 @@ class ModelManager:
                 logger.info("Reached the end of the dataset. Stopping evaluation.")
                 break
 
+            # Define date boundaries for clarity
             train_start_date = unique_months[window_start_idx]
             train_end_date = unique_months[train_end_idx - 1]
+            validation_start_date = unique_months[train_end_idx]
+            validation_end_date = unique_months[validation_end_idx - 1]
             test_start_date = unique_months[validation_end_idx]
+            test_end_date = unique_months[test_end_idx - 1]
 
             logger.info(
                 f"Processing window: Train from {train_start_date.strftime('%Y-%m')} to "
-                f"{train_end_date.strftime('%Y-%m')}. "
-                f"Test from {test_start_date.strftime('%Y-%m')} onwards."
+                f"{train_end_date.strftime('%Y-%m')}"
             )
+            if eval_config.validation_month > 0:
+                logger.info(
+                    f"  Validation from {validation_start_date.strftime('%Y-%m')} to "
+                    f"{validation_end_date.strftime('%Y-%m')}"
+                )
+            logger.info(
+                f"  Test from {test_start_date.strftime('%Y-%m')} to "
+                f"{test_end_date.strftime('%Y-%m')}"
+            )
+
+            # --- Slicing Data for the Current Window ---
+            train_data = data.filter(
+                pl.col(date_col).is_between(train_start_date, train_end_date)
+            )
+
+            validation_data = None
+            if eval_config.validation_month > 0:
+                validation_data = data.filter(
+                    pl.col(date_col).is_between(
+                        validation_start_date, validation_end_date
+                    )
+                )
 
             for model_name, model_instance in self.models.items():
                 try:
-                    # Create a fresh, clean slice of training data for each model
-                    train_data = data.filter(pl.col(date_col) <= train_end_date)
-
                     if train_data.is_empty():
                         logger.warning(
-                            f"Skipping model '{model_name}' due to empty training data for this window."
+                            f"Skipping model '{model_name}' due to empty training data."
                         )
                         continue
 
-                    logger.info(
-                        f"Training model '{model_name}' for window ending {train_end_date.strftime('%Y-%m')}."
-                    )
-                    model_instance.train(train_data)
+                    model_instance.train(train_data, validation_data)
 
                     # Month-by-month evaluation on the test set
                     for test_month_idx in range(validation_end_idx, test_end_idx):
                         current_month = unique_months[test_month_idx]
-                        logger.debug(
-                            f"Evaluating model '{model_name}' for month {current_month.strftime('%Y-%m')}."
-                        )
-
                         monthly_test_data = data.filter(
                             pl.col(date_col).dt.truncate("1mo") == current_month
                         )
@@ -176,8 +194,8 @@ class ModelManager:
                             "evaluation_date": current_month.strftime("%Y-%m-%d")
                         }
                         for metric_name in eval_config.metrics:
-                            if metric_name in self.METRIC_FUNCTIONS:
-                                metric_func = self.METRIC_FUNCTIONS[metric_name]
+                            metric_func = self.METRIC_FUNCTIONS.get(metric_name)
+                            if metric_func:
                                 if metric_name == "r2_adj_oos":
                                     monthly_metrics[metric_name] = metric_func(
                                         y_true_np, y_pred_np, n_predictors
@@ -210,6 +228,7 @@ class ModelManager:
 
             window_start_idx += eval_config.step_month
 
+    # ... (the rest of the ModelManager class remains the same) ...
     def _save_checkpoint(self, model_instance: BaseModel, date: Any) -> None:
         if self._project_root is None:
             return

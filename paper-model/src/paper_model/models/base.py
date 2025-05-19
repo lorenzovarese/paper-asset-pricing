@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import polars as pl
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 class BaseModel(ABC):
@@ -10,45 +10,31 @@ class BaseModel(ABC):
     def __init__(self, name: str, config: Dict[str, Any]):
         self.name = name
         self.config = config
-        self.model = None  # To hold the trained model object (e.g., sklearn model, statsmodels results)
+        self.model = None
         self.evaluation_results: Dict[str, Any] = {}
         self.checkpoint_data: pl.DataFrame | None = None
 
     @abstractmethod
-    def train(self, data: pl.DataFrame) -> None:
+    def train(
+        self, train_data: pl.DataFrame, validation_data: Optional[pl.DataFrame] = None
+    ) -> None:
         """
         Trains the model using the provided data.
 
         Args:
-            data: A Polars DataFrame containing the necessary features and target.
+            train_data: A Polars DataFrame for training.
+            validation_data: An optional Polars DataFrame for hyperparameter tuning.
         """
         raise NotImplementedError
 
     @abstractmethod
     def predict(self, data: pl.DataFrame) -> pl.Series:
-        """
-        Generates predictions using the trained model.
-
-        Args:
-            data: A Polars DataFrame containing the features for prediction.
-
-        Returns:
-            A Polars Series of predicted values.
-        """
+        """Generates predictions using the trained model."""
         raise NotImplementedError
 
     @abstractmethod
     def evaluate(self, y_true: pl.Series, y_pred: pl.Series) -> Dict[str, Any]:
-        """
-        Evaluates the trained model and returns performance metrics.
-
-        Args:
-            y_true: A Polars Series of true target values.
-            y_pred: A Polars Series of predicted target values.
-
-        Returns:
-            A dictionary of evaluation metrics.
-        """
+        """Evaluates the trained model and returns performance metrics."""
         raise NotImplementedError
 
     def __repr__(self) -> str:

@@ -8,7 +8,11 @@ import pickle
 from sklearn.linear_model import LinearRegression  # type: ignore[import-untyped]
 from statsmodels.regression.linear_model import RegressionResultsWrapper  # type: ignore[import-untyped]
 
-from paper_model.config_parser import load_config
+
+from paper_model.config_parser import (
+    ModelsConfig,
+)
+
 from paper_model.models.base import BaseModel
 from paper_model.models.fama_french import FamaFrench3FactorModel
 from paper_model.models.linear_regression import SimpleLinearRegression
@@ -39,14 +43,14 @@ class ModelManager:
         "r2_adj_oos": r2_adj_out_of_sample,
     }
 
-    def __init__(self, config_path: str | Path):
+    def __init__(self, config: ModelsConfig):
         """
-        Initializes the ModelManager with a path to the models configuration file.
+        Initializes the ModelManager with a parsed models configuration dictionary.
 
         Args:
-            config_path: The path to the models configuration YAML file.
+            config: The parsed models configuration dictionary (a ModelsConfig object).
         """
-        self.config = load_config(config_path)
+        self.config = config
         self.models: Dict[str, BaseModel] = {}
         self.all_evaluation_results: Dict[str, List[Dict[str, Any]]] = {}
         self.all_prediction_results: Dict[str, pl.DataFrame] = {}
@@ -60,16 +64,15 @@ class ModelManager:
         if self._project_root is None:
             raise ValueError("Project root must be set before loading data.")
 
-        input_data_config = self.config["input_data"]
-        dataset_name = input_data_config["dataset_name"]
-        splitted_by = input_data_config.get("splitted", "none")
-        date_column = input_data_config.get("date_column", "date")
+        input_data_config = self.config.input_data
+        dataset_name = input_data_config.dataset_name
+        splitted_by = input_data_config.splitted.value
+        date_column = input_data_config.date_column
 
         processed_data_dir = self._project_root / "data" / "processed"
 
         df: pl.DataFrame
         if splitted_by == "year":
-            # Find all parquet files matching the base filename (e.g., final_dataset_model_2024.parquet)
             data_files = list(processed_data_dir.glob(f"{dataset_name}_*.parquet"))
             if not data_files:
                 raise FileNotFoundError(
@@ -97,13 +100,10 @@ class ModelManager:
                 f"Unsupported 'splitted' configuration: {splitted_by}. Must be 'year' or 'none'."
             )
 
-        # Ensure date column is a proper date type and sort
-        # The error indicates it's already a Date type, so we just ensure it's cast if needed
-        # and then sort. Removed str.strptime.
         if df[date_column].dtype != pl.Date:
             df = df.with_columns(pl.col(date_column).cast(pl.Date).alias(date_column))
 
-        df = df.sort(date_column, input_data_config.get("id_column", "permco"))
+        df = df.sort(date_column, input_data_config.id_column)
 
         logger.info(f"Loaded data for '{dataset_name}'. Shape: {df.shape}")
         return df
@@ -112,9 +112,9 @@ class ModelManager:
         """
         Initializes model instances based on the 'models' section of the config.
         """
-        for model_config in self.config.get("models", []):
-            model_name = model_config["name"]
-            model_type = model_config["type"]
+        for model_config_pydantic in self.config.models:
+            model_name = model_config_pydantic.name
+            model_type = model_config_pydantic.type
 
             if model_type not in self.MODEL_REGISTRY:
                 raise ValueError(
@@ -123,43 +123,36 @@ class ModelManager:
                 )
 
             model_class = self.MODEL_REGISTRY[model_type]
-            # Pass relevant input_data config to model for internal use (e.g., column names)
-            model_config["date_column"] = self.config["input_data"].get(
-                "date_column", "date"
-            )
-            model_config["id_column"] = self.config["input_data"].get(
-                "id_column", "permco"
-            )
-            model_config["risk_free_rate_col"] = self.config["input_data"].get(
-                "risk_free_rate_col", "rf"
+
+            model_config_dict = model_config_pydantic.dict()
+
+            model_config_dict["date_column"] = self.config.input_data.date_column
+            model_config_dict["id_column"] = self.config.input_data.id_column
+            model_config_dict["risk_free_rate_col"] = (
+                self.config.input_data.risk_free_rate_col
             )
 
-            self.models[model_name] = model_class(model_name, model_config)
+            self.models[model_name] = model_class(model_name, model_config_dict)
             self.all_evaluation_results[model_name] = []
-            self.all_prediction_results[model_name] = (
-                pl.DataFrame()
-            )  # Initialize empty DataFrame
+            self.all_prediction_results[model_name] = pl.DataFrame()
             logger.info(f"Initialized model: '{model_name}' of type '{model_type}'.")
 
     def _run_rolling_window_evaluation(self, data: pl.DataFrame) -> None:
         """
         Executes rolling window evaluation for all initialized models.
         """
-        eval_config = self.config.get("evaluation", {})
-        implementation = eval_config.get("implementation")
+        eval_config = self.config.evaluation
+        implementation = eval_config.implementation.value
 
         if implementation != "rolling window":
             raise NotImplementedError(
                 f"Evaluation implementation '{implementation}' not supported. Only 'rolling window' is implemented."
             )
 
-        train_months = eval_config.get("train_month")
-        # validation_months = eval_config.get(
-        #     "validation_month", 0
-        # )  # Not used for now, but keep for future
-        testing_months = eval_config.get("testing_month")
-        step_months = eval_config.get("step_month")
-        metrics_to_compute = eval_config.get("metrics", [])
+        train_months = eval_config.train_month
+        testing_months = eval_config.testing_month
+        step_months = eval_config.step_month
+        metrics_to_compute = eval_config.metrics
 
         if not all([train_months, testing_months, step_months]):
             raise ValueError(
@@ -170,17 +163,17 @@ class ModelManager:
                 "No metrics specified for evaluation. Skipping metric calculation."
             )
 
-        date_col = self.config["input_data"]["date_column"]
-        id_col = self.config["input_data"]["id_column"]
+        date_col = self.config.input_data.date_column
+        id_col = self.config.input_data.id_column
         target_col_map = {
-            model_name: model_instance.config.get(
-                "target_return_col",
-                model_instance.config.get("target_column", "return"),
+            model_name: (
+                model_instance.config.get("target_return_col")
+                or model_instance.config.get("target_column")
+                or "return"
             )
             for model_name, model_instance in self.models.items()
         }
 
-        # Get unique sorted months from the data
         unique_dates = data.select(pl.col(date_col)).unique().sort(date_col).to_series()
         unique_months = unique_dates.dt.truncate("1mo").unique().sort().to_list()
 
@@ -211,7 +204,6 @@ class ModelManager:
             train_end_date = unique_months[train_end_idx - 1]
             test_end_date = unique_months[test_end_idx - 1]
 
-            # Filter data for current window
             train_data = data.filter(pl.col(date_col) <= train_end_date)
             test_data = data.filter(
                 (pl.col(date_col) > train_end_date)
@@ -233,18 +225,13 @@ class ModelManager:
             for model_name, model_instance in self.models.items():
                 logger.info(f"--- Running Model '{model_name}' for current window ---")
                 try:
-                    # Train the model on the current training window
                     model_instance.train(train_data)
 
-                    # Generate predictions on the current testing window
                     y_true_test = test_data.select(
                         target_col_map[model_name]
                     ).to_series()
                     y_pred_test = model_instance.predict(test_data)
 
-                    # Ensure y_true_test and y_pred_test are aligned and have same length
-                    # This is crucial because predict might return fewer rows if features are null
-                    # We need to align them by date and id.
                     test_identifiers = test_data.select([date_col, id_col])
                     prediction_df_aligned = pl.DataFrame(
                         {
@@ -253,7 +240,7 @@ class ModelManager:
                             "y_true": y_true_test,
                             "y_pred": y_pred_test,
                         }
-                    ).drop_nulls()  # Drop rows where either true or predicted is null
+                    ).drop_nulls()
 
                     if prediction_df_aligned.is_empty():
                         logger.warning(
@@ -266,21 +253,16 @@ class ModelManager:
                         y_true_aligned = prediction_df_aligned["y_true"]
                         y_pred_aligned = prediction_df_aligned["y_pred"]
 
-                        # Evaluate the model
                         window_metrics = {}
                         for metric_name in metrics_to_compute:
                             if metric_name in self.METRIC_FUNCTIONS:
+                                n_predictors = 0
+                                if isinstance(model_instance, FamaFrench3FactorModel):
+                                    n_predictors = len(model_instance.factor_cols)
+                                elif isinstance(model_instance, SimpleLinearRegression):
+                                    n_predictors = len(model_instance.feature_cols)
+
                                 if metric_name == "r2_adj_oos":
-                                    # Need number of predictors for adjusted R2
-                                    n_predictors = 0
-                                    if isinstance(
-                                        model_instance, FamaFrench3FactorModel
-                                    ):
-                                        n_predictors = len(model_instance.factor_cols)
-                                    elif isinstance(
-                                        model_instance, SimpleLinearRegression
-                                    ):
-                                        n_predictors = len(model_instance.feature_cols)
                                     window_metrics[metric_name] = self.METRIC_FUNCTIONS[
                                         metric_name
                                     ](
@@ -309,7 +291,6 @@ class ModelManager:
                         f"Model '{model_name}' metrics for window ending {test_end_date.strftime('%Y-%m')}: {window_metrics}"
                     )
 
-                    # Save prediction results if configured
                     if model_instance.config.get("save_prediction_results", False):
                         prediction_output_df = pl.DataFrame(
                             {
@@ -333,9 +314,7 @@ class ModelManager:
                             f"Appended {prediction_output_df.shape[0]} prediction results for model '{model_name}'. Total: {self.all_prediction_results[model_name].shape[0]}"
                         )
 
-                    # Save model checkpoint if configured
                     if model_instance.config.get("save_model_checkpoints", False):
-                        # Fix 1: Assert _project_root is not None
                         assert self._project_root is not None
                         checkpoint_dir = (
                             self._project_root / "models" / "saved" / model_name
@@ -345,6 +324,7 @@ class ModelManager:
                             checkpoint_dir
                             / f"{model_name}_model_checkpoint_{test_end_date.strftime('%Y%m%d')}.pkl"
                         )
+
                         if isinstance(model_instance.model, LinearRegression):
                             joblib.dump(model_instance.model, checkpoint_filename)
                             logger.info(
@@ -353,7 +333,6 @@ class ModelManager:
                         elif isinstance(
                             model_instance, FamaFrench3FactorModel
                         ) and isinstance(model_instance.model, dict):
-                            # Fix 2: Narrow type for model_instance.model
                             ff_models = cast(
                                 Dict[Any, RegressionResultsWrapper],
                                 model_instance.model,
@@ -362,7 +341,6 @@ class ModelManager:
                                 isinstance(m, RegressionResultsWrapper)
                                 for m in ff_models.values()
                             ):
-                                # For Fama-French, save the dictionary of firm models
                                 with open(checkpoint_filename, "wb") as f:
                                     pickle.dump(ff_models, f)
                                 logger.info(
@@ -382,7 +360,6 @@ class ModelManager:
                         f"Error running model '{model_name}' for window ending {test_end_date.strftime('%Y-%m')}: {e}",
                         exc_info=True,
                     )
-                    # Store NaNs for metrics if an error occurs
                     window_metrics = {metric: np.nan for metric in metrics_to_compute}
                     window_metrics["window_end_date"] = test_end_date.strftime(
                         "%Y-%m-%d"
@@ -399,10 +376,7 @@ class ModelManager:
             raise ValueError("Project root must be set before exporting results.")
 
         eval_output_dir = self._project_root / "models" / "evaluations"
-        prediction_output_dir = (
-            self._project_root / "models" / "predictions"
-        )  # New directory for predictions
-
+        prediction_output_dir = self._project_root / "models" / "predictions"
         eval_output_dir.mkdir(parents=True, exist_ok=True)
         prediction_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -412,10 +386,8 @@ class ModelManager:
 
         for model_name, metrics_list in self.all_evaluation_results.items():
             if metrics_list:
-                # Aggregate metrics for the text report (e.g., average)
                 aggregated_metrics = {}
-                for metric_name in self.config.get("evaluation", {}).get("metrics", []):
-                    # Fix: Explicitly check and cast to float to satisfy type checkers
+                for metric_name in self.config.evaluation.metrics:
                     valid_values = []
                     for m in metrics_list:
                         metric_value = m.get(metric_name)
@@ -425,16 +397,13 @@ class ModelManager:
                                 if not np.isnan(float_value):
                                     valid_values.append(float_value)
                             except (ValueError, TypeError):
-                                # Handle cases where metric_value might not be convertible to float
                                 logger.warning(
                                     f"Metric '{metric_name}' for model '{model_name}' has non-numeric value: {metric_value}. Skipping for aggregation."
                                 )
                                 continue
 
                     if valid_values:
-                        np_values = np.array(
-                            valid_values, dtype=float
-                        )  # Convert to numpy array
+                        np_values = np.array(valid_values, dtype=float)
                         aggregated_metrics[f"avg_{metric_name}"] = np.mean(np_values)
                         aggregated_metrics[f"std_{metric_name}"] = np.std(np_values)
                     else:
@@ -490,4 +459,4 @@ class ModelManager:
         self._export_results()
 
         logger.info("Model pipeline completed successfully.")
-        return self.all_prediction_results  # Return accumulated predictions
+        return self.all_prediction_results

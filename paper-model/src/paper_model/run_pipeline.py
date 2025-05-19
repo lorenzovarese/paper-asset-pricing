@@ -6,6 +6,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from paper_model.manager import ModelManager
+from paper_model.config_parser import load_config
 
 # Define constants for logging
 LOG_FILE_NAME = "logs.log"  # Consistent with paper-tools
@@ -68,7 +69,11 @@ if __name__ == "__main__":
         root_logger.info(f"Config path: {models_config_path.resolve()}")
         root_logger.info(f"Project root: {paper_project_root.resolve()}")
 
-        manager = ModelManager(config_path=models_config_path)
+        # Load the configuration using the dedicated parser
+        models_config = load_config(config_path=models_config_path)
+
+        # Pass the loaded and validated config object to the ModelManager
+        manager = ModelManager(config=models_config)
         generated_predictions = manager.run(project_root=paper_project_root)
 
         # Final success message to console
@@ -94,7 +99,7 @@ if __name__ == "__main__":
         print(
             f"Error: A required file was not found. Check logs for details: '{log_file_path.resolve()}'"
         )
-        sys.exit(1)  # Exit with error code
+        sys.exit(1)
     except ValueError as e:
         root_logger.error(f"Configuration Error: {e}", exc_info=True)
         print(
@@ -108,9 +113,7 @@ if __name__ == "__main__":
         )
         sys.exit(1)
     except Exception as e:
-        root_logger.exception(
-            f"An unexpected error occurred: {e}"
-        )  # Use exception for full traceback
+        root_logger.exception(f"An unexpected error occurred: {e}")
         print(
             f"An unexpected error occurred. Check logs for details: '{log_file_path.resolve()}'"
         )

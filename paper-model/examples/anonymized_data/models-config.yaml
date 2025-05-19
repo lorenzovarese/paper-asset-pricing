@@ -111,3 +111,35 @@ models:
   random_state: 306
   save_model_checkpoints: true
   save_prediction_results: true
+
+# A Neural Network (NN1) model with hyperparameter tuning
+- name: "nn1_model"
+  type: "nn"
+  target_column: "ret"
+  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+  hidden_layer_sizes: [ 32 ]
+  alpha: [ 0.00001, 0.0001 ] # Tune L1 penalty
+  learning_rate: [ 0.001, 0.01 ] # Tune learning rate
+  batch_size: 10000
+  epochs: 100
+  patience: 5
+  n_ensembles: 10
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true
+
+# --- Neural Network (NN3) ---
+# - name: "nn3_model"
+#   type: "nn"
+#   target_column: "ret"
+#   feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+#   hidden_layer_sizes: [32, 16, 8]
+#   alpha: [0.00001, 0.0001] # Tune L1 penalty
+#   learning_rate: [0.001, 0.01] # Tune learning rate
+#   batch_size: 10000
+#   epochs: 100
+#   patience: 5
+#   n_ensembles: 10
+#   random_state: 306
+#   save_model_checkpoints: true
+#   save_prediction_results: true

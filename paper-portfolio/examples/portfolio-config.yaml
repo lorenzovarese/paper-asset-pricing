@@ -7,6 +7,7 @@ input_data:
   - "glm_tuned_model"
   - "random_forest_tuned"
   - "gbrt_huber_tuned"
+  - "nn1_model"
   processed_dataset_name: "final_dataset_model"
   date_column: "date"
   id_column: "permno"

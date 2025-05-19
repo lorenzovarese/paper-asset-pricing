@@ -128,15 +128,17 @@ class ModelManager:
                 f"Test from {test_start_date.strftime('%Y-%m')} onwards."
             )
 
-            train_data = data.filter(pl.col(date_col) <= train_end_date)
-
-            if train_data.is_empty():
-                logger.warning("Skipping window due to empty training data.")
-                window_start_idx += eval_config.step_month
-                continue
-
             for model_name, model_instance in self.models.items():
                 try:
+                    # Create a fresh, clean slice of training data for each model
+                    train_data = data.filter(pl.col(date_col) <= train_end_date)
+
+                    if train_data.is_empty():
+                        logger.warning(
+                            f"Skipping model '{model_name}' due to empty training data for this window."
+                        )
+                        continue
+
                     logger.info(
                         f"Training model '{model_name}' for window ending {train_end_date.strftime('%Y-%m')}."
                     )

@@ -82,17 +82,24 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
     ) -> List[FeedForwardNN]:
         """Trains an ensemble of neural networks."""
 
-        # Prepare data
-        X_train_raw = train_data.select(self.feature_cols).to_numpy()
-        y_train_np = train_data.select(self.target_col).to_numpy().ravel()
-        X_val_raw = validation_data.select(self.feature_cols).to_numpy()
-        y_val_np = validation_data.select(self.target_col).to_numpy().ravel()
+        required_cols = self.feature_cols + [self.target_col]
+        clean_train_data = train_data.drop_nulls(subset=required_cols)
+        clean_val_data = validation_data.drop_nulls(subset=required_cols)
 
-        # Fit scaler on training data and transform both sets
+        if clean_train_data.is_empty() or clean_val_data.is_empty():
+            logger.warning(
+                f"Not enough clean data to train or validate model '{self.name}'."
+            )
+            return []
+
+        X_train_raw = clean_train_data.select(self.feature_cols).to_numpy()
+        y_train_np = clean_train_data.select(self.target_col).to_numpy().ravel()
+        X_val_raw = clean_val_data.select(self.feature_cols).to_numpy()
+        y_val_np = clean_val_data.select(self.target_col).to_numpy().ravel()
+
         X_train_scaled = self.scaler.fit_transform(X_train_raw)
         X_val_scaled = self.scaler.transform(X_val_raw)
 
-        # Convert to PyTorch tensors
         X_train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32)
         y_train_tensor = torch.tensor(y_train_np, dtype=torch.float32).view(-1, 1)
         X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32)
@@ -113,14 +120,11 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
             logger.debug(
                 f"Training ensemble member {i + 1}/{self.config['n_ensembles']}..."
             )
-
             torch.manual_seed(self.config.get("random_state", 0) + i)
-
             net = FeedForwardNN(
                 input_size=X_train_tensor.shape[1],
                 hidden_layer_sizes=self.config["hidden_layer_sizes"],
             )
-
             optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
             loss_fn = nn.MSELoss()
             early_stopper = EarlyStopper(patience=self.config["patience"])
@@ -130,13 +134,11 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                 for X_batch, y_batch in train_loader:
                     y_pred = net(X_batch)
                     l2_loss = loss_fn(y_pred, y_batch)
-
-                    l1_loss = 0
-                    for param in net.parameters():
-                        l1_loss += torch.linalg.vector_norm(param, ord=1)
-
+                    l1_loss = sum(
+                        torch.linalg.vector_norm(param, ord=1)
+                        for param in net.parameters()
+                    )
                     total_loss = l2_loss + alpha * l1_loss
-
                     optimizer.zero_grad()
                     total_loss.backward()
                     optimizer.step()
@@ -147,18 +149,13 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                     for X_val_batch, y_val_batch in val_loader:
                         y_val_pred = net(X_val_batch)
                         val_loss += loss_fn(y_val_pred, y_val_batch).item()
-
                 avg_val_loss = val_loss / len(val_loader)
-                logger.debug(f"Epoch {epoch + 1}, Validation Loss: {avg_val_loss:.6f}")
-
                 if early_stopper.early_stop(avg_val_loss):
                     logger.info(
                         f"Early stopping triggered at epoch {epoch + 1} for ensemble member {i + 1}."
                     )
                     break
-
             ensemble_models.append(net)
-
         return ensemble_models
 
     def train(
@@ -194,33 +191,29 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
             for alpha in alphas:
                 for lr in learning_rates:
                     logger.debug(f"Testing NN with alpha={alpha}, learning_rate={lr}")
-
                     current_ensemble = self._train_ensemble(
                         train_data, validation_data, alpha, lr
                     )
+                    if not current_ensemble:
+                        continue
 
                     y_val_pred_full = self.predict(
                         validation_data, ensemble=current_ensemble
                     )
 
-                    temp_df = validation_data.select(
-                        pl.col(self.target_col).alias("y_true")
-                    ).with_columns(y_val_pred_full.alias("y_pred"))
-
-                    null_count = temp_df.filter(pl.col("y_pred").is_null()).height
-                    if null_count > 0:
-                        logger.warning(
-                            f"Found {null_count} null predictions for '{self.name}' with alpha={alpha}, learning_rate={lr}"
-                        )
-
-                    aligned_df = temp_df.drop_nulls(subset=["y_true"])
+                    temp_df = pl.DataFrame(
+                        {
+                            "y_true": validation_data.get_column(self.target_col),
+                            "y_pred": y_val_pred_full,
+                        }
+                    )
+                    aligned_df = temp_df.drop_nulls()
 
                     if not aligned_df.is_empty():
                         score = r2_out_of_sample(
                             aligned_df.get_column("y_true").to_numpy(),
                             aligned_df.get_column("y_pred").to_numpy(),
                         )
-
                         if score > best_score:
                             best_score = score
                             best_params = {"alpha": alpha, "learning_rate": lr}
@@ -231,7 +224,6 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
         else:
             alpha = self.config["alpha"]
             learning_rate = self.config["learning_rate"]
-
             if not isinstance(alpha, (int, float)):
                 raise TypeError(
                     f"Expected 'alpha' to be a float for non-tuned model, but got {type(alpha)}"
@@ -240,12 +232,8 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                 raise TypeError(
                     f"Expected 'learning_rate' to be a float for non-tuned model, but got {type(learning_rate)}"
                 )
-
             self.model = self._train_ensemble(
-                train_data,
-                validation_data,
-                alpha=alpha,
-                learning_rate=learning_rate,
+                train_data, validation_data, alpha=alpha, learning_rate=learning_rate
             )
 
     def predict(
@@ -264,7 +252,15 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                 dtype=pl.Float64,
             )
 
-        X_raw = data.select(self.feature_cols).fill_null(0).to_numpy()
+        data_for_prediction = data.drop_nulls(subset=self.feature_cols)
+        if data_for_prediction.is_empty():
+            return pl.Series(
+                name=f"{self.target_col}_predicted",
+                values=[None] * len(data),
+                dtype=pl.Float64,
+            )
+
+        X_raw = data_for_prediction.select(self.feature_cols).to_numpy()
         X_scaled = self.scaler.transform(X_raw)
         X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
 
@@ -275,13 +271,28 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
 
         avg_preds = np.mean(all_preds, axis=0)
 
-        return pl.Series(name=f"{self.target_col}_predicted", values=avg_preds)
+        prediction_df = data_for_prediction.select(
+            [self.config["date_column"], self.config["id_column"]]
+        ).with_columns(pl.Series(name=f"{self.target_col}_predicted", values=avg_preds))
+
+        full_predictions = data.select(
+            [self.config["date_column"], self.config["id_column"]]
+        ).join(
+            prediction_df,
+            on=[self.config["date_column"], self.config["id_column"]],
+            how="left",
+        )
+
+        return full_predictions.get_column(f"{self.target_col}_predicted")
 
     def evaluate(self, y_true: pl.Series, y_pred: pl.Series) -> Dict[str, Any]:
         raise NotImplementedError("Evaluation logic is handled by the ModelManager.")
 
 
 def r2_out_of_sample(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    assert len(y_true) == len(y_pred), (
+        f"Shape mismatch: y_true {y_true.shape}, y_pred {y_pred.shape}"
+    )
     ss_res = np.sum((y_true - y_pred) ** 2)
     ss_tot = np.sum(y_true**2)
     if ss_tot == 0:

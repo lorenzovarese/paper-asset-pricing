@@ -2,7 +2,7 @@ import polars as pl
 import logging
 from pathlib import Path
 from typing import Dict, Any, List, Union
-import joblib
+import joblib  # type: ignore
 
 from paper_model.config_parser import ModelsConfig
 from paper_model.models.base import BaseModel

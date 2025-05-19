@@ -9,6 +9,7 @@ from sklearn.linear_model import (  # type: ignore
     HuberRegressor,
     SGDRegressor,
 )
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
 from sklearn.preprocessing import StandardScaler, SplineTransformer  # type: ignore
 from sklearn.compose import ColumnTransformer  # type: ignore
@@ -39,7 +40,7 @@ class SklearnModel(BaseModel):
         """Helper to create a standard pipeline with a scaler."""
         model_type = self.config["type"]
 
-        if model_type == "glm":
+        if model_type in ["glm", "rf", "gbrt"]:
             return model_instance
 
         steps = [("scaler", StandardScaler())]
@@ -81,6 +82,21 @@ class SklearnModel(BaseModel):
                 and isinstance(model_config.get("n_components"), list)
             )
             or (model_type == "glm" and isinstance(model_config.get("alpha"), list))
+            or (
+                model_type == "rf"
+                and (
+                    isinstance(model_config.get("max_depth"), list)
+                    or isinstance(model_config.get("max_features"), list)
+                )
+            )
+            or (
+                model_type == "gbrt"
+                and (
+                    isinstance(model_config.get("n_estimators"), list)
+                    or isinstance(model_config.get("max_depth"), list)
+                    or isinstance(model_config.get("learning_rate"), list)
+                )
+            )
         )
 
         if is_tuning_required and (
@@ -218,6 +234,26 @@ class SklearnModel(BaseModel):
                 self.model = grid_search.best_estimator_
                 return
 
+            elif model_type == "rf":
+                param_grid["max_depth"] = model_config["max_depth"]
+                param_grid["max_features"] = model_config["max_features"]
+                base_model = RandomForestRegressor(
+                    n_estimators=model_config["n_estimators"],
+                    random_state=random_state,
+                    n_jobs=-1,  # Use all cores for fitting trees
+                )
+
+            elif model_type == "gbrt":
+                param_grid["n_estimators"] = model_config["n_estimators"]
+                param_grid["max_depth"] = model_config["max_depth"]
+                param_grid["learning_rate"] = model_config["learning_rate"]
+
+                # Map objective to GBRT loss function
+                loss = "huber" if objective == "huber" else "squared_error"
+                base_model = GradientBoostingRegressor(
+                    loss=loss, random_state=random_state
+                )
+
             pipeline = self._create_pipeline(base_model)
             grid_search = GridSearchCV(
                 estimator=pipeline,
@@ -347,6 +383,24 @@ class SklearnModel(BaseModel):
                         ("scaler", StandardScaler()),
                         ("regressor", regressor),
                     ]
+                )
+            elif model_type == "rf":
+                model_instance = RandomForestRegressor(
+                    n_estimators=model_config["n_estimators"],
+                    max_depth=model_config["max_depth"],
+                    max_features=model_config["max_features"],
+                    random_state=random_state,
+                    n_jobs=-1,
+                )
+
+            elif model_type == "gbrt":
+                loss = "huber" if objective == "huber" else "squared_error"
+                model_instance = GradientBoostingRegressor(
+                    loss=loss,
+                    n_estimators=model_config["n_estimators"],
+                    max_depth=model_config["max_depth"],
+                    learning_rate=model_config["learning_rate"],
+                    random_state=random_state,
                 )
 
             else:

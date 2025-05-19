@@ -159,13 +159,59 @@ class GLMConfig(BaseModelConfig):
 
     @property
     def requires_tuning(self) -> bool:
-        # Tuning is now only dependent on alpha
         return isinstance(self.alpha, list)
+
+
+class RandomForestConfig(BaseModelConfig):
+    type: Literal["rf"]
+    n_estimators: int = Field(300, description="Number of trees in the forest (B).")
+    max_depth: Union[int, List[int]] = Field(
+        ..., description="Maximum depth of the tree (L) or list for tuning."
+    )
+    max_features: Union[float, str, List[Union[float, str]]] = Field(
+        "sqrt",
+        description="Number of features to consider for each split (e.g., 'sqrt', 0.5) or list for tuning.",
+    )
+
+    @property
+    def requires_tuning(self) -> bool:
+        return isinstance(self.max_depth, list) or isinstance(self.max_features, list)
+
+
+class GBRTConfig(BaseModelConfig):
+    type: Literal["gbrt"]
+    n_estimators: Union[int, List[int]] = Field(
+        ..., description="Number of boosting stages to perform (B) or list for tuning."
+    )
+    max_depth: Union[int, List[int]] = Field(
+        ...,
+        description="Maximum depth of the individual regression estimators (L) or list for tuning.",
+    )
+    learning_rate: Union[float, List[float]] = Field(
+        ...,
+        description="Learning rate shrinks the contribution of each tree (ν) or list for tuning.",
+    )
+
+    @property
+    def requires_tuning(self) -> bool:
+        return (
+            isinstance(self.n_estimators, list)
+            or isinstance(self.max_depth, list)
+            or isinstance(self.learning_rate, list)
+        )
 
 
 # --- Main Configuration Schema ---
 
-AnyModel = Union[OLSConfig, ElasticNetConfig, PCRConfig, PLSConfig, GLMConfig]
+AnyModel = Union[
+    OLSConfig,
+    ElasticNetConfig,
+    PCRConfig,
+    PLSConfig,
+    GLMConfig,
+    RandomForestConfig,
+    GBRTConfig,
+]
 
 
 class ModelsConfig(BaseModel):
@@ -189,6 +235,10 @@ class ModelsConfig(BaseModel):
                 dispatched.append(PLSConfig(**model_config))
             elif model_type == "glm":
                 dispatched.append(GLMConfig(**model_config))
+            elif model_type == "rf":
+                dispatched.append(RandomForestConfig(**model_config))
+            elif model_type == "gbrt":
+                dispatched.append(GBRTConfig(**model_config))
             else:
                 raise ValueError(f"Unsupported model type: '{model_type}'")
         return dispatched

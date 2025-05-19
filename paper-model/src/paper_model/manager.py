@@ -24,6 +24,8 @@ class ModelManager:
         "pcr": SklearnModel,
         "pls": SklearnModel,
         "glm": SklearnModel,
+        "rf": SklearnModel,
+        "gbrt": SklearnModel,
     }
 
     METRIC_FUNCTIONS: Dict[str, Any] = {

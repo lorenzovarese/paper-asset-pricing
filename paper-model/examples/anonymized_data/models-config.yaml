@@ -1,0 +1,47 @@
+input_data:
+  dataset_name: "final_dataset_model"
+  splitted: "year"
+  date_column: "date"
+  id_column: "permno"
+  risk_free_rate_col: "rf"
+
+evaluation:
+  implementation: "rolling window"
+  train_month: 120 # Use 10 years of data to train the model.
+  validation_month: 0 # Gap between training and testing (can be used for hyperparameter tuning).
+  testing_month: 12 # Evaluate the trained model on each of the next 12 months, one by one.
+  step_month: 12 # After the full cycle, slide the entire window forward by 1 year and repeat.
+  metrics: [ "mse", "r2_oos", "r2_adj_oos" ]
+
+models:
+# Replicating Fama-French 3-predictor model using OLS
+- name: "ff_3_predictor_ols"
+  type: "ols"
+  target_column: "ret"
+  feature_columns: [ "bm", "mvel1", "mom12m" ]
+  objective_function: "l2" # Standard OLS
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true
+
+# An Elastic Net model with specified parameters
+- name: "elastic_net_model"
+  type: "enet"
+  target_column: "ret"
+  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+  alpha: 0.1
+  l1_ratio: 0.5
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true
+
+# A Principal Component Regression (PCR) model
+- name: "pcr_model"
+  type: "pcr"
+  target_column: "ret"
+  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+  n_components: 5 # Use top 5 principal components
+  objective_function: "huber" # Use Huber loss for robustness
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true

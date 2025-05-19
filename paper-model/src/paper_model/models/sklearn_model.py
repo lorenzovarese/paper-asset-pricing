@@ -1,3 +1,5 @@
+# paper-model/src/paper_model/models/sklearn_model.py
+
 import polars as pl
 import logging
 from typing import Any, Dict
@@ -35,9 +37,7 @@ class SklearnModel(BaseModel):
         model_instance: Any
         if model_type == "ols":
             model_instance = (
-                HuberRegressor(epsilon=1e6)
-                if objective == "huber"
-                else LinearRegression()
+                HuberRegressor() if objective == "huber" else LinearRegression()
             )
         elif model_type == "enet":
             model_instance = ElasticNet(
@@ -51,7 +51,7 @@ class SklearnModel(BaseModel):
                     ("pca", PCA(n_components=self.config["n_components"])),
                     (
                         "regressor",
-                        HuberRegressor(epsilon=1e6)
+                        HuberRegressor()
                         if objective == "huber"
                         else LinearRegression(),
                     ),

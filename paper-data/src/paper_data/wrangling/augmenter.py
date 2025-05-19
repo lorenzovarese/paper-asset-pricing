@@ -93,6 +93,9 @@ def lag_columns(
     logger.info(
         f"Applying {'lag' if periods > 0 else 'lead'} of {abs(periods)} periods to columns: {cols_to_lag}"
     )
+    if not id_col:
+        logger.info(f"Sorting DataFrame by '{date_col}' for time-series operations.")
+        out_df = out_df.sort(date_col)
 
     expressions = []
     for col in cols_to_lag:
@@ -100,14 +103,19 @@ def lag_columns(
         lagged_col_names.append(lagged_col_name)
 
         if id_col:
-            # Lag within each group defined by id_col, ordered by date_col
-            expr = pl.col(col).shift(periods).over(id_col).alias(lagged_col_name)
+            expr = (
+                pl.col(col)
+                .sort_by(date_col)
+                .shift(periods)
+                .over(id_col)
+                .alias(lagged_col_name)
+            )
         else:
-            # Simple time-series lag, ordered by date_col
             expr = pl.col(col).shift(periods).alias(lagged_col_name)
         expressions.append(expr)
 
-    # Ensure the DataFrame is sorted by id_col (if present) and date_col before applying shift
+    out_df = out_df.with_columns(expressions)
+
     if id_col:
         logger.info(
             f"Sorting DataFrame by '{id_col}' and '{date_col}' for panel operations."

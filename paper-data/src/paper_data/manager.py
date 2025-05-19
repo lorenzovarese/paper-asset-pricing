@@ -65,25 +65,23 @@ class DataManager:
             date_col_name = list(date_column_config.keys())[0]
             date_col_format = date_column_config[date_col_name]
 
-            # Determine id_col based on dataset name, as it's required by CSVLoader
-            id_col = None
-            if name == "firm":
-                id_col = "permco"
-            elif name == "macro":
-                # For macro data, 'date' can serve as a unique identifier per row
-                # in the absence of a specific entity ID like 'permco'.
-                id_col = "date"
-                logger.info(
-                    f"For dataset '{name}', 'id_col' is not specified in config. Using '{id_col}' as a fallback. Ensure this is appropriate for your data."
-                )
-            else:
-                # If no specific ID column is defined, use the date column as a fallback.
-                # This might be appropriate for time-series data without an entity ID.
-                # Consider adding a more robust way to specify id_col in config if needed.
-                logger.warning(
-                    f"Dataset '{name}' does not have a specific 'id_col' defined. Using '{date_col_name}' as a fallback. Please verify this is appropriate for your data structure."
-                )
-                id_col = date_col_name
+            # Prioritize 'firm_id_column', then 'id_column', then fall back to heuristics.
+            id_col = dataset_config.get("firm_id_column") or dataset_config.get(
+                "id_column"
+            )
+
+            if not id_col:
+                if "firm" in name:
+                    id_col = "permno"
+                    logger.info(
+                        f"For dataset '{name}', 'id_col' was inferred as 'permno'. Consider adding 'firm_id_column' to the config for clarity."
+                    )
+                else:
+                    # For non-firm datasets like macro, the date is the identifier.
+                    id_col = date_col_name
+                    logger.info(
+                        f"Dataset '{name}' does not have a specific ID column defined. Using date column '{date_col_name}' as a fallback."
+                    )
 
             if data_format == "csv":
                 full_path = self._resolve_data_path(path)

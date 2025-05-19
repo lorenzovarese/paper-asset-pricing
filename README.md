@@ -23,80 +23,99 @@ This repository is organized as a monorepo, housing several interconnected Pytho
 
 ### Core Components:
 
-*   **`paper-tools`**: The central command-line interface (CLI) and orchestrator for the entire P.A.P.E.R platform. It handles project initialization, manages configurations, and executes various research phases (data, models, portfolio).
-    *   **Key Features:** Project scaffolding, phase execution (`paper execute data/models/portfolio`), centralized logging.
+*   **`paper-tools`**: The central command-line interface (CLI) and orchestrator for the entire P.A.P.E.R platform. It handles project initialization (`paper init`), manages configurations, and executes the research workflow phase by phase (`paper execute data`, `paper execute models`, `paper execute portfolio`).
+    *   **Key Features:** Project scaffolding with a standardized structure, execution of data, modeling, and portfolio pipelines, centralized logging.
     *   **Learn More:** See [`paper-tools/README.md`](./paper-tools/README.md)
 *   **`paper-data`**: Dedicated to data ingestion, cleaning, and preprocessing. It provides a flexible, configuration-driven pipeline to transform raw financial and economic data into clean, analysis-ready datasets.
-    *   **Key Features:** Connectors for local files, HTTP, Google Drive, Hugging Face, WRDS; monthly imputation, scaling, merging, lagging, interaction terms.
+    *   **Key Features:** Connectors for local files (CSV), with stubs for HTTP, Google Drive, and WRDS. A powerful wrangling toolkit including monthly imputation, cross-sectional scaling, dataset merging, feature lagging, and interaction term creation.
     *   **Learn More:** See [`paper-data/README.md`](./paper-data/README.md)
-*   **`paper-model`**: (Under Development) This module will focus on the implementation of various asset pricing models. Its primary goal will be to generate model evaluations and checkpoints for subsequent portfolio construction.
-    *   **Key Features (Planned):** Factor model estimation, machine learning models for return prediction, model evaluation metrics.
-*   **`paper-portfolio`**: (Under Development) A lightweight module designed to utilize the processed data from `paper-data` and model outputs from `paper-model` to construct long-short portfolios and visualize their cross-sectional performance.
-    *   **Key Features (Planned):** Portfolio sorting, performance attribution, characteristic-managed portfolios.
+*   **`paper-model`**: Implements a robust framework for training and evaluating asset pricing models. It uses a rolling-window backtesting methodology to generate out-of-sample predictions and performance metrics.
+    *   **Key Features:** Support for various scikit-learn models (OLS, ElasticNet, PCR, PLS), Pydantic-validated configuration, rolling-window evaluation, generation of prediction files and evaluation reports (R², MSE), and model checkpointing.
+    *   **Learn More:** See [`paper-model/README.md`](./paper-model/README.md)
+*   **`paper-portfolio`**: Constructs and analyzes long-short portfolios based on model predictions. It calculates various performance metrics and generates reports and visualizations to assess strategy viability.
+    *   **Key Features:** Config-driven portfolio construction (long/short quantiles), equal and value weighting schemes, performance evaluation (Sharpe Ratio, Expected Shortfall, Cumulative Return), and generation of reports and plots.
+    *   **Learn More:** See [`paper-portfolio/README.md`](./paper-portfolio/README.md)
 
 ---
 
 ## 🚀 Getting Started
 
-To get started with P.A.P.E.R, we recommend using `uv` for dependency management within the monorepo.
+The P.A.P.E.R workflow is designed to be sequential and intuitive. You start by setting up a project, then process data, train models, and finally, build and analyze portfolios.
 
-### 1. Clone the Repository
+### 1. Initial Setup
+
+First, clone the repository and set up the development environment using `uv`.
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/your-username/paper-asset-pricing.git
 cd paper-asset-pricing
+
+# 2. Install uv if you haven't already
+# pip install uv
+
+# 3. Install all packages in the workspace in editable mode
+# The [all] extra installs optional dependencies for all components.
+uv pip install -e .[all]
 ```
 
-### 2. Set up the `uv` Environment
+### 2. Initialize Your Research Project
 
-`uv` is used to manage the monorepo's dependencies efficiently. Ensure you have `uv` installed (e.g., `pip install uv`).
-
-```bash
-# Install all dependencies for the entire monorepo, including optional ones
-uv pip install -e ".[all]"
-
-# This command will:
-# - Install all core dependencies defined in the root pyproject.toml.
-# - Install all packages in editable mode (`-e .`) within the workspace.
-# - Install all optional dependencies (e.g., paper-data's dependencies) via `[all]`.
-```
-
-### 3. Initialize Your First Project
-
-Use the `paper-tools` CLI to create a new research project with a standardized directory structure. Let's call our first project `ThesisExample`:
+Use the `paper` CLI from `paper-tools` to scaffold a new project. This creates a standardized directory structure for your work.
 
 ```bash
 paper init ThesisExample
 ```
 
-This command will create a new directory `ThesisExample/` with all the necessary subdirectories (`configs/`, `data/`, `models/`, `portfolios/`) and placeholder configuration files.
-
-### 4. Prepare Your Data
-
-Place your raw data files (e.g., CSVs, Parquet) into the `ThesisExample/data/raw/` directory.
-
-Next, edit the `ThesisExample/configs/data-config.yaml` file to define how `paper-data` should ingest, wrangle, and export your data. Refer to the [`paper-data/README.md`](./paper-data/README.md) for detailed configuration options and examples.
-
-### 5. Run the Data Processing Pipeline
-
-Once your `data-config.yaml` is set up and raw data is in place, you can execute the data processing phase:
+This command creates a `ThesisExample/` directory with `configs/`, `data/`, `models/`, and `portfolios/` subdirectories, along with placeholder configuration files.
 
 ```bash
-# Navigate into your project directory
+# Navigate into your new project directory
 cd ThesisExample
-
-# Execute the data phase
-paper execute data
 ```
 
-**What to Expect:**
-*   The console output will be minimal, indicating the start and successful completion of the data phase.
-*   All detailed logs, including progress and intermediate steps, will be written to `ThesisExample/logs.log`.
-*   Your processed data will be saved in `ThesisExample/data/processed/` as specified in your `data-config.yaml`.
+### 3. Phase I: Data Processing
 
-### 6. Continue Your Research!
+This phase transforms your raw source data into a clean, analysis-ready dataset.
 
-With your data processed, you're ready to move on to the modeling and portfolio construction phases (as `paper-model` and `paper-portfolio` become available).
+1.  **Add Raw Data**: Place your raw data files (e.g., `firm_data.csv`, `macro_data.csv`) inside the `data/raw/` directory.
+2.  **Configure Pipeline**: Edit `configs/data-config.yaml`. Define how to load your raw files, what cleaning and transformation steps to perform (e.g., impute missing values, lag features), and how to save the final dataset.
+3.  **Execute**: Run the data pipeline.
+
+    ```bash
+    paper execute data
+    ```
+
+**Output**: The console will show a simple success message. All detailed steps are logged in `logs.log`. The final, processed dataset(s) will be saved in the `data/processed/` directory (e.g., as `processed_data.parquet`).
+
+### 4. Phase II: Model Training & Prediction
+
+This phase uses your processed data to train predictive models and generate out-of-sample return predictions.
+
+1.  **Configure Models**: Edit `configs/models-config.yaml`. Specify which processed dataset to use, define your target variable (e.g., `ret_excess`), list your features, and configure one or more models (e.g., OLS, ElasticNet) and the rolling-window evaluation parameters.
+2.  **Execute**: Run the modeling pipeline.
+
+    ```bash
+    paper execute models
+    ```
+
+**Output**: This will run the full backtesting loop. The `models/` directory will be populated with:
+*   `models/predictions/`: Parquet files containing firm-month level return predictions for each model.
+*   `models/evaluations/`: Reports and metrics (e.g., R², MSE) for each model's predictive performance.
+*   `models/saved/`: (Optional) Saved model checkpoints for each training window.
+
+### 5. Phase III: Portfolio Construction & Analysis
+
+The final phase uses the model predictions to construct long-short portfolios and evaluate their performance.
+
+1.  **Configure Strategies**: Edit `configs/portfolio-config.yaml`. Point to the prediction files you just generated, and define your portfolio sorting strategies (e.g., "Top-Decile vs. Bottom-Decile"), weighting schemes (equal or value-weighted), and desired performance metrics.
+2.  **Execute**: Run the portfolio analysis pipeline.
+
+    ```bash
+    paper execute portfolio
+    ```
+
+**Output**: The `portfolios/results/` directory will be populated with performance reports, charts (e.g., cumulative returns), and detailed monthly return data for each strategy.
 
 ---
 
@@ -106,10 +125,10 @@ We welcome contributions from the community! If you're interested in contributin
 
 ### Running Tests
 
-To run tests for all packages in the monorepo:
+To run tests for all packages in the monorepo, first ensure you have `pytest` installed, then run:
 
 ```bash
-uv run pytest
+pytest
 ```
 
 ---

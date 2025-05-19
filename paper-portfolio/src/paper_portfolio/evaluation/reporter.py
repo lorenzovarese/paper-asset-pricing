@@ -18,7 +18,7 @@ class PortfolioReporter:
         """Generates a text-based report for a given portfolio strategy."""
         report_filename = self.output_dir / f"{model_name}_{strategy_name}_report.txt"
         with open(report_filename, "w") as f:
-            f.write(f"--- Portfolio Performance Report ---\n")
+            f.write("--- Portfolio Performance Report ---\n")
             f.write(f"Model: {model_name}\n")
             f.write(f"Strategy: {strategy_name}\n")
             f.write("-" * 30 + "\n")

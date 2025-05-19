@@ -37,6 +37,18 @@ except ImportError:
         "Failed to import paper_data.manager.DataManager. PAPER_DATA_AVAILABLE=False"
     )
 
+try:
+    from paper_model.manager import ModelManager  # type: ignore
+    from paper_model.config_parser import load_config as load_models_config  # type: ignore
+
+    PAPER_MODEL_AVAILABLE = True
+    logger.debug("paper_model components imported successfully.")
+except ImportError:
+    PAPER_MODEL_AVAILABLE = False
+    ModelManager = None  # type: ignore
+    load_models_config = None  # type: ignore
+    logger.debug("Failed to import paper_model components. PAPER_MODEL_AVAILABLE=False")
+
 
 # Try to get version from __init__ for the config file, fallback if not found
 try:
@@ -314,6 +326,7 @@ def _get_project_root_and_load_main_config(
     Tries to auto-detect project root if project_path_str is None by looking for
     'configs/paper-project.yaml' in current or parent directories.
     """
+    project_root: Path
     if project_path_str:
         project_root = Path(project_path_str).resolve()
         if not project_root.is_dir():
@@ -509,13 +522,108 @@ def execute_models_phase(
         show_default=False,
     ),
 ):
-    # This command also needs to configure logging if it's to write to logs.log
-    # For now, keeping it simple as it's not implemented.
-    typer.secho(
-        "Models phase execution is not yet implemented. (Would import from 'paper-model')",
-        fg=typer.colors.YELLOW,
+    """
+    Executes the modeling phase using the 'paper-model' component.
+    """
+    if not PAPER_MODEL_AVAILABLE or ModelManager is None or load_models_config is None:
+        typer.secho(
+            "Error: The 'paper-model' component is not installed or importable. "
+            "Please install it, e.g., `pip install paper-tools[models]` or `pip install paper-model`.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    typer.secho(">>> Executing Models Phase <<<", fg=typer.colors.CYAN, bold=True)
+
+    try:
+        project_root, project_config = _get_project_root_and_load_main_config(
+            project_path
+        )
+    except typer.Exit:
+        raise
+
+    log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
+    log_level = project_config.get("logging", {}).get("level", "INFO")
+    _configure_project_logging(project_root, log_file_name, log_level)
+
+    logger.info(f"Starting Models Phase for project: {project_root.name}")
+    logger.info(f"Project root: {project_root}")
+
+    models_config_filename = (
+        project_config.get("components", {})
+        .get("models", {})
+        .get("config_file", MODELS_COMPONENT_CONFIG_FILENAME)
     )
-    typer.Exit(code=0)
+    component_config_path = project_root / CONFIGS_DIR_NAME / models_config_filename
+
+    if not component_config_path.exists():
+        logger.error(
+            f"Models component config file '{component_config_path.name}' "
+            f"not found in '{project_root / CONFIGS_DIR_NAME}'. "
+            f"Ensure '{MODELS_COMPONENT_CONFIG_FILENAME}' exists and is configured."
+        )
+        typer.secho(
+            f"Error: Models component config file '{component_config_path.name}' not found. "
+            f"Check logs for details: '{project_root / log_file_name}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    logger.info(f"Using models configuration: {component_config_path}")
+
+    try:
+        models_config = load_models_config(config_path=component_config_path)
+        manager = ModelManager(config=models_config)
+        prediction_results = manager.run(project_root=project_root)
+
+        typer.secho(
+            f"Models phase completed successfully. Additional information in '{project_root / log_file_name}'",
+            fg=typer.colors.GREEN,
+        )
+        logger.info("Models phase completed successfully.")
+        for name, df in prediction_results.items():
+            logger.info(
+                f"  Generated prediction results for '{name}' shape: {df.shape}"
+            )
+
+    except FileNotFoundError as e:
+        logger.error(f"File not found error during models phase: {e}", exc_info=True)
+        typer.secho(
+            f"Error: A required file was not found. Check logs for details: '{project_root / log_file_name}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    except ValueError as e:
+        logger.error(f"Configuration error during models phase: {e}", exc_info=True)
+        typer.secho(
+            f"Error: Configuration issue. Check logs for details: '{project_root / log_file_name}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    except NotImplementedError as e:
+        logger.error(
+            f"Feature not implemented error during models phase: {e}", exc_info=True
+        )
+        typer.secho(
+            f"Error: A feature is not yet implemented. Check logs for details: '{project_root / log_file_name}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    except Exception as e:
+        logger.exception(
+            f"An unexpected error occurred while running the models phase: {e}"
+        )
+        typer.secho(
+            f"An unexpected error occurred during the models phase. Check logs for details: '{project_root / log_file_name}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
 
 @execute_app.command("portfolio")

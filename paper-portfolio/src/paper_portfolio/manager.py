@@ -71,12 +71,27 @@ class PortfolioManager:
                 continue
 
             for strat in self.config.strategies:
-                # --- 1. Validate Quantiles ---
+                monthly_data_for_strat = monthly_data
+                if strat.weighting_scheme == "value":
+                    value_col = self.config.input_data.value_weight_col
+                    monthly_data_for_strat = monthly_data.filter(pl.col(value_col) > 0)
+
+                if monthly_data_for_strat.is_empty():
+                    continue
+
                 quantiles = [
-                    monthly_data["predicted_ret"].quantile(strat.long_quantiles[0]),
-                    monthly_data["predicted_ret"].quantile(strat.long_quantiles[1]),
-                    monthly_data["predicted_ret"].quantile(strat.short_quantiles[0]),
-                    monthly_data["predicted_ret"].quantile(strat.short_quantiles[1]),
+                    monthly_data_for_strat["predicted_ret"].quantile(
+                        strat.long_quantiles[0]
+                    ),
+                    monthly_data_for_strat["predicted_ret"].quantile(
+                        strat.long_quantiles[1]
+                    ),
+                    monthly_data_for_strat["predicted_ret"].quantile(
+                        strat.short_quantiles[0]
+                    ),
+                    monthly_data_for_strat["predicted_ret"].quantile(
+                        strat.short_quantiles[1]
+                    ),
                 ]
                 if not all(isinstance(q, (float, int)) for q in quantiles):
                     logger.warning(
@@ -86,12 +101,11 @@ class PortfolioManager:
 
                 q_low_long, q_high_long, q_low_short, q_high_short = quantiles
 
-                # --- 2. Construct Portfolios ---
-                long_portfolio = monthly_data.filter(
+                long_portfolio = monthly_data_for_strat.filter(
                     (pl.col("predicted_ret") >= q_low_long)
                     & (pl.col("predicted_ret") <= q_high_long)
                 )
-                short_portfolio = monthly_data.filter(
+                short_portfolio = monthly_data_for_strat.filter(
                     (pl.col("predicted_ret") >= q_low_short)
                     & (pl.col("predicted_ret") <= q_high_short)
                 )
@@ -99,23 +113,20 @@ class PortfolioManager:
                 if long_portfolio.is_empty() or short_portfolio.is_empty():
                     continue
 
-                # --- 3. Calculate Returns with Type Safety ---
                 long_return: Union[float, int, None] = None
                 short_return: Union[float, int, None] = None
 
                 if strat.weighting_scheme == "equal":
-                    # Here, weights are scalars (float)
-                    equal_long_weight = 1.0 / len(long_portfolio)
-                    equal_short_weight = 1.0 / len(short_portfolio)
-                    long_return = (
-                        long_portfolio["actual_ret"] * equal_long_weight
-                    ).sum()
-                    short_return = (
-                        short_portfolio["actual_ret"] * equal_short_weight
-                    ).sum()
+                    mean_long = long_portfolio["actual_ret"].mean()
+                    mean_short = short_portfolio["actual_ret"].mean()
+
+                    if isinstance(mean_long, (float, int)) and isinstance(
+                        mean_short, (float, int)
+                    ):
+                        long_return = mean_long
+                        short_return = mean_short
 
                 elif strat.weighting_scheme == "value":
-                    # Here, weights are Series
                     value_col = self.config.input_data.value_weight_col
                     long_sum = long_portfolio[value_col].sum()
                     short_sum = short_portfolio[value_col].sum()
@@ -126,7 +137,6 @@ class PortfolioManager:
                         and isinstance(short_sum, (int, float))
                         and short_sum > 0
                     ):
-                        # Use distinct variable names to avoid type conflicts
                         value_long_weights = long_portfolio[value_col] / long_sum
                         value_short_weights = short_portfolio[value_col] / short_sum
                         long_return = (
@@ -136,7 +146,6 @@ class PortfolioManager:
                             short_portfolio["actual_ret"] * value_short_weights
                         ).sum()
 
-                # --- 4. Validate Calculated Returns ---
                 if not isinstance(long_return, (float, int)) or not isinstance(
                     short_return, (float, int)
                 ):
@@ -147,7 +156,6 @@ class PortfolioManager:
 
                 portfolio_return = long_return - short_return
 
-                # --- 5. Validate Risk-Free Rate ---
                 risk_free_rate = monthly_data[
                     self.config.input_data.risk_free_rate_col
                 ].first()
@@ -161,6 +169,8 @@ class PortfolioManager:
                     {
                         "date": date,
                         "strategy": strat.name,
+                        "long_return": long_return,
+                        "short_return": short_return,
                         "portfolio_return": portfolio_return,
                         "risk_free_rate": risk_free_rate,
                     }
@@ -216,15 +226,19 @@ class PortfolioManager:
                     )
 
                 if "cumulative_return" in self.config.metrics:
-                    cum_ret_series = metrics.cumulative_return(
-                        strategy_returns["portfolio_return"]
-                    )
-                    if not cum_ret_series.is_empty():
-                        summary_metrics["final_cumulative_return"] = cum_ret_series[-1]
-
                     plot_df = strategy_returns.with_columns(
-                        cumulative_return=cum_ret_series
+                        cumulative_long=((1 + pl.col("long_return")).cum_prod() - 1),
+                        cumulative_short=((1 + pl.col("short_return")).cum_prod() - 1),
+                        cumulative_portfolio=(
+                            (1 + pl.col("portfolio_return")).cum_prod() - 1
+                        ),
                     )
+
+                    if not plot_df.is_empty():
+                        summary_metrics["final_cumulative_return"] = plot_df[
+                            "cumulative_portfolio"
+                        ][-1]
+
                     if self.reporter:
                         self.reporter.plot_cumulative_returns(
                             model_name, strat_name, plot_df

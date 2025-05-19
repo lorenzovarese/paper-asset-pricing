@@ -43,20 +43,48 @@ class PortfolioReporter:
     def plot_cumulative_returns(
         self, model_name: str, strategy_name: str, returns_df: pl.DataFrame
     ):
-        """Plots and saves the cumulative return chart."""
-        if returns_df.is_empty() or "cumulative_return" not in returns_df.columns:
+        """
+        Plots and saves the cumulative return chart for the long, short,
+        and combined long-short portfolio.
+        """
+        required_cols = ["cumulative_long", "cumulative_short", "cumulative_portfolio"]
+        if returns_df.is_empty() or not all(
+            c in returns_df.columns for c in required_cols
+        ):
+            logger.warning(
+                f"Missing required columns for plotting in strategy '{strategy_name}'. Skipping plot."
+            )
             return
 
         plt.figure(figsize=(12, 7))
+
+        # Plot each component with the specified color and label
         plt.plot(
             returns_df["date"],
-            returns_df["cumulative_return"],
-            label="Cumulative Return",
+            returns_df["cumulative_long"],
+            label="Long Component",
+            color="green",
+            linewidth=1.5,
         )
+        plt.plot(
+            returns_df["date"],
+            returns_df["cumulative_short"],
+            label="Short Component",
+            color="red",
+            linewidth=1.5,
+        )
+        plt.plot(
+            returns_df["date"],
+            returns_df["cumulative_portfolio"],
+            label="Long-Short Strategy",
+            color="blue",
+            linewidth=2.5,  # Make the main strategy line thicker
+        )
+
         plt.title(f"Cumulative Return for {model_name} - {strategy_name}")
         plt.xlabel("Date")
         plt.ylabel("Cumulative Return")
-        plt.grid(True)
+        plt.grid(True, linestyle="--", alpha=0.6)
         plt.legend()
         plt.tight_layout()
 

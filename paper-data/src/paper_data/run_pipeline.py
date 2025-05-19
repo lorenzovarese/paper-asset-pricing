@@ -63,7 +63,8 @@ print(f"Attempting to load config from: {data_config_path.resolve()}")
 print(f"Using project root: {paper_project_root.resolve()}")
 print(f"Detailed logs will be written to: {log_file_path.resolve()}")
 
-if __name__ == "__main__":
+
+def main():
     try:
         # Log the start of the pipeline to the file
         root_logger.info("Starting data pipeline execution via run_pipeline.py script.")
@@ -117,3 +118,7 @@ if __name__ == "__main__":
             f"An unexpected error occurred. Check logs for details: '{log_file_path.resolve()}'"
         )
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

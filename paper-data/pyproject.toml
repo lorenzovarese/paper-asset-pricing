@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-paper-data = "paper_data.cli:app"
+paper-data = "paper_data.run_pipeline:main" # entry point for debug purposes
 
 [build-system]
 requires = ["hatchling"]

@@ -7,6 +7,7 @@ import joblib  # type: ignore
 from paper_model.config_parser import ModelsConfig
 from paper_model.models.base import BaseModel
 from paper_model.models.sklearn_model import SklearnModel
+from paper_model.models.torch_model import TorchModel
 from paper_model.evaluation.reporter import EvaluationReporter
 from paper_model.evaluation.metrics import (
     mean_squared_error,
@@ -26,6 +27,7 @@ class ModelManager:
         "glm": SklearnModel,
         "rf": SklearnModel,
         "gbrt": SklearnModel,
+        "nn": TorchModel,
     }
 
     METRIC_FUNCTIONS: Dict[str, Any] = {

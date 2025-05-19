@@ -7,7 +7,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from typing import List, Literal, Optional, Union, Dict, Any
+from typing import List, Literal, Optional, Tuple, Union, Dict, Any
 from enum import Enum
 
 # --- Pydantic Models for Configuration Schema ---
@@ -201,6 +201,32 @@ class GBRTConfig(BaseModelConfig):
         )
 
 
+class NNConfig(BaseModelConfig):
+    type: Literal["nn"]
+    hidden_layer_sizes: Tuple[int, ...] = Field(
+        ..., description="A tuple defining the number of neurons in each hidden layer."
+    )
+    alpha: Union[float, List[float]] = Field(
+        ..., description="L1 penalty (λ) or list for tuning."
+    )
+    learning_rate: Union[float, List[float]] = Field(
+        ..., description="Learning rate for the Adam optimizer or list for tuning."
+    )
+    batch_size: int = Field(10000, description="Size of mini-batches for SGD.")
+    epochs: int = Field(100, description="Maximum number of training epochs.")
+    patience: int = Field(
+        5, description="Epochs to wait for improvement before early stopping."
+    )
+    n_ensembles: int = Field(
+        10, description="Number of models to train in the ensemble."
+    )
+
+    @property
+    def requires_tuning(self) -> bool:
+        # Tuning is required if alpha or learning_rate are lists
+        return isinstance(self.alpha, list) or isinstance(self.learning_rate, list)
+
+
 # --- Main Configuration Schema ---
 
 AnyModel = Union[
@@ -211,6 +237,7 @@ AnyModel = Union[
     GLMConfig,
     RandomForestConfig,
     GBRTConfig,
+    NNConfig,
 ]
 
 
@@ -239,6 +266,8 @@ class ModelsConfig(BaseModel):
                 dispatched.append(RandomForestConfig(**model_config))
             elif model_type == "gbrt":
                 dispatched.append(GBRTConfig(**model_config))
+            elif model_type == "nn":
+                dispatched.append(NNConfig(**model_config))
             else:
                 raise ValueError(f"Unsupported model type: '{model_type}'")
         return dispatched
@@ -247,10 +276,10 @@ class ModelsConfig(BaseModel):
     def check_validation_set_for_tuning(self) -> "ModelsConfig":
         """Ensure validation_month is set if any model requires tuning."""
         for model in self.models:
-            if model.requires_tuning:
+            if model.requires_tuning or isinstance(model, NNConfig):
                 if self.evaluation.validation_month <= 0:
                     raise ValueError(
-                        f"Model '{model.name}' requires hyperparameter tuning, "
+                        f"Model '{model.name}' requires a validation set (for tuning or early stopping), "
                         "but 'evaluation.validation_month' is not set to a value greater than 0."
                     )
         return self

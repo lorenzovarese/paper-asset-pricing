@@ -1193,6 +1193,20 @@ requires-dist = [
 name = "paper-portfolio"
 version = "0.1.0"
 source = { editable = "paper-portfolio" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "polars" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "matplotlib", specifier = ">=3.10.0" },
+    { name = "polars", specifier = ">=1.30.0" },
+    { name = "pydantic", specifier = ">=2.11.5" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+]
 
 [[package]]
 name = "paper-tools"

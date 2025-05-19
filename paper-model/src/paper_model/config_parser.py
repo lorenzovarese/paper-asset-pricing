@@ -98,6 +98,11 @@ class OLSConfig(BaseModelConfig):
             )
         return self
 
+    @property
+    def requires_tuning(self) -> bool:
+        """OLS as implemented does not require hyperparameter tuning."""
+        return False
+
 
 class ElasticNetConfig(BaseModelConfig):
     type: Literal["enet"]
@@ -115,16 +120,24 @@ class ElasticNetConfig(BaseModelConfig):
 
 class PCRConfig(BaseModelConfig):
     type: Literal["pcr"]
-    n_components: int = Field(
-        ..., gt=0, description="Number of principal components to keep"
+    n_components: Union[int, List[int]] = Field(
+        ..., description="Number of principal components or list for tuning"
     )
+
+    @property
+    def requires_tuning(self) -> bool:
+        return isinstance(self.n_components, list)
 
 
 class PLSConfig(BaseModelConfig):
     type: Literal["pls"]
-    n_components: int = Field(
-        ..., gt=0, description="Number of partial least squares components"
+    n_components: Union[int, List[int]] = Field(
+        ..., description="Number of partial least squares components or list for tuning"
     )
+
+    @property
+    def requires_tuning(self) -> bool:
+        return isinstance(self.n_components, list)
 
 
 # --- Main Configuration Schema ---
@@ -159,7 +172,7 @@ class ModelsConfig(BaseModel):
     def check_validation_set_for_tuning(self) -> "ModelsConfig":
         """Ensure validation_month is set if any model requires tuning."""
         for model in self.models:
-            if isinstance(model, ElasticNetConfig) and model.requires_tuning:
+            if model.requires_tuning:
                 if self.evaluation.validation_month <= 0:
                     raise ValueError(
                         f"Model '{model.name}' requires hyperparameter tuning, "

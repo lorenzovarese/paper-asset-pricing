@@ -58,9 +58,23 @@ class SklearnModel(BaseModel):
         objective = model_config.get("objective_function", "l2")
         random_state = model_config.get("random_state")
 
-        is_tuning_required = model_type == "enet" and (
-            isinstance(model_config.get("alpha"), list)
-            or isinstance(model_config.get("l1_ratio"), list)
+        # UPDATED: Generalize the check for any model requiring tuning
+        is_tuning_required = (
+            (
+                model_type == "enet"
+                and (
+                    isinstance(model_config.get("alpha"), list)
+                    or isinstance(model_config.get("l1_ratio"), list)
+                )
+            )
+            or (
+                model_type == "pcr"
+                and isinstance(model_config.get("n_components"), list)
+            )
+            or (
+                model_type == "pls"
+                and isinstance(model_config.get("n_components"), list)
+            )
         )
 
         if is_tuning_required and (
@@ -113,28 +127,44 @@ class SklearnModel(BaseModel):
                 raise RuntimeError("PredefinedSplit was not created for tuning.")
 
             logger.info(f"Starting hyperparameter tuning for '{self.name}'...")
-            param_grid = {}
-            if isinstance(model_config.get("alpha"), list):
-                param_grid["model__alpha"] = model_config["alpha"]
-            if isinstance(model_config.get("l1_ratio"), list):
-                param_grid["model__l1_ratio"] = model_config["l1_ratio"]
+            param_grid: Dict[str, Any] = {}
+            base_model: Any
 
-            if objective == "huber":
-                base_model = SGDRegressor(
-                    loss="huber",
-                    penalty="elasticnet",
-                    random_state=random_state,
-                    max_iter=1000,
-                    tol=1e-3,
+            # UPDATED: Build param_grid and base_model based on model_type
+            if model_type == "enet":
+                if isinstance(model_config.get("alpha"), list):
+                    param_grid["model__alpha"] = model_config["alpha"]
+                if isinstance(model_config.get("l1_ratio"), list):
+                    param_grid["model__l1_ratio"] = model_config["l1_ratio"]
+                if objective == "huber":
+                    base_model = SGDRegressor(
+                        loss="huber",
+                        penalty="elasticnet",
+                        random_state=random_state,
+                        max_iter=1000,
+                        tol=1e-3,
+                    )
+                    if not isinstance(model_config.get("l1_ratio"), list):
+                        base_model.set_params(l1_ratio=model_config.get("l1_ratio"))
+                else:
+                    base_model = ElasticNet(random_state=random_state)
+                    if not isinstance(model_config.get("alpha"), list):
+                        base_model.set_params(alpha=model_config.get("alpha"))
+                    if not isinstance(model_config.get("l1_ratio"), list):
+                        base_model.set_params(l1_ratio=model_config.get("l1_ratio"))
+
+            elif model_type == "pcr":
+                param_grid["pcr_pipeline__pca__n_components"] = model_config[
+                    "n_components"
+                ]
+                regressor = (
+                    HuberRegressor() if objective == "huber" else LinearRegression()
                 )
-                if not isinstance(model_config.get("l1_ratio"), list):
-                    base_model.set_params(l1_ratio=model_config.get("l1_ratio"))
-            else:
-                base_model = ElasticNet(random_state=random_state)
-                if not isinstance(model_config.get("alpha"), list):
-                    base_model.set_params(alpha=model_config.get("alpha"))
-                if not isinstance(model_config.get("l1_ratio"), list):
-                    base_model.set_params(l1_ratio=model_config.get("l1_ratio"))
+                base_model = Pipeline([("pca", PCA()), ("regressor", regressor)])
+
+            elif model_type == "pls":
+                param_grid["model__n_components"] = model_config["n_components"]
+                base_model = PLSRegression()
 
             pipeline = self._create_pipeline(base_model)
             grid_search = GridSearchCV(
@@ -150,17 +180,15 @@ class SklearnModel(BaseModel):
             self.model = grid_search.best_estimator_
 
         else:
+            # This block for non-tuned models remains largely the same
             model_instance: Any
             fit_params = {}
 
             if model_type == "ols":
+                # OLS logic as before
                 weights: Optional[np.ndarray] = None
                 weighting_scheme = model_config.get("weighting_scheme")
-
                 if weighting_scheme == "inv_n_stocks":
-                    logger.info(
-                        f"Calculating weights for '{self.name}' using scheme: {weighting_scheme}"
-                    )
                     date_col = self.config["date_column"]
                     n_stocks_per_month = (
                         clean_data.group_by(pl.col(date_col).dt.truncate("1mo"))
@@ -171,28 +199,19 @@ class SklearnModel(BaseModel):
                         n_stocks_per_month, on=pl.col(date_col).dt.truncate("1mo")
                     )
                     weights = (1 / weighted_data.get_column("n_stocks")).to_numpy()
-
                 elif weighting_scheme == "mkt_cap":
-                    logger.info(
-                        f"Calculating weights for '{self.name}' using scheme: {weighting_scheme}"
-                    )
                     mkt_cap_col = model_config.get("market_cap_column")
                     if mkt_cap_col not in clean_data.columns:
                         raise ValueError(
                             f"Market cap column '{mkt_cap_col}' not found in data."
                         )
                     weights = clean_data.get_column(mkt_cap_col).to_numpy()
-
                 if weights is not None:
                     fit_params["model__sample_weight"] = weights
-
                 if objective == "huber":
                     huber_epsilon = 1.35
                     huber_quantile = model_config.get("huber_epsilon_quantile")
                     if huber_quantile is not None:
-                        logger.info(
-                            f"Adaptively setting Huber epsilon for '{self.name}' at quantile: {huber_quantile}"
-                        )
                         temp_ols = LinearRegression()
                         temp_pipeline = Pipeline(
                             [("scaler", StandardScaler()), ("model", temp_ols)]
@@ -203,10 +222,9 @@ class SklearnModel(BaseModel):
                         logger.info(
                             f"Calculated Huber epsilon (ξ) = {huber_epsilon:.4f}"
                         )
-
                     model_instance = SGDRegressor(
                         loss="huber",
-                        penalty=None,  # No penalty for OLS
+                        penalty=None,
                         epsilon=huber_epsilon,
                         random_state=random_state,
                     )

@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-paper-model = "paper_model:main"
+paper-model = "paper_model.run_pipeline:main"
 
 [build-system]
 requires = ["hatchling"]

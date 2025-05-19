@@ -199,20 +199,32 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                         train_data, validation_data, alpha, lr
                     )
 
-                    y_val_pred_avg = self.predict(
+                    y_val_pred_full = self.predict(
                         validation_data, ensemble=current_ensemble
                     )
-                    y_val_true = validation_data.get_column(self.target_col)
 
-                    score = r2_out_of_sample(
-                        y_val_true.drop_nulls().to_numpy(),
-                        y_val_pred_avg.drop_nulls().to_numpy(),
-                    )
+                    temp_df = validation_data.select(
+                        pl.col(self.target_col).alias("y_true")
+                    ).with_columns(y_val_pred_full.alias("y_pred"))
 
-                    if score > best_score:
-                        best_score = score
-                        best_params = {"alpha": alpha, "learning_rate": lr}
-                        best_ensemble = current_ensemble
+                    null_count = temp_df.filter(pl.col("y_pred").is_null()).height
+                    if null_count > 0:
+                        logger.warning(
+                            f"Found {null_count} null predictions for '{self.name}' with alpha={alpha}, learning_rate={lr}"
+                        )
+
+                    aligned_df = temp_df.drop_nulls(subset=["y_true"])
+
+                    if not aligned_df.is_empty():
+                        score = r2_out_of_sample(
+                            aligned_df.get_column("y_true").to_numpy(),
+                            aligned_df.get_column("y_pred").to_numpy(),
+                        )
+
+                        if score > best_score:
+                            best_score = score
+                            best_params = {"alpha": alpha, "learning_rate": lr}
+                            best_ensemble = current_ensemble
 
             logger.info(f"Best params for '{self.name}': {best_params}")
             self.model = best_ensemble

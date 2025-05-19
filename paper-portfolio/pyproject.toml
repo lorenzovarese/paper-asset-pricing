@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-paper-portfolio = "paper_portfolio:main"
+paper-portfolio = "paper_portfolio.run_pipeline:main"
 
 [build-system]
 requires = ["hatchling"]

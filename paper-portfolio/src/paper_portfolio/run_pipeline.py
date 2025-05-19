@@ -1,0 +1,102 @@
+import sys
+from pathlib import Path
+import logging
+
+# Add the src directory to the Python path to allow importing paper_portfolio
+# This is crucial for running the script directly for development/testing.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from paper_portfolio.manager import PortfolioManager
+from paper_portfolio.config_parser import load_config
+
+# --- Constants for Standalone Execution ---
+LOG_FILE_NAME = "logs.log"
+LOG_LEVEL = "INFO"
+DEFAULT_CONFIG_FILENAME = "portfolio-config.yaml"
+
+# Get the root logger
+root_logger = logging.getLogger()
+
+
+def setup_logging(project_root: Path):
+    """Configures logging for the pipeline run."""
+    log_file_path = project_root / LOG_FILE_NAME
+    root_logger.setLevel(LOG_LEVEL.upper())
+
+    # Clear existing handlers to prevent duplicate output
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Configure FileHandler for detailed logs
+    file_handler = logging.FileHandler(log_file_path, mode="a")
+    file_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+
+    # Configure StreamHandler for console errors
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.ERROR)
+    console_formatter = logging.Formatter("%(levelname)s: %(message)s")
+    console_handler.setFormatter(console_formatter)
+    root_logger.addHandler(console_handler)
+
+
+def main():
+    """
+    Main function to execute the portfolio evaluation pipeline.
+    """
+    # Define the root of your PAPER project for standalone execution
+    # This path should point to your project directory (e.g., 'tmp/ModelExample')
+    paper_project_root = Path("tmp/ModelExample").resolve()
+
+    # Ensure the project root exists before proceeding
+    paper_project_root.mkdir(parents=True, exist_ok=True)
+
+    # Set up logging to the project's log file
+    setup_logging(paper_project_root)
+
+    # Construct the full path to the config file
+    portfolio_config_path = paper_project_root / "configs" / DEFAULT_CONFIG_FILENAME
+
+    print(f"Attempting to load config from: {portfolio_config_path}")
+    print(f"Using project root: {paper_project_root}")
+    print(f"Detailed logs will be written to: {paper_project_root / LOG_FILE_NAME}")
+
+    try:
+        root_logger.info("--- Starting Portfolio Pipeline Execution ---")
+        root_logger.info(f"Config path: {portfolio_config_path}")
+        root_logger.info(f"Project root: {paper_project_root}")
+
+        # Load the configuration
+        portfolio_config = load_config(config_path=portfolio_config_path)
+
+        # Instantiate the manager with the validated config
+        manager = PortfolioManager(config=portfolio_config)
+
+        # Run the entire portfolio construction and evaluation process
+        manager.run(project_root=paper_project_root)
+
+        print("\n✅ Portfolio pipeline completed successfully. See logs for details.")
+        root_logger.info("--- Portfolio Pipeline Completed Successfully ---")
+
+    except FileNotFoundError as e:
+        error_msg = f"A required file was not found: {e}"
+        root_logger.error(error_msg, exc_info=True)
+        print(f"\n❌ ERROR: {error_msg}. Check logs for the full traceback.")
+        sys.exit(1)
+    except ValueError as e:
+        error_msg = f"Configuration or data validation error: {e}"
+        root_logger.error(error_msg, exc_info=True)
+        print(f"\n❌ ERROR: {error_msg}. Check logs for the full traceback.")
+        sys.exit(1)
+    except Exception as e:
+        error_msg = f"An unexpected error occurred: {e}"
+        root_logger.exception(error_msg)
+        print("\n❌ An unexpected error occurred. Check logs for the full traceback.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

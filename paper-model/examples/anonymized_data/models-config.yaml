@@ -15,41 +15,45 @@ evaluation:
 
 models:
 # Replicating Fama-French 3-predictor model using OLS
-- name: "ff_3_predictor_ols"
+- name: "ols_huber_adaptive"
   type: "ols"
   target_column: "ret"
   feature_columns: [ "bm", "mvel1", "mom12m" ]
-  objective_function: "l2" # Standard OLS
-  random_state: 306
-  save_model_checkpoints: true
-  save_prediction_results: true
+  objective_function: "huber"
+  # Set epsilon (ξ) to the 99.9% quantile of absolute residuals
+  huber_epsilon_quantile: 0.999
 
-# Replicating Gu et al. (2020) ENET + Huber
-- name: "enet_huber_model"
+# An Elastic Net model with specified parameters
+- name: "elastic_net_model"
   type: "enet"
   target_column: "ret"
   feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
-
-  # Use Huber loss, as specified in the paper
-  objective_function: "huber"
-
-  # Provide a list for alpha (λ) to search over the specified range
-  alpha: [ 0.0001, 0.001, 0.01, 0.1 ]
-
-  # Provide a fixed float for l1_ratio (ρ) as specified
+  alpha: 0.1
   l1_ratio: 0.5
-
   random_state: 306
   save_model_checkpoints: true
   save_prediction_results: true
 
-# A Principal Component Regression (PCR) model
-- name: "pcr_model"
+# A Principal Component Regression (PCR) model (two steps regression)
+- name: "pcr_tuned_model"
   type: "pcr"
   target_column: "ret"
   feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
-  n_components: 5 # Use top 5 principal components
-  objective_function: "huber" # Use Huber loss for robustness
+  # Provide a list of components (K) to search over
+  n_components: [ 5, 10, 15 ]
+  # Optional: Use Huber loss for the final regression step
+  objective_function: "huber"
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true
+
+# A Partial Least Squares (PLS) regression model (one step regression)
+- name: "pls_tuned_model"
+  type: "pls"
+  target_column: "ret"
+  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+  # Provide a list of components (K) to search over
+  n_components: [ 3, 6, 9 ]
   random_state: 306
   save_model_checkpoints: true
   save_prediction_results: true

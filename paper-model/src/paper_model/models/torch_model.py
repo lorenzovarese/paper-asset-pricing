@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 
-from sklearn.preprocessing import StandardScaler  # type: ignore
+from sklearn.preprocessing import StandardScaler  # type: ignore[import-untyped]
 
 from .base import BaseModel
 
@@ -70,7 +70,6 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
         super().__init__(name, config)
         self.target_col = config["target_column"]
         self.feature_cols = config["feature_columns"]
-        # This now correctly matches the inherited generic type
         self.model: Optional[List[FeedForwardNN]] = None
         self.scaler = StandardScaler()
 
@@ -115,7 +114,6 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                 f"Training ensemble member {i + 1}/{self.config['n_ensembles']}..."
             )
 
-            # Set seed for this member's initialization
             torch.manual_seed(self.config.get("random_state", 0) + i)
 
             net = FeedForwardNN(
@@ -124,17 +122,15 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
             )
 
             optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
-            loss_fn = nn.MSELoss()  # L2 loss
+            loss_fn = nn.MSELoss()
             early_stopper = EarlyStopper(patience=self.config["patience"])
 
             for epoch in range(self.config["epochs"]):
-                # Training loop
                 net.train()
                 for X_batch, y_batch in train_loader:
                     y_pred = net(X_batch)
                     l2_loss = loss_fn(y_pred, y_batch)
 
-                    # Add L1 regularization
                     l1_loss = 0
                     for param in net.parameters():
                         l1_loss += torch.linalg.vector_norm(param, ord=1)
@@ -145,7 +141,6 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                     total_loss.backward()
                     optimizer.step()
 
-                # Validation loop
                 net.eval()
                 val_loss = 0
                 with torch.no_grad():
@@ -175,8 +170,11 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                 f"Neural network model '{self.name}' requires a validation set for early stopping."
             )
 
-        # Manual grid search if tuning is required
-        if self.config.get("requires_tuning", False):
+        is_tuning_required = isinstance(self.config["alpha"], list) or isinstance(
+            self.config["learning_rate"], list
+        )
+
+        if is_tuning_required:
             logger.info(f"Starting hyperparameter tuning for '{self.name}'...")
             best_score = -np.inf
             best_params = {}
@@ -207,7 +205,8 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                     y_val_true = validation_data.get_column(self.target_col)
 
                     score = r2_out_of_sample(
-                        y_val_true.to_numpy(), y_val_pred_avg.to_numpy()
+                        y_val_true.drop_nulls().to_numpy(),
+                        y_val_pred_avg.drop_nulls().to_numpy(),
                     )
 
                     if score > best_score:
@@ -218,11 +217,23 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
             logger.info(f"Best params for '{self.name}': {best_params}")
             self.model = best_ensemble
         else:
+            alpha = self.config["alpha"]
+            learning_rate = self.config["learning_rate"]
+
+            if not isinstance(alpha, (int, float)):
+                raise TypeError(
+                    f"Expected 'alpha' to be a float for non-tuned model, but got {type(alpha)}"
+                )
+            if not isinstance(learning_rate, (int, float)):
+                raise TypeError(
+                    f"Expected 'learning_rate' to be a float for non-tuned model, but got {type(learning_rate)}"
+                )
+
             self.model = self._train_ensemble(
                 train_data,
                 validation_data,
-                alpha=self.config["alpha"],
-                learning_rate=self.config["learning_rate"],
+                alpha=alpha,
+                learning_rate=learning_rate,
             )
 
     def predict(
@@ -246,6 +257,8 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
         X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
 
         with torch.no_grad():
+            for net in models_to_use:
+                net.eval()
             all_preds = [net(X_tensor).numpy().ravel() for net in models_to_use]
 
         avg_preds = np.mean(all_preds, axis=0)

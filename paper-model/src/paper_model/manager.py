@@ -74,7 +74,7 @@ class ModelManager:
 
             model_class = self.MODEL_REGISTRY[model_type]
 
-            model_config_dict = model_config.dict()
+            model_config_dict = model_config.model_dump()
             model_config_dict["date_column"] = self.config.input_data.date_column
             model_config_dict["id_column"] = self.config.input_data.id_column
 

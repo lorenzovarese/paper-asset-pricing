@@ -31,5 +31,9 @@
         "**/.pytest_cache": true,
         "**/.mypy_cache": true,
         "**/paper_asset_pricing.egg-info": true
+    },
+    "workbench.editorAssociations": {
+        "*.copilotmd": "vscode.markdown.preview.editor",
+        "file:/**/*.parquet": "jupyter-data-wrangler"
     }
 }

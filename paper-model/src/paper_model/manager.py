@@ -74,7 +74,6 @@ class ModelManager:
 
             model_class = self.MODEL_REGISTRY[model_type]
 
-            # Pass the full model config dictionary
             model_config_dict = model_config.dict()
             model_config_dict["date_column"] = self.config.input_data.date_column
             model_config_dict["id_column"] = self.config.input_data.id_column
@@ -89,89 +88,123 @@ class ModelManager:
         date_col = self.config.input_data.date_column
         id_col = self.config.input_data.id_column
 
-        unique_dates = data.get_column(date_col).unique().sort()
-        unique_months = unique_dates.dt.truncate("1mo").unique().sort().to_list()
+        unique_months = (
+            data.get_column(date_col).dt.truncate("1mo").unique().sort().to_list()
+        )
 
-        if len(unique_months) < eval_config.train_month + eval_config.testing_month:
-            logger.error("Not enough data for the rolling window configuration.")
+        total_window_months = (
+            eval_config.train_month
+            + eval_config.validation_month
+            + eval_config.testing_month
+        )
+        if len(unique_months) < total_window_months:
+            logger.error(
+                f"Not enough data for the rolling window configuration. "
+                f"Need {total_window_months} months, but have {len(unique_months)}."
+            )
             return
 
-        logger.info(f"Starting rolling window evaluation: {len(unique_months)} months.")
+        logger.info(
+            f"Starting rolling window evaluation with {len(unique_months)} total months."
+        )
 
         window_start_idx = 0
         while True:
             train_end_idx = window_start_idx + eval_config.train_month
-            test_end_idx = train_end_idx + eval_config.testing_month
+            validation_end_idx = train_end_idx + eval_config.validation_month
+            test_end_idx = validation_end_idx + eval_config.testing_month
 
             if test_end_idx > len(unique_months):
+                logger.info("Reached the end of the dataset. Stopping evaluation.")
                 break
 
+            train_start_date = unique_months[window_start_idx]
             train_end_date = unique_months[train_end_idx - 1]
-            test_end_date = unique_months[test_end_idx - 1]
+            test_start_date = unique_months[validation_end_idx]
 
-            train_data = data.filter(pl.col(date_col) <= train_end_date)
-            test_data = data.filter(
-                (pl.col(date_col) > train_end_date)
-                & (pl.col(date_col) <= test_end_date)
+            logger.info(
+                f"Processing window: Train from {train_start_date.strftime('%Y-%m')} to "
+                f"{train_end_date.strftime('%Y-%m')}. "
+                f"Test from {test_start_date.strftime('%Y-%m')} onwards."
             )
 
-            if train_data.is_empty() or test_data.is_empty():
+            train_data = data.filter(pl.col(date_col) <= train_end_date)
+
+            if train_data.is_empty():
+                logger.warning("Skipping window due to empty training data.")
                 window_start_idx += eval_config.step_month
                 continue
 
-            logger.info(f"Processing window ending {test_end_date.strftime('%Y-%m')}")
-
             for model_name, model_instance in self.models.items():
                 try:
+                    logger.info(
+                        f"Training model '{model_name}' for window ending {train_end_date.strftime('%Y-%m')}."
+                    )
                     model_instance.train(train_data)
 
-                    target_col = model_instance.config["target_column"]
-                    y_true_test = test_data.get_column(target_col)
-                    y_pred_test = model_instance.predict(test_data)
+                    # Month-by-month evaluation on the test set
+                    for test_month_idx in range(validation_end_idx, test_end_idx):
+                        current_month = unique_months[test_month_idx]
+                        logger.debug(
+                            f"Evaluating model '{model_name}' for month {current_month.strftime('%Y-%m')}."
+                        )
 
-                    # Align predictions and true values
-                    aligned_df = pl.DataFrame(
-                        {"y_true": y_true_test, "y_pred": y_pred_test}
-                    ).drop_nulls()
+                        monthly_test_data = data.filter(
+                            pl.col(date_col).dt.truncate("1mo") == current_month
+                        )
 
-                    window_metrics = {}
-                    if not aligned_df.is_empty():
+                        if monthly_test_data.is_empty():
+                            continue
+
+                        target_col = model_instance.config["target_column"]
+                        y_true_month = monthly_test_data.get_column(target_col)
+                        y_pred_month = model_instance.predict(monthly_test_data)
+
+                        aligned_df = pl.DataFrame(
+                            {"y_true": y_true_month, "y_pred": y_pred_month}
+                        ).drop_nulls()
+
+                        if aligned_df.is_empty():
+                            continue
+
                         y_true_np = aligned_df["y_true"].to_numpy()
                         y_pred_np = aligned_df["y_pred"].to_numpy()
                         n_predictors = len(model_instance.config["feature_columns"])
 
+                        monthly_metrics = {
+                            "evaluation_date": current_month.strftime("%Y-%m-%d")
+                        }
                         for metric_name in eval_config.metrics:
                             if metric_name in self.METRIC_FUNCTIONS:
+                                metric_func = self.METRIC_FUNCTIONS[metric_name]
                                 if metric_name == "r2_adj_oos":
-                                    window_metrics[metric_name] = self.METRIC_FUNCTIONS[
-                                        metric_name
-                                    ](y_true_np, y_pred_np, n_predictors)
+                                    monthly_metrics[metric_name] = metric_func(
+                                        y_true_np, y_pred_np, n_predictors
+                                    )
                                 else:
-                                    window_metrics[metric_name] = self.METRIC_FUNCTIONS[
-                                        metric_name
-                                    ](y_true_np, y_pred_np)
+                                    monthly_metrics[metric_name] = metric_func(
+                                        y_true_np, y_pred_np
+                                    )
 
-                    window_metrics["window_end_date"] = test_end_date.strftime(
-                        "%Y-%m-%d"
-                    )
-                    self.all_evaluation_results[model_name].append(window_metrics)
+                        self.all_evaluation_results[model_name].append(monthly_metrics)
 
-                    if model_instance.config.get("save_prediction_results"):
-                        preds_to_save = test_data.select(
-                            [date_col, id_col]
-                        ).with_columns(
-                            predicted_ret=y_pred_test, actual_ret=y_true_test
-                        )
-                        self.all_prediction_results[model_name] = pl.concat(
-                            [self.all_prediction_results[model_name], preds_to_save]
-                        )
+                        if model_instance.config.get("save_prediction_results"):
+                            preds_to_save = monthly_test_data.select(
+                                [date_col, id_col]
+                            ).with_columns(
+                                predicted_ret=y_pred_month, actual_ret=y_true_month
+                            )
+                            self.all_prediction_results[model_name] = pl.concat(
+                                [self.all_prediction_results[model_name], preds_to_save]
+                            )
 
                     if model_instance.config.get("save_model_checkpoints"):
-                        self._save_checkpoint(model_instance, test_end_date)
+                        self._save_checkpoint(model_instance, train_end_date)
 
                 except Exception as e:
                     logger.error(
-                        f"Error running model '{model_name}': {e}", exc_info=True
+                        f"Error running model '{model_name}' in window ending {train_end_date.strftime('%Y-%m')}: {e}",
+                        exc_info=True,
                     )
 
             window_start_idx += eval_config.step_month
@@ -202,12 +235,12 @@ class ModelManager:
         for name, results in self.all_evaluation_results.items():
             if results:
                 reporter.save_metrics_to_parquet(name, results)
-                # Aggregate and generate text report
                 agg_metrics = {}
                 df = pl.DataFrame(results)
                 for metric in self.config.evaluation.metrics:
-                    agg_metrics[f"avg_{metric}"] = df.get_column(metric).mean()
-                    agg_metrics[f"std_{metric}"] = df.get_column(metric).std()
+                    if metric in df.columns:
+                        agg_metrics[f"avg_{metric}"] = df.get_column(metric).mean()
+                        agg_metrics[f"std_{metric}"] = df.get_column(metric).std()
                 reporter.generate_text_report(name, agg_metrics)
 
         for name, preds in self.all_prediction_results.items():

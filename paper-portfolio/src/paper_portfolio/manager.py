@@ -226,9 +226,11 @@ class PortfolioManager:
                     )
 
                 if "cumulative_return" in self.config.metrics:
+                    # The short component for plotting represents the profit
+                    # from the short position by inverting the returns.
                     plot_df = strategy_returns.with_columns(
                         cumulative_long=((1 + pl.col("long_return")).cum_prod() - 1),
-                        cumulative_short=((1 + pl.col("short_return")).cum_prod() - 1),
+                        cumulative_short=((1 - pl.col("short_return")).cum_prod() - 1),
                         cumulative_portfolio=(
                             (1 + pl.col("portfolio_return")).cum_prod() - 1
                         ),

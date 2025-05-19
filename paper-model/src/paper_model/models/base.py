@@ -1,16 +1,18 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import polars as pl
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TypeVar, Generic
+
+ModelType = TypeVar("ModelType")
 
 
-class BaseModel(ABC):
+class BaseModel(ABC, Generic[ModelType]):
     """Abstract base class for all asset pricing models."""
 
     def __init__(self, name: str, config: Dict[str, Any]):
         self.name = name
         self.config = config
-        self.model = None
+        self.model: Optional[ModelType] = None
         self.evaluation_results: Dict[str, Any] = {}
         self.checkpoint_data: pl.DataFrame | None = None
 

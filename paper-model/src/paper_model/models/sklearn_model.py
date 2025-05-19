@@ -24,7 +24,7 @@ from .base import BaseModel
 logger = logging.getLogger(__name__)
 
 
-class SklearnModel(BaseModel):
+class SklearnModel(BaseModel[Pipeline]):
     """
     A generic wrapper for scikit-learn compatible models.
     Handles model creation, training (with optional hyperparameter tuning), and prediction.

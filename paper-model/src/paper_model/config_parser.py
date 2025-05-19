@@ -1,147 +1,116 @@
 from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from typing import (
-    List,
-    Literal,
-    Optional,
-    Union,
-    Dict,
-    Any,
-)
+from typing import List, Literal, Optional, Union, Dict, Any
 from enum import Enum
 
 # --- Pydantic Models for Configuration Schema ---
 
 
 class SplittedType(str, Enum):
-    """Defines valid options for data splitting."""
-
     YEAR = "year"
     NONE = "none"
 
 
 class EvaluationImplementation(str, Enum):
-    """Defines valid options for evaluation implementation."""
-
     ROLLING_WINDOW = "rolling window"
 
 
-class InputDataConfig(BaseModel):
-    """Schema for the 'input_data' section of the models config."""
+class ObjectiveFunction(str, Enum):
+    L2 = "l2"
+    HUBER = "huber"
 
+
+class InputDataConfig(BaseModel):
     dataset_name: str
     splitted: SplittedType
     date_column: str
     id_column: str
-    risk_free_rate_col: str
+    risk_free_rate_col: Optional[str] = None
 
 
 class EvaluationConfig(BaseModel):
-    """Schema for the 'evaluation' section of the models config."""
-
     implementation: EvaluationImplementation
-    train_month: int = Field(
-        ..., gt=0, description="Number of months for the training window."
-    )
-    validation_month: int = Field(
-        0,
-        ge=0,
-        description="Number of months for the validation window (currently unused).",
-    )
-    testing_month: int = Field(
-        ..., gt=0, description="Number of months for the testing window."
-    )
-    step_month: int = Field(
-        ..., gt=0, description="Number of months to step forward for the next window."
-    )
-    metrics: List[str] = Field(
-        default_factory=list, description="List of metrics to compute."
-    )
+    train_month: int = Field(..., gt=0)
+    validation_month: int = Field(0, ge=0)
+    testing_month: int = Field(..., gt=0)
+    step_month: int = Field(..., gt=0)
+    metrics: List[str] = Field(default_factory=list)
 
 
-# Base model config for common fields
+# --- Model-specific Configurations ---
+
+
 class BaseModelConfig(BaseModel):
-    """Base schema for any model configuration."""
-
     name: str
-    type: str  # This will be further validated by Literal types in derived classes
-    save_model_checkpoints: bool = False
-    save_prediction_results: bool = False
-
-
-# Specific model configurations
-class FamaFrench3FactorModelConfig(BaseModelConfig):
-    """Schema for the 'fama_french_3_factor' model."""
-
-    type: Literal["fama_french_3_factor"]  # Ensures 'type' is exactly this string
-    target_return_col: str
-    factor_columns: List[str]
-
-
-class SimpleLinearRegressionModelConfig(BaseModelConfig):
-    """Schema for the 'linear_regression' model."""
-
-    type: Literal["linear_regression"]  # Ensures 'type' is exactly this string
+    type: str
     target_column: str
     feature_columns: List[str]
+    objective_function: ObjectiveFunction = ObjectiveFunction.L2
+    save_model_checkpoints: bool = False
+    save_prediction_results: bool = False
     random_state: Optional[int] = None
 
 
-class ModelsConfig(BaseModel):
-    """Overall schema for the models configuration file."""
+class OLSConfig(BaseModelConfig):
+    type: Literal["ols"]
 
+
+class ElasticNetConfig(BaseModelConfig):
+    type: Literal["enet"]
+    alpha: float = Field(1.0, gt=0, description="Regularization strength")
+    l1_ratio: float = Field(0.5, ge=0, le=1, description="ElasticNet mixing parameter")
+
+
+class PCRConfig(BaseModelConfig):
+    type: Literal["pcr"]
+    n_components: int = Field(
+        ..., gt=0, description="Number of principal components to keep"
+    )
+
+
+class PLSConfig(BaseModelConfig):
+    type: Literal["pls"]
+    n_components: int = Field(
+        ..., gt=0, description="Number of partial least squares components"
+    )
+
+
+# --- Main Configuration Schema ---
+
+AnyModel = Union[OLSConfig, ElasticNetConfig, PCRConfig, PLSConfig]
+
+
+class ModelsConfig(BaseModel):
     input_data: InputDataConfig
     evaluation: EvaluationConfig
-    models: List[Union[FamaFrench3FactorModelConfig, SimpleLinearRegressionModelConfig]]
+    models: List[AnyModel]
 
     @field_validator("models", mode="before")
     @classmethod
-    def check_model_type_and_dispatch(
-        cls, v: List[Dict[str, Any]]
-    ) -> List[BaseModelConfig]:
+    def dispatch_model_configs(cls, v: List[Dict[str, Any]]) -> List[AnyModel]:
         """
         Dynamically dispatches model configurations based on their 'type' field.
         This allows Pydantic to validate against the correct specific model schema.
         """
-        # Explicitly type the list to hold BaseModelConfig instances
-        dispatched_models: List[BaseModelConfig] = []
-        for model_dict in v:
-            if not isinstance(model_dict, dict):
-                raise ValueError(
-                    f"Model configuration must be a dictionary, got: {type(model_dict)}"
-                )
+        dispatched: List[AnyModel] = []
 
-            model_type = model_dict.get("type")
-            if model_type == "fama_french_3_factor":
-                dispatched_models.append(FamaFrench3FactorModelConfig(**model_dict))
-            elif model_type == "linear_regression":
-                dispatched_models.append(
-                    SimpleLinearRegressionModelConfig(**model_dict)
-                )
+        for model_config in v:
+            model_type = model_config.get("type")
+            if model_type == "ols":
+                dispatched.append(OLSConfig(**model_config))
+            elif model_type == "enet":
+                dispatched.append(ElasticNetConfig(**model_config))
+            elif model_type == "pcr":
+                dispatched.append(PCRConfig(**model_config))
+            elif model_type == "pls":
+                dispatched.append(PLSConfig(**model_config))
             else:
-                raise ValueError(f"Unknown or unsupported model type: {model_type}")
-        return dispatched_models
+                raise ValueError(f"Unsupported model type: '{model_type}'")
+        return dispatched
 
 
-# --- Configuration Loading Function ---
-
-
-def load_config(config_path: str | Path) -> ModelsConfig:
-    """
-    Loads and parses a YAML configuration file, validating it against the schema.
-
-    Args:
-        config_path: The path to the YAML configuration file.
-
-    Returns:
-        A ModelsConfig object representing the parsed and validated configuration.
-
-    Raises:
-        FileNotFoundError: If the config_path does not exist.
-        yaml.YAMLError: If there is an error parsing the YAML file.
-        ValueError: If the configuration does not conform to the defined schema.
-    """
+def load_config(config_path: Union[str, Path]) -> ModelsConfig:
     config_path = Path(config_path).expanduser()
     if not config_path.is_file():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
@@ -155,10 +124,8 @@ def load_config(config_path: str | Path) -> ModelsConfig:
             ) from exc
 
     try:
-        # Validate the raw dictionary against the Pydantic schema
-        config = ModelsConfig(**raw_config)
+        return ModelsConfig(**raw_config)
     except ValidationError as e:
         raise ValueError(
             f"Configuration schema validation failed for {config_path}:\n{e}"
         ) from e
-    return config

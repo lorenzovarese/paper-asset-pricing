@@ -2,20 +2,12 @@ import numpy as np
 import polars as pl
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, cast
-import joblib  # type: ignore[import-untyped]
-import pickle
-from sklearn.linear_model import LinearRegression  # type: ignore[import-untyped]
-from statsmodels.regression.linear_model import RegressionResultsWrapper  # type: ignore[import-untyped]
+from typing import Dict, Any, List, Union
+import joblib  # type: ignore
 
-
-from paper_model.config_parser import (
-    ModelsConfig,
-)
-
+from paper_model.config_parser import ModelsConfig
 from paper_model.models.base import BaseModel
-from paper_model.models.fama_french import FamaFrench3FactorModel
-from paper_model.models.linear_regression import SimpleLinearRegression
+from paper_model.models.sklearn_model import SklearnModel
 from paper_model.evaluation.reporter import EvaluationReporter
 from paper_model.evaluation.metrics import (
     mean_squared_error,
@@ -27,14 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 class ModelManager:
-    """
-    Manages model training, evaluation, and checkpoint generation based on a YAML configuration.
-    Supports rolling window evaluation.
-    """
-
     MODEL_REGISTRY: Dict[str, type[BaseModel]] = {
-        "fama_french_3_factor": FamaFrench3FactorModel,
-        "linear_regression": SimpleLinearRegression,
+        "ols": SklearnModel,
+        "enet": SklearnModel,
+        "pcr": SklearnModel,
+        "pls": SklearnModel,
     }
 
     METRIC_FUNCTIONS: Dict[str, Any] = {
@@ -44,12 +33,6 @@ class ModelManager:
     }
 
     def __init__(self, config: ModelsConfig):
-        """
-        Initializes the ModelManager with a parsed models configuration dictionary.
-
-        Args:
-            config: The parsed models configuration dictionary (a ModelsConfig object).
-        """
         self.config = config
         self.models: Dict[str, BaseModel] = {}
         self.all_evaluation_results: Dict[str, List[Dict[str, Any]]] = {}
@@ -57,80 +40,44 @@ class ModelManager:
         self._project_root: Path | None = None
 
     def _load_processed_data(self) -> pl.DataFrame:
-        """
-        Loads a processed dataset from the project's data/processed directory,
-        handling 'splitted' configuration.
-        """
         if self._project_root is None:
             raise ValueError("Project root must be set before loading data.")
 
-        input_data_config = self.config.input_data
-        dataset_name = input_data_config.dataset_name
-        splitted_by = input_data_config.splitted.value
-        date_column = input_data_config.date_column
+        input_conf = self.config.input_data
+        processed_dir = self._project_root / "data" / "processed"
 
-        processed_data_dir = self._project_root / "data" / "processed"
-
-        df: pl.DataFrame
-        if splitted_by == "year":
-            data_files = list(processed_data_dir.glob(f"{dataset_name}_*.parquet"))
-            if not data_files:
+        if input_conf.splitted == "year":
+            files = list(processed_dir.glob(f"{input_conf.dataset_name}_*.parquet"))
+            if not files:
                 raise FileNotFoundError(
-                    f"No processed data files found for dataset '{dataset_name}' "
-                    f"partitioned by year in '{processed_data_dir}'. Ensure paper-data has run successfully."
+                    f"No data files found for {input_conf.dataset_name} in {processed_dir}"
                 )
-            logger.info(
-                f"Loading processed data for '{dataset_name}' from {len(data_files)} files (splitted by year)..."
-            )
-            df = pl.concat([pl.read_parquet(f) for f in data_files])
-        elif splitted_by == "none":
-            filename = f"{dataset_name}.parquet"
-            data_path = processed_data_dir / filename
-            if not data_path.is_file():
-                raise FileNotFoundError(
-                    f"Processed data file '{filename}' not found in '{processed_data_dir}'. "
-                    f"Ensure paper-data has run successfully and is not partitioned."
-                )
-            logger.info(
-                f"Loading processed data for '{dataset_name}' from '{data_path}' (not splitted)..."
-            )
-            df = pl.read_parquet(data_path)
+            df = pl.concat([pl.read_parquet(f) for f in files])
         else:
-            raise ValueError(
-                f"Unsupported 'splitted' configuration: {splitted_by}. Must be 'year' or 'none'."
-            )
+            file_path = processed_dir / f"{input_conf.dataset_name}.parquet"
+            if not file_path.is_file():
+                raise FileNotFoundError(f"Data file {file_path} not found.")
+            df = pl.read_parquet(file_path)
 
-        if df[date_column].dtype != pl.Date:
-            df = df.with_columns(pl.col(date_column).cast(pl.Date).alias(date_column))
+        if df[input_conf.date_column].dtype != pl.Date:
+            df = df.with_columns(pl.col(input_conf.date_column).cast(pl.Date))
 
-        df = df.sort(date_column, input_data_config.id_column)
-
-        logger.info(f"Loaded data for '{dataset_name}'. Shape: {df.shape}")
-        return df
+        return df.sort(input_conf.date_column, input_conf.id_column)
 
     def _initialize_models(self) -> None:
-        """
-        Initializes model instances based on the 'models' section of the config.
-        """
-        for model_config_pydantic in self.config.models:
-            model_name = model_config_pydantic.name
-            model_type = model_config_pydantic.type
+        for model_config in self.config.models:
+            model_name = model_config.name
+            model_type = model_config.type
 
             if model_type not in self.MODEL_REGISTRY:
-                raise ValueError(
-                    f"Unknown model type: '{model_type}'. "
-                    f"Available types: {list(self.MODEL_REGISTRY.keys())}"
-                )
+                raise ValueError(f"Unknown model type: '{model_type}'")
 
             model_class = self.MODEL_REGISTRY[model_type]
 
-            model_config_dict = model_config_pydantic.dict()
-
+            # Pass the full model config dictionary
+            model_config_dict = model_config.dict()
             model_config_dict["date_column"] = self.config.input_data.date_column
             model_config_dict["id_column"] = self.config.input_data.id_column
-            model_config_dict["risk_free_rate_col"] = (
-                self.config.input_data.risk_free_rate_col
-            )
 
             self.models[model_name] = model_class(model_name, model_config_dict)
             self.all_evaluation_results[model_name] = []
@@ -138,67 +85,25 @@ class ModelManager:
             logger.info(f"Initialized model: '{model_name}' of type '{model_type}'.")
 
     def _run_rolling_window_evaluation(self, data: pl.DataFrame) -> None:
-        """
-        Executes rolling window evaluation for all initialized models.
-        """
         eval_config = self.config.evaluation
-        implementation = eval_config.implementation.value
-
-        if implementation != "rolling window":
-            raise NotImplementedError(
-                f"Evaluation implementation '{implementation}' not supported. Only 'rolling window' is implemented."
-            )
-
-        train_months = eval_config.train_month
-        testing_months = eval_config.testing_month
-        step_months = eval_config.step_month
-        metrics_to_compute = eval_config.metrics
-
-        if not all([train_months, testing_months, step_months]):
-            raise ValueError(
-                "Rolling window evaluation requires 'train_month', 'testing_month', and 'step_month' to be specified."
-            )
-        if not metrics_to_compute:
-            logger.warning(
-                "No metrics specified for evaluation. Skipping metric calculation."
-            )
-
         date_col = self.config.input_data.date_column
         id_col = self.config.input_data.id_column
-        target_col_map = {
-            model_name: (
-                model_instance.config.get("target_return_col")
-                or model_instance.config.get("target_column")
-                or "return"
-            )
-            for model_name, model_instance in self.models.items()
-        }
 
-        unique_dates = data.select(pl.col(date_col)).unique().sort(date_col).to_series()
+        unique_dates = data.get_column(date_col).unique().sort()
         unique_months = unique_dates.dt.truncate("1mo").unique().sort().to_list()
 
-        if len(unique_months) < train_months + testing_months:
-            logger.error(
-                f"Not enough unique months ({len(unique_months)}) for the specified rolling window configuration "
-                f"(train: {train_months}, test: {testing_months}). Minimum required: {train_months + testing_months}."
-            )
+        if len(unique_months) < eval_config.train_month + eval_config.testing_month:
+            logger.error("Not enough data for the rolling window configuration.")
             return
 
-        logger.info(
-            f"Starting rolling window evaluation with {len(unique_months)} unique months."
-        )
-        logger.info(
-            f"Train window: {train_months} months, Test window: {testing_months} months, Step: {step_months} months."
-        )
+        logger.info(f"Starting rolling window evaluation: {len(unique_months)} months.")
 
         window_start_idx = 0
         while True:
-            train_end_idx = window_start_idx + train_months
-            test_start_idx = train_end_idx
-            test_end_idx = test_start_idx + testing_months
+            train_end_idx = window_start_idx + eval_config.train_month
+            test_end_idx = train_end_idx + eval_config.testing_month
 
             if test_end_idx > len(unique_months):
-                logger.info("Reached end of data for rolling window. Stopping.")
                 break
 
             train_end_date = unique_months[train_end_idx - 1]
@@ -211,238 +116,105 @@ class ModelManager:
             )
 
             if train_data.is_empty() or test_data.is_empty():
-                logger.warning(
-                    f"Skipping window ending {test_end_date.strftime('%Y-%m')}: Empty train or test data."
-                )
-                window_start_idx += step_months
+                window_start_idx += eval_config.step_month
                 continue
 
-            logger.info(
-                f"Processing window: Train up to {train_end_date.strftime('%Y-%m')}, "
-                f"Test from {unique_months[test_start_idx].strftime('%Y-%m')} to {test_end_date.strftime('%Y-%m')}"
-            )
+            logger.info(f"Processing window ending {test_end_date.strftime('%Y-%m')}")
 
             for model_name, model_instance in self.models.items():
-                logger.info(f"--- Running Model '{model_name}' for current window ---")
                 try:
                     model_instance.train(train_data)
 
-                    y_true_test = test_data.select(
-                        target_col_map[model_name]
-                    ).to_series()
+                    target_col = model_instance.config["target_column"]
+                    y_true_test = test_data.get_column(target_col)
                     y_pred_test = model_instance.predict(test_data)
 
-                    test_identifiers = test_data.select([date_col, id_col])
-                    prediction_df_aligned = pl.DataFrame(
-                        {
-                            date_col: test_identifiers.get_column(date_col),
-                            id_col: test_identifiers.get_column(id_col),
-                            "y_true": y_true_test,
-                            "y_pred": y_pred_test,
-                        }
+                    # Align predictions and true values
+                    aligned_df = pl.DataFrame(
+                        {"y_true": y_true_test, "y_pred": y_pred_test}
                     ).drop_nulls()
 
-                    if prediction_df_aligned.is_empty():
-                        logger.warning(
-                            f"No valid true/predicted pairs for model '{model_name}' in this test window. Skipping evaluation."
-                        )
-                        window_metrics = {
-                            metric: np.nan for metric in metrics_to_compute
-                        }
-                    else:
-                        y_true_aligned = prediction_df_aligned["y_true"]
-                        y_pred_aligned = prediction_df_aligned["y_pred"]
+                    window_metrics = {}
+                    if not aligned_df.is_empty():
+                        y_true_np = aligned_df["y_true"].to_numpy()
+                        y_pred_np = aligned_df["y_pred"].to_numpy()
+                        n_predictors = len(model_instance.config["feature_columns"])
 
-                        window_metrics = {}
-                        for metric_name in metrics_to_compute:
+                        for metric_name in eval_config.metrics:
                             if metric_name in self.METRIC_FUNCTIONS:
-                                n_predictors = 0
-                                if isinstance(model_instance, FamaFrench3FactorModel):
-                                    n_predictors = len(model_instance.factor_cols)
-                                elif isinstance(model_instance, SimpleLinearRegression):
-                                    n_predictors = len(model_instance.feature_cols)
-
                                 if metric_name == "r2_adj_oos":
                                     window_metrics[metric_name] = self.METRIC_FUNCTIONS[
                                         metric_name
-                                    ](
-                                        y_true_aligned.to_numpy(),
-                                        y_pred_aligned.to_numpy(),
-                                        n_predictors,
-                                    )
+                                    ](y_true_np, y_pred_np, n_predictors)
                                 else:
                                     window_metrics[metric_name] = self.METRIC_FUNCTIONS[
                                         metric_name
-                                    ](
-                                        y_true_aligned.to_numpy(),
-                                        y_pred_aligned.to_numpy(),
-                                    )
-                            else:
-                                logger.warning(
-                                    f"Metric '{metric_name}' not recognized. Skipping."
-                                )
-                                window_metrics[metric_name] = np.nan
+                                    ](y_true_np, y_pred_np)
 
                     window_metrics["window_end_date"] = test_end_date.strftime(
                         "%Y-%m-%d"
                     )
                     self.all_evaluation_results[model_name].append(window_metrics)
-                    logger.info(
-                        f"Model '{model_name}' metrics for window ending {test_end_date.strftime('%Y-%m')}: {window_metrics}"
-                    )
 
-                    if model_instance.config.get("save_prediction_results", False):
-                        prediction_output_df = pl.DataFrame(
-                            {
-                                date_col: prediction_df_aligned.get_column(date_col),
-                                id_col: prediction_df_aligned.get_column(id_col),
-                                "predicted_ret": prediction_df_aligned.get_column(
-                                    "y_pred"
-                                ),
-                                "actual_ret": prediction_df_aligned.get_column(
-                                    "y_true"
-                                ),
-                            }
+                    if model_instance.config.get("save_prediction_results"):
+                        preds_to_save = test_data.select(
+                            [date_col, id_col]
+                        ).with_columns(
+                            predicted_ret=y_pred_test, actual_ret=y_true_test
                         )
                         self.all_prediction_results[model_name] = pl.concat(
-                            [
-                                self.all_prediction_results[model_name],
-                                prediction_output_df,
-                            ]
-                        )
-                        logger.debug(
-                            f"Appended {prediction_output_df.shape[0]} prediction results for model '{model_name}'. Total: {self.all_prediction_results[model_name].shape[0]}"
+                            [self.all_prediction_results[model_name], preds_to_save]
                         )
 
-                    if model_instance.config.get("save_model_checkpoints", False):
-                        assert self._project_root is not None
-                        checkpoint_dir = (
-                            self._project_root / "models" / "saved" / model_name
-                        )
-                        checkpoint_dir.mkdir(parents=True, exist_ok=True)
-                        checkpoint_filename = (
-                            checkpoint_dir
-                            / f"{model_name}_model_checkpoint_{test_end_date.strftime('%Y%m%d')}.pkl"
-                        )
-
-                        if isinstance(model_instance.model, LinearRegression):
-                            joblib.dump(model_instance.model, checkpoint_filename)
-                            logger.info(
-                                f"Model checkpoint for '{model_name}' saved to: {checkpoint_filename}"
-                            )
-                        elif isinstance(
-                            model_instance, FamaFrench3FactorModel
-                        ) and isinstance(model_instance.model, dict):
-                            ff_models = cast(
-                                Dict[Any, RegressionResultsWrapper],
-                                model_instance.model,
-                            )
-                            if all(
-                                isinstance(m, RegressionResultsWrapper)
-                                for m in ff_models.values()
-                            ):
-                                with open(checkpoint_filename, "wb") as f:
-                                    pickle.dump(ff_models, f)
-                                logger.info(
-                                    f"Model checkpoint for '{model_name}' saved to: {checkpoint_filename}"
-                                )
-                            else:
-                                logger.warning(
-                                    f"Fama-French model '{model_name}' contains non-RegressionResultsWrapper objects. Skipping checkpoint."
-                                )
-                        else:
-                            logger.warning(
-                                f"Model type for '{model_name}' not supported for direct checkpointing. Skipping."
-                            )
+                    if model_instance.config.get("save_model_checkpoints"):
+                        self._save_checkpoint(model_instance, test_end_date)
 
                 except Exception as e:
                     logger.error(
-                        f"Error running model '{model_name}' for window ending {test_end_date.strftime('%Y-%m')}: {e}",
-                        exc_info=True,
+                        f"Error running model '{model_name}': {e}", exc_info=True
                     )
-                    window_metrics = {metric: np.nan for metric in metrics_to_compute}
-                    window_metrics["window_end_date"] = test_end_date.strftime(
-                        "%Y-%m-%d"
-                    )
-                    self.all_evaluation_results[model_name].append(window_metrics)
 
-            window_start_idx += step_months
+            window_start_idx += eval_config.step_month
+
+    def _save_checkpoint(self, model_instance: BaseModel, date: Any) -> None:
+        if self._project_root is None:
+            return
+        checkpoint_dir = self._project_root / "models" / "saved"
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        filename = (
+            checkpoint_dir
+            / f"{model_instance.name}_checkpoint_{date.strftime('%Y%m%d')}.joblib"
+        )
+        joblib.dump(model_instance.model, filename)
+        logger.info(f"Saved checkpoint for '{model_instance.name}' to {filename}")
 
     def _export_results(self) -> None:
-        """
-        Exports aggregated evaluation reports and all accumulated prediction results.
-        """
         if self._project_root is None:
-            raise ValueError("Project root must be set before exporting results.")
+            return
 
-        eval_output_dir = self._project_root / "models" / "evaluations"
-        prediction_output_dir = self._project_root / "models" / "predictions"
-        eval_output_dir.mkdir(parents=True, exist_ok=True)
-        prediction_output_dir.mkdir(parents=True, exist_ok=True)
+        eval_dir = self._project_root / "models" / "evaluations"
+        pred_dir = self._project_root / "models" / "predictions"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        pred_dir.mkdir(parents=True, exist_ok=True)
 
-        reporter = EvaluationReporter(eval_output_dir)
+        reporter = EvaluationReporter(eval_dir)
 
-        logger.info("--- Exporting Model Results ---")
+        for name, results in self.all_evaluation_results.items():
+            if results:
+                reporter.save_metrics_to_parquet(name, results)
+                # Aggregate and generate text report
+                agg_metrics = {}
+                df = pl.DataFrame(results)
+                for metric in self.config.evaluation.metrics:
+                    agg_metrics[f"avg_{metric}"] = df.get_column(metric).mean()
+                    agg_metrics[f"std_{metric}"] = df.get_column(metric).std()
+                reporter.generate_text_report(name, agg_metrics)
 
-        for model_name, metrics_list in self.all_evaluation_results.items():
-            if metrics_list:
-                aggregated_metrics = {}
-                for metric_name in self.config.evaluation.metrics:
-                    valid_values = []
-                    for m in metrics_list:
-                        metric_value = m.get(metric_name)
-                        if metric_value is not None:
-                            try:
-                                float_value = float(metric_value)
-                                if not np.isnan(float_value):
-                                    valid_values.append(float_value)
-                            except (ValueError, TypeError):
-                                logger.warning(
-                                    f"Metric '{metric_name}' for model '{model_name}' has non-numeric value: {metric_value}. Skipping for aggregation."
-                                )
-                                continue
+        for name, preds in self.all_prediction_results.items():
+            if not preds.is_empty():
+                preds.write_parquet(pred_dir / f"{name}_predictions.parquet")
 
-                    if valid_values:
-                        np_values = np.array(valid_values, dtype=float)
-                        aggregated_metrics[f"avg_{metric_name}"] = np.mean(np_values)
-                        aggregated_metrics[f"std_{metric_name}"] = np.std(np_values)
-                    else:
-                        aggregated_metrics[f"avg_{metric_name}"] = np.nan
-                        aggregated_metrics[f"std_{metric_name}"] = np.nan
-
-                reporter.generate_text_report(model_name, aggregated_metrics)
-                reporter.save_metrics_to_parquet(model_name, metrics_list)
-            else:
-                logger.warning(
-                    f"No evaluation results to export for model '{model_name}'."
-                )
-
-        for model_name, prediction_df in self.all_prediction_results.items():
-            if not prediction_df.is_empty():
-                prediction_filename = (
-                    prediction_output_dir / f"{model_name}_predictions.parquet"
-                )
-                prediction_df.write_parquet(prediction_filename)
-                logger.info(
-                    f"Prediction results for '{model_name}' saved to: {prediction_filename}"
-                )
-            else:
-                logger.warning(
-                    f"No prediction results generated for model '{model_name}'. Skipping export."
-                )
-
-        logger.info("Model results export completed successfully.")
-
-    def run(self, project_root: str | Path) -> Dict[str, pl.DataFrame]:
-        """
-        Executes the model pipeline: initialization, training, evaluation, and export.
-
-        Args:
-            project_root: The root directory of the PAPER project (e.g., 'PAPER/ThesisExample').
-
-        Returns:
-            A dictionary of the generated model checkpoints (predictions).
-        """
+    def run(self, project_root: Union[str, Path]) -> Dict[str, pl.DataFrame]:
         self._project_root = Path(project_root).expanduser()
         logger.info(f"Running model pipeline for project: {self._project_root}")
 

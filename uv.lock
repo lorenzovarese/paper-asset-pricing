@@ -1171,13 +1171,21 @@ name = "paper-model"
 version = "0.1.0"
 source = { editable = "paper-model" }
 dependencies = [
+    { name = "joblib" },
     { name = "pandas" },
+    { name = "polars" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "scikit-learn" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "joblib", specifier = ">=1.5.1" },
     { name = "pandas", specifier = ">=2.2.3" },
+    { name = "polars", specifier = ">=1.30.0" },
+    { name = "pydantic", specifier = ">=2.11.5" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "scikit-learn", specifier = ">=1.7.0" },
 ]
 

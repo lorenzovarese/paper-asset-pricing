@@ -101,14 +101,31 @@ class PortfolioManager:
 
                 q_low_long, q_high_long, q_low_short, q_high_short = quantiles
 
-                long_portfolio = monthly_data_for_strat.filter(
+                # Long Portfolio Construction
+                temp_long_portfolio = monthly_data_for_strat.filter(
                     (pl.col("predicted_ret") >= q_low_long)
                     & (pl.col("predicted_ret") <= q_high_long)
                 )
-                short_portfolio = monthly_data_for_strat.filter(
+                num_nulls_long = temp_long_portfolio["actual_ret"].is_null().sum()
+                if num_nulls_long > 0:
+                    logger.warning(
+                        f"For date {date}, strategy '{strat.name}', long portfolio: "
+                        f"Dropping {num_nulls_long} rows due to missing 'actual_ret'."
+                    )
+                long_portfolio = temp_long_portfolio.drop_nulls(subset=["actual_ret"])
+
+                # Short Portfolio Construction
+                temp_short_portfolio = monthly_data_for_strat.filter(
                     (pl.col("predicted_ret") >= q_low_short)
                     & (pl.col("predicted_ret") <= q_high_short)
                 )
+                num_nulls_short = temp_short_portfolio["actual_ret"].is_null().sum()
+                if num_nulls_short > 0:
+                    logger.warning(
+                        f"For date {date}, strategy '{strat.name}', short portfolio: "
+                        f"Dropping {num_nulls_short} rows due to missing 'actual_ret'."
+                    )
+                short_portfolio = temp_short_portfolio.drop_nulls(subset=["actual_ret"])
 
                 if long_portfolio.is_empty() or short_portfolio.is_empty():
                     continue

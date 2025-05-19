@@ -1,5 +1,3 @@
-# paper-model/src/paper_model/models/sklearn_model.py
-
 import polars as pl
 import logging
 from typing import Any, Dict

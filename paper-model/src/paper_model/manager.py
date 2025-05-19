@@ -23,6 +23,7 @@ class ModelManager:
         "enet": SklearnModel,
         "pcr": SklearnModel,
         "pls": SklearnModel,
+        "glm": SklearnModel,
     }
 
     METRIC_FUNCTIONS: Dict[str, Any] = {

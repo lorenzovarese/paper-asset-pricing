@@ -3,6 +3,7 @@ import numpy as np
 import logging
 from typing import Any, Dict, Optional
 
+from sklearn.compose import ColumnTransformer  # type: ignore
 from sklearn.linear_model import (  # type: ignore
     LinearRegression,
     ElasticNet,
@@ -10,10 +11,12 @@ from sklearn.linear_model import (  # type: ignore
     SGDRegressor,
 )
 from sklearn.pipeline import Pipeline  # type: ignore
-from sklearn.preprocessing import StandardScaler  # type: ignore
+from sklearn.preprocessing import SplineTransformer, StandardScaler  # type: ignore
 from sklearn.decomposition import PCA  # type: ignore
 from sklearn.cross_decomposition import PLSRegression  # type: ignore
 from sklearn.model_selection import GridSearchCV, PredefinedSplit  # type: ignore
+
+from group_lasso import GroupLasso  # type: ignore
 
 from .base import BaseModel
 
@@ -35,6 +38,11 @@ class SklearnModel(BaseModel):
     def _create_pipeline(self, model_instance: Any) -> Pipeline:
         """Helper to create a standard pipeline with a scaler."""
         model_type = self.config["type"]
+
+        # GLM has a more complex, self-contained pipeline
+        if model_type == "glm":
+            return model_instance
+
         steps = [("scaler", StandardScaler())]
 
         if model_type == "pcr":
@@ -58,7 +66,6 @@ class SklearnModel(BaseModel):
         objective = model_config.get("objective_function", "l2")
         random_state = model_config.get("random_state")
 
-        # UPDATED: Generalize the check for any model requiring tuning
         is_tuning_required = (
             (
                 model_type == "enet"
@@ -75,6 +82,7 @@ class SklearnModel(BaseModel):
                 model_type == "pls"
                 and isinstance(model_config.get("n_components"), list)
             )
+            or (model_type == "glm" and isinstance(model_config.get("alpha"), list))
         )
 
         if is_tuning_required and (
@@ -130,7 +138,6 @@ class SklearnModel(BaseModel):
             param_grid: Dict[str, Any] = {}
             base_model: Any
 
-            # UPDATED: Build param_grid and base_model based on model_type
             if model_type == "enet":
                 if isinstance(model_config.get("alpha"), list):
                     param_grid["model__alpha"] = model_config["alpha"]
@@ -165,6 +172,54 @@ class SklearnModel(BaseModel):
             elif model_type == "pls":
                 param_grid["model__n_components"] = model_config["n_components"]
                 base_model = PLSRegression()
+
+            elif model_type == "glm":
+                param_grid["regressor__group_reg"] = model_config["alpha"]
+
+                n_knots = model_config.get(
+                    "n_knots", 3
+                )  # Default to 3 as per Gu et al. paper
+                degree = 2  # Quadratic spline as per paper
+                n_splines = n_knots + degree - 1
+
+                spline_transformer = ColumnTransformer(
+                    transformers=[
+                        (
+                            f"spline_{col}",
+                            SplineTransformer(n_knots=n_knots, degree=degree),
+                            [i],
+                        )
+                        for i, col in enumerate(self.feature_cols)
+                    ],
+                    remainder="drop",
+                )
+
+                groups = np.repeat(np.arange(len(self.feature_cols)), n_splines)
+                regressor = GroupLasso(groups=groups, random_state=random_state)
+
+                base_model = Pipeline(
+                    [
+                        ("splines", spline_transformer),
+                        ("scaler", StandardScaler()),
+                        ("regressor", regressor),
+                    ]
+                )
+                # Use the standard grid search path now
+                pipeline = base_model
+                grid_search = GridSearchCV(
+                    estimator=pipeline,
+                    param_grid=param_grid,
+                    cv=ps,
+                    scoring="neg_mean_squared_error",
+                    refit=True,
+                    n_jobs=-1,
+                )
+                grid_search.fit(X, y)
+                logger.info(
+                    f"Best params for '{self.name}': {grid_search.best_params_}"
+                )
+                self.model = grid_search.best_estimator_
+                return
 
             pipeline = self._create_pipeline(base_model)
             grid_search = GridSearchCV(
@@ -261,6 +316,37 @@ class SklearnModel(BaseModel):
             elif model_type == "pls":
                 model_instance = PLSRegression(
                     n_components=model_config["n_components"]
+                )
+
+            elif model_type == "glm":
+                n_knots = model_config.get("n_knots", 3)
+                alpha = model_config["alpha"]
+                degree = 2
+                n_splines = n_knots + degree - 1
+
+                spline_transformer = ColumnTransformer(
+                    transformers=[
+                        (
+                            f"spline_{col}",
+                            SplineTransformer(n_knots=n_knots, degree=degree),
+                            [i],
+                        )
+                        for i, col in enumerate(self.feature_cols)
+                    ],
+                    remainder="drop",
+                )
+
+                groups = np.repeat(np.arange(len(self.feature_cols)), n_splines)
+                regressor = GroupLasso(
+                    group_reg=alpha, groups=groups, random_state=random_state
+                )
+
+                model_instance = Pipeline(
+                    [
+                        ("splines", spline_transformer),
+                        ("scaler", StandardScaler()),
+                        ("regressor", regressor),
+                    ]
                 )
 
             else:

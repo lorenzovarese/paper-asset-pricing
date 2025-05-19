@@ -100,7 +100,6 @@ class OLSConfig(BaseModelConfig):
 
     @property
     def requires_tuning(self) -> bool:
-        """OLS as implemented does not require hyperparameter tuning."""
         return False
 
 
@@ -140,9 +139,33 @@ class PLSConfig(BaseModelConfig):
         return isinstance(self.n_components, list)
 
 
+class GLMConfig(BaseModelConfig):
+    type: Literal["glm"]
+    n_knots: int = Field(
+        3,
+        description="Number of knots for the spline transformer. Default is 3 as per Gu et al.",
+    )
+    alpha: Union[float, List[float]] = Field(
+        ..., description="Group lasso regularization strength (λ) or list for tuning."
+    )
+
+    @model_validator(mode="after")
+    def _validate_config(self) -> "GLMConfig":
+        if self.objective_function == "huber":
+            raise NotImplementedError(
+                "The 'glm' model with Group Lasso does not support Huber loss in this implementation. Please use 'l2'."
+            )
+        return self
+
+    @property
+    def requires_tuning(self) -> bool:
+        # Tuning is now only dependent on alpha
+        return isinstance(self.alpha, list)
+
+
 # --- Main Configuration Schema ---
 
-AnyModel = Union[OLSConfig, ElasticNetConfig, PCRConfig, PLSConfig]
+AnyModel = Union[OLSConfig, ElasticNetConfig, PCRConfig, PLSConfig, GLMConfig]
 
 
 class ModelsConfig(BaseModel):
@@ -164,6 +187,8 @@ class ModelsConfig(BaseModel):
                 dispatched.append(PCRConfig(**model_config))
             elif model_type == "pls":
                 dispatched.append(PLSConfig(**model_config))
+            elif model_type == "glm":
+                dispatched.append(GLMConfig(**model_config))
             else:
                 raise ValueError(f"Unsupported model type: '{model_type}'")
         return dispatched

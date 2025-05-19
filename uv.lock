@@ -548,6 +548,19 @@ wheels = [
 ]
 
 [[package]]
+name = "group-lasso"
+version = "1.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scikit-learn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/21/b4/784d01db4eb7f3eafb9f1a9ac6f141d7050aba615cf6e0186ba9ebdaa299/group-lasso-1.5.0.tar.gz", hash = "sha256:3a86115fdfa387021c805a8e3bf09c1f1cc1e32b880778ab017488199ef57310", size = 4337694 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/12/ca38bf6ce7e97ce1b07652efdcec5e69caa0cce8f738afd66268c186fb3b/group_lasso-1.5.0-py3-none-any.whl", hash = "sha256:a20ad4807834a4438a8829a36e0f355c7633e347aa73502dae8a22fc6e75e977", size = 33109 },
+]
+
+[[package]]
 name = "hf-xet"
 version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1171,6 +1184,7 @@ name = "paper-model"
 version = "0.1.0"
 source = { editable = "paper-model" }
 dependencies = [
+    { name = "group-lasso" },
     { name = "joblib" },
     { name = "pandas" },
     { name = "polars" },
@@ -1181,6 +1195,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "group-lasso", specifier = ">=1.5.0" },
     { name = "joblib", specifier = ">=1.5.1" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "polars", specifier = ">=1.30.0" },

@@ -1,7 +1,7 @@
 import polars as pl
 import numpy as np
 import logging
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 
 from sklearn.linear_model import (  # type: ignore
     LinearRegression,

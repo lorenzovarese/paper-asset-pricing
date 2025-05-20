@@ -10,7 +10,7 @@ from paper_model.config_parser import load_config  # type: ignore
 
 # Define constants that do not depend on the project path
 LOG_LEVEL = "INFO"
-CONFIG_FILE_NAME = "models-config.yaml"
+DEFAULT_CONFIG_FILENAME = "models-config.yaml"
 LOG_FILE_NAME = "logs.log"
 
 
@@ -24,6 +24,13 @@ def main():
         type=str,
         help="The root directory of the PAPER project (e.g., 'tmp/MyPaperProjectName').",
     )
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=None,
+        help=f"Path to a specific model configuration YAML file. If not provided, defaults to 'configs/{DEFAULT_CONFIG_FILENAME}' within the project root.",
+    )
     args = parser.parse_args()
 
     # --- 2. Configure Paths and Logging (inside main) ---
@@ -36,7 +43,14 @@ def main():
         )
         sys.exit(1)
 
-    models_config_path = paper_project_root / "configs" / CONFIG_FILE_NAME
+    # Determine the configuration file path based on the provided argument
+    if args.config:
+        # If a specific config file is provided, resolve its path
+        models_config_path = Path(args.config).resolve()
+    else:
+        # Otherwise, use the default path within the project root
+        models_config_path = paper_project_root / "configs" / DEFAULT_CONFIG_FILENAME
+
     log_file_path = paper_project_root / LOG_FILE_NAME
 
     # Ensure the log directory exists

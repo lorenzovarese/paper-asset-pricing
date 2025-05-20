@@ -1,2 +1,50 @@
-# Placeholder for portfolio-config.yaml
-# Please refer to the respective component's documentation for structure.
+input_data:
+  prediction_model_names:
+  - "ols_baseline"
+  - "ols_huber_adaptive"
+  - "enet_full_tuned"
+  - "pls_full_tuned"
+  - "pcr_full_tuned"
+  - "rf_full_tuned"
+  - "gbrt_full_tuned"
+  - "nn1_tuned"
+  processed_dataset_name: "final_dataset_model"
+  date_column: "date"
+  id_column: "permno"
+  risk_free_rate_col: "rf"
+  value_weight_col: "mvel1" # TODO: put the corrected to market value
+
+strategies:
+- name: "EQ90"
+  weighting_scheme: "equal"
+  long_quantiles: [ 0.9, 1.0 ]
+  short_quantiles: [ 0.0, 0.1 ]
+
+# - name: "VAL90"
+#   weighting_scheme: "value"
+#   long_quantiles: [ 0.9, 1.0 ]
+#   short_quantiles: [ 0.0, 0.1 ]
+
+- name: "EQ95"
+  weighting_scheme: "equal"
+  long_quantiles: [ 0.90, 0.95 ]
+  short_quantiles: [ 0.05, 0.10 ]
+
+# - name: "VAL95"
+#   weighting_scheme: "value"
+#   long_quantiles: [ 0.90, 0.95 ]
+#   short_quantiles: [ 0.05, 0.10 ]
+
+metrics:
+- "sharpe_ratio"
+- "expected_shortfall"
+- "cumulative_return"
+
+market_benchmark:
+  name: "S&P 500"
+  file_name: "sp500_dec1989_dec2021.csv"
+  date_column: "date"
+  return_column: "ret"
+  date_format: "%Y-%m-%d"
+
+cross_sectional_analysis: true

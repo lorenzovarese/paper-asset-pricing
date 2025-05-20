@@ -1,0 +1,40 @@
+# --- Dimensionality Reduction Models Configuration ---
+# Contains Principal Component Regression (PCR) and Partial Least Squares (PLS).
+# These models use all available features and reduce them to a smaller set of components.
+
+input_data:
+  dataset_name: "final_dataset_model"
+  splitted: "year"
+  date_column: "date"
+  id_column: "permno"
+  risk_free_rate_col: "rf"
+
+evaluation:
+  implementation: "rolling window"
+  train_month: 120
+  validation_month: 24
+  testing_month: 12
+  step_month: 12
+  metrics: [ "mse", "r2_oos" ]
+
+models:
+- name: "pcr_full_tuned"
+  type: "pcr"
+  target_column: "ret"
+  features:
+    method: "all_except"
+    columns: [ "date", "permno", "ret", "rf", "sic2" ]
+  n_components: [ 5, 10, 15 ]
+  objective_function: "huber"
+  random_state: 306
+  save_prediction_results: true
+
+- name: "pls_full_tuned"
+  type: "pls"
+  target_column: "ret"
+  features:
+    method: "all_except"
+    columns: [ "date", "permno", "ret", "rf", "sic2" ]
+  n_components: [ 3, 6, 9 ]
+  random_state: 306
+  save_prediction_results: true

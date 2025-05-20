@@ -1,0 +1,43 @@
+# --- Penalized Linear Models Configuration ---
+# Contains Elastic Net (ENet) and Generalized Linear Models (GLM) with Group Lasso.
+# These models use all available features by default.
+
+input_data:
+  dataset_name: "final_dataset_model"
+  splitted: "year"
+  date_column: "date"
+  id_column: "permno"
+  risk_free_rate_col: "rf"
+
+evaluation:
+  implementation: "rolling window"
+  train_month: 120
+  validation_month: 24
+  testing_month: 12
+  step_month: 12
+  metrics: [ "mse", "r2_oos" ]
+
+models:
+- name: "enet_full_tuned"
+  type: "enet"
+  target_column: "ret"
+  features:
+    method: "all_except"
+    columns: [ "date", "permno", "ret", "rf", "sic2" ]
+  alpha: [ 0.001, 0.01, 0.1 ]
+  l1_ratio: [ 0.1, 0.5, 0.9 ]
+  max_iter: 2000
+  random_state: 306
+  save_prediction_results: true
+
+# - name: "glm_full_tuned"
+#   type: "glm"
+#   target_column: "ret"
+#   features:
+#     method: "all_except"
+#     columns: [ "date", "permno", "ret", "rf", "sic2" ]
+#   n_knots: 3
+#   alpha: [ 0.0001, 0.001, 0.01 ]
+#   objective_function: "l2"
+#   random_state: 306
+#   save_prediction_results: true

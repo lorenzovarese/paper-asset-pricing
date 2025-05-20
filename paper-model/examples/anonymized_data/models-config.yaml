@@ -18,7 +18,10 @@ models:
 - name: "ols_huber_adaptive"
   type: "ols"
   target_column: "ret"
-  feature_columns: [ "bm", "mvel1", "mom12m" ]
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
   objective_function: "huber"
   # Set epsilon (ξ) to the 99.9% quantile of absolute residuals
   huber_epsilon_quantile: 0.999
@@ -27,7 +30,27 @@ models:
 - name: "elastic_net_model"
   type: "enet"
   target_column: "ret"
-  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
+  - "beta"
+  - "sp"
+  - "securedind"
+  - "mom36m"
+  - "zerotrade"
+  - "nincr"
+  - "indmom"
+  - "std_turn"
+  - "ill"
+  - "baspread"
+  - "mom6m"
+  - "idiovol"
+  - "turn"
+  - "dolvol"
+  - "chmom"
+  - "maxret"
+  - "retvol"
   alpha: 0.1
   l1_ratio: 0.5
   random_state: 306
@@ -38,7 +61,27 @@ models:
 - name: "pcr_tuned_model"
   type: "pcr"
   target_column: "ret"
-  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
+  - "beta"
+  - "sp"
+  - "securedind"
+  - "mom36m"
+  - "zerotrade"
+  - "nincr"
+  - "indmom"
+  - "std_turn"
+  - "ill"
+  - "baspread"
+  - "mom6m"
+  - "idiovol"
+  - "turn"
+  - "dolvol"
+  - "chmom"
+  - "maxret"
+  - "retvol"
   # Provide a list of components (K) to search over
   n_components: [ 5, 10, 15 ]
   # Optional: Use Huber loss for the final regression step
@@ -51,7 +94,27 @@ models:
 - name: "pls_tuned_model"
   type: "pls"
   target_column: "ret"
-  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
+  - "beta"
+  - "sp"
+  - "securedind"
+  - "mom36m"
+  - "zerotrade"
+  - "nincr"
+  - "indmom"
+  - "std_turn"
+  - "ill"
+  - "baspread"
+  - "mom6m"
+  - "idiovol"
+  - "turn"
+  - "dolvol"
+  - "chmom"
+  - "maxret"
+  - "retvol"
   # Provide a list of components (K) to search over
   n_components: [ 3, 6, 9 ]
   random_state: 306
@@ -62,17 +125,18 @@ models:
 - name: "glm_tuned_model"
   type: "glm"
   target_column: "ret"
-  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp" ]
-
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
+  - "beta"
+  - "sp"
   # Number of knots is fixed at 3 as per the paper's hyperparameter table
   n_knots: 3
-
   # Tune over the regularization strength (λ) in the specified range
   alpha: [ 0.0001, 0.001, 0.01, 0.1 ]
-
   # Objective must be 'l2' for this implementation
   objective_function: "l2"
-
   random_state: 306
   save_model_checkpoints: true
   save_prediction_results: true
@@ -81,15 +145,17 @@ models:
 - name: "random_forest_tuned"
   type: "rf"
   target_column: "ret"
-  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp" ]
-
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
+  - "beta"
+  - "sp"
   # Fixed number of trees as per paper
   n_estimators: 300
-
   # Tune over depth (L) and features per split
   max_depth: [ 1, 2, 3, 4, 5, 6 ]
   max_features: [ "sqrt", 0.33, 0.5 ]
-
   random_state: 306
   save_model_checkpoints: true
   save_prediction_results: true
@@ -98,16 +164,18 @@ models:
 - name: "gbrt_huber_tuned"
   type: "gbrt"
   target_column: "ret"
-  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp" ]
-
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
+  - "beta"
+  - "sp"
   # Use Huber loss as per paper
   objective_function: "huber"
-
   # Tune over all three hyperparameters
   n_estimators: [ 100, 500, 1000 ]
   max_depth: [ 1, 2 ]
   learning_rate: [ 0.01, 0.1 ]
-
   random_state: 306
   save_model_checkpoints: true
   save_prediction_results: true
@@ -116,7 +184,27 @@ models:
 - name: "nn1_model"
   type: "nn"
   target_column: "ret"
-  feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
+  - "beta"
+  - "sp"
+  - "securedind"
+  - "mom36m"
+  - "zerotrade"
+  - "nincr"
+  - "indmom"
+  - "std_turn"
+  - "ill"
+  - "baspread"
+  - "mom6m"
+  - "idiovol"
+  - "turn"
+  - "dolvol"
+  - "chmom"
+  - "maxret"
+  - "retvol"
   hidden_layer_sizes: [ 32 ]
   alpha: [ 0.00001, 0.0001 ] # Tune L1 penalty
   learning_rate: [ 0.001, 0.01 ] # Tune learning rate
@@ -128,18 +216,38 @@ models:
   save_model_checkpoints: true
   save_prediction_results: true
 
-# --- Neural Network (NN3) ---
-# - name: "nn3_model"
-#   type: "nn"
-#   target_column: "ret"
-#   feature_columns: [ "bm", "mvel1", "mom12m", "beta", "sp", "securedind", "mom36m", "zerotrade", "nincr", "indmom", "std_turn", "ill", "baspread", "mom6m", "idiovol", "turn", "dolvol", "chmom", "maxret", "retvol" ]
-#   hidden_layer_sizes: [32, 16, 8]
-#   alpha: [0.00001, 0.0001] # Tune L1 penalty
-#   learning_rate: [0.001, 0.01] # Tune learning rate
-#   batch_size: 10000
-#   epochs: 100
-#   patience: 5
-#   n_ensembles: 10
-#   random_state: 306
-#   save_model_checkpoints: true
-#   save_prediction_results: true
+# A Neural Network (NN3) model with hyperparameter tuning
+- name: "nn3_model"
+  type: "nn"
+  target_column: "ret"
+  features:
+  - "bm"
+  - "mvel1"
+  - "mom12m"
+  - "beta"
+  - "sp"
+  - "securedind"
+  - "mom36m"
+  - "zerotrade"
+  - "nincr"
+  - "indmom"
+  - "std_turn"
+  - "ill"
+  - "baspread"
+  - "mom6m"
+  - "idiovol"
+  - "turn"
+  - "dolvol"
+  - "chmom"
+  - "maxret"
+  - "retvol"
+  hidden_layer_sizes: [ 32, 16, 8 ]
+  alpha: [ 0.00001, 0.0001 ] # Tune L1 penalty
+  learning_rate: [ 0.001, 0.01 ] # Tune learning rate
+  batch_size: 10000
+  epochs: 100
+  patience: 5
+  n_ensembles: 10
+  random_state: 306
+  save_model_checkpoints: true
+  save_prediction_results: true

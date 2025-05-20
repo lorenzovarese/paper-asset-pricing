@@ -2,8 +2,6 @@ import sys
 from pathlib import Path
 import logging
 import argparse
-import atexit
-import joblib  # type: ignore
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -16,29 +14,7 @@ DEFAULT_CONFIG_FILENAME = "models-config.yaml"
 LOG_FILE_NAME = "logs.log"
 
 
-def _cleanup_joblib():
-    """
-    Clean up any active joblib parallel backends upon script exit.
-    This is crucial for preventing orphaned processes when using n_jobs=-1 in scikit-learn.
-    """
-    try:
-        # Terminate the default parallel backend managed by joblib
-        if (
-            hasattr(joblib.parallel, "DEFAULT_BACKEND")
-            and joblib.parallel.DEFAULT_BACKEND is not None
-        ):
-            joblib.parallel.DEFAULT_BACKEND.terminate()
-            logging.info("Successfully cleaned up joblib parallel backend.")
-        else:
-            logging.info("No active joblib parallel backend to clean up.")
-    except Exception as e:
-        # Log any errors during cleanup, but don't raise them as the program is already exiting
-        logging.error(f"Error during joblib cleanup: {e}", exc_info=False)
-
-
 def main():
-    atexit.register(_cleanup_joblib)
-
     # --- 1. Set up Argument Parser ---
     parser = argparse.ArgumentParser(
         description="Run the paper-model pipeline for a specific project directory."

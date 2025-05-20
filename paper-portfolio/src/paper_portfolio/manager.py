@@ -71,62 +71,46 @@ class PortfolioManager:
             if monthly_data.is_empty():
                 continue
 
+            n_unique_preds = monthly_data["predicted_ret"].n_unique()
+            if n_unique_preds == 1:
+                logger.warning(
+                    f"For date {date}, all {monthly_data.height} stocks have the same predicted return. "
+                    "Portfolio construction for this month will be based on arbitrary rankings and may not be meaningful."
+                )
+
             for strat in self.config.strategies:
                 monthly_data_for_strat = monthly_data
                 if strat.weighting_scheme == "value":
                     value_col = self.config.input_data.value_weight_col
                     monthly_data_for_strat = monthly_data.filter(pl.col(value_col) > 0)
 
-                if monthly_data_for_strat.is_empty():
+                n = monthly_data_for_strat.height
+                if n == 0:
                     continue
 
-                quantiles = [
-                    monthly_data_for_strat["predicted_ret"].quantile(
-                        strat.long_quantiles[0]
-                    ),
-                    monthly_data_for_strat["predicted_ret"].quantile(
-                        strat.long_quantiles[1]
-                    ),
-                    monthly_data_for_strat["predicted_ret"].quantile(
-                        strat.short_quantiles[0]
-                    ),
-                    monthly_data_for_strat["predicted_ret"].quantile(
-                        strat.short_quantiles[1]
-                    ),
-                ]
-                if not all(isinstance(q, (float, int)) for q in quantiles):
-                    logger.warning(
-                        f"Could not compute all quantiles for date {date} and strategy {strat.name}. Skipping."
-                    )
-                    continue
-
-                q_low_long, q_high_long, q_low_short, q_high_short = quantiles
-
-                # Long Portfolio Construction
-                temp_long_portfolio = monthly_data_for_strat.filter(
-                    (pl.col("predicted_ret") >= q_low_long)
-                    & (pl.col("predicted_ret") <= q_high_long)
+                # Create a percentile rank column. `rank("ordinal")` ensures unique ranks even for ties.
+                # A low rank corresponds to a low predicted return.
+                ranked_data = monthly_data_for_strat.with_columns(
+                    (
+                        pl.col("predicted_ret").rank("ordinal", descending=False) / n
+                    ).alias("pred_rank_pct")
                 )
-                num_nulls_long = temp_long_portfolio["actual_ret"].is_null().sum()
-                if num_nulls_long > 0:
-                    logger.warning(
-                        f"For date {date}, strategy '{strat.name}', long portfolio: "
-                        f"Dropping {num_nulls_long} rows due to missing 'actual_ret'."
-                    )
-                long_portfolio = temp_long_portfolio.drop_nulls(subset=["actual_ret"])
 
-                # Short Portfolio Construction
-                temp_short_portfolio = monthly_data_for_strat.filter(
-                    (pl.col("predicted_ret") >= q_low_short)
-                    & (pl.col("predicted_ret") <= q_high_short)
-                )
-                num_nulls_short = temp_short_portfolio["actual_ret"].is_null().sum()
-                if num_nulls_short > 0:
-                    logger.warning(
-                        f"For date {date}, strategy '{strat.name}', short portfolio: "
-                        f"Dropping {num_nulls_short} rows due to missing 'actual_ret'."
+                # Long portfolio (stocks with the highest predicted returns)
+                long_portfolio = ranked_data.filter(
+                    pl.col("pred_rank_pct").is_between(
+                        strat.long_quantiles[0], strat.long_quantiles[1], closed="right"
                     )
-                short_portfolio = temp_short_portfolio.drop_nulls(subset=["actual_ret"])
+                ).drop_nulls(subset=["actual_ret"])
+
+                # Short portfolio (stocks with the lowest predicted returns)
+                short_portfolio = ranked_data.filter(
+                    pl.col("pred_rank_pct").is_between(
+                        strat.short_quantiles[0],
+                        strat.short_quantiles[1],
+                        closed="right",
+                    )
+                ).drop_nulls(subset=["actual_ret"])
 
                 if long_portfolio.is_empty() or short_portfolio.is_empty():
                     continue

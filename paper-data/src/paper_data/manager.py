@@ -113,8 +113,10 @@ class DataManager:
         Performs data wrangling operations based on the 'wrangling_pipeline' section.
         Delegates 'merge' operation to augmenter.py.
         """
-        for operation_config in self.config.get("wrangling_pipeline", []):
+        for i, operation_config in enumerate(self.config.get("wrangling_pipeline", [])):
             operation_type = operation_config["operation"]
+            logger.info(f"--- Wrangling Step {i + 1}: {operation_type} ---")
+
             dataset_name = operation_config.get(
                 "dataset"
             )  # Get dataset name for operations that need it
@@ -150,9 +152,11 @@ class DataManager:
 
                 df_to_impute = self.datasets[dataset_name]
 
-                logger.info(
-                    f"Performing monthly imputation on dataset '{dataset_name}'..."
-                )
+                logger.info(f"  Input Dataset: '{dataset_name}'")
+                logger.info(f"  Numeric Columns: {numeric_columns}")
+                logger.info(f"  Categorical Columns: {categorical_columns}")
+                logger.info(f"  Output Dataset: '{output_name}'")
+
                 imputed_df = impute_monthly(
                     df_to_impute, date_col, numeric_columns, categorical_columns
                 )
@@ -163,7 +167,7 @@ class DataManager:
                     "id_column": id_col,
                 }
                 logger.info(
-                    f"Monthly imputation complete. Resulting shape: {imputed_df.shape}"
+                    f"  -> Monthly imputation complete. New dataset '{output_name}' shape: {imputed_df.shape}"
                 )
 
             elif operation_type == "scale_to_range":
@@ -192,9 +196,11 @@ class DataManager:
                 target_min = float(range_config["min"])
                 target_max = float(range_config["max"])
 
-                logger.info(
-                    f"Performing monthly scaling on dataset '{dataset_name}' for columns {cols_to_scale}..."
-                )
+                logger.info(f"  Input Dataset: '{dataset_name}'")
+                logger.info(f"  Columns to Scale: {cols_to_scale}")
+                logger.info(f"  Target Range: [{target_min}, {target_max}]")
+                logger.info(f"  Output Dataset: '{output_name}'")
+
                 scaled_df = scale_to_range(
                     df_to_scale, cols_to_scale, date_col, target_min, target_max
                 )
@@ -204,7 +210,9 @@ class DataManager:
                     "date_column": date_col,
                     "id_column": id_col,
                 }
-                logger.info(f"Scaling complete. Resulting shape: {scaled_df.shape}")
+                logger.info(
+                    f"  -> Scaling complete. New dataset '{output_name}' shape: {scaled_df.shape}"
+                )
 
             elif operation_type == "merge":
                 left_dataset_name = operation_config["left_dataset"]
@@ -225,7 +233,16 @@ class DataManager:
                 left_df = self.datasets[left_dataset_name]
                 right_df = self.datasets[right_dataset_name]
 
-                # Call the merge function from augmenter.py
+                logger.info(
+                    f"  Left Dataset: '{left_dataset_name}' (Shape: {left_df.shape})"
+                )
+                logger.info(
+                    f"  Right Dataset: '{right_dataset_name}' (Shape: {right_df.shape})"
+                )
+                logger.info(f"  Join Keys (on): {on_cols}")
+                logger.info(f"  Join Type (how): '{how}'")
+                logger.info(f"  Output Dataset: '{output_name}'")
+
                 merged_df = merge_datasets(left_df, right_df, on_cols, how)
                 self.datasets[output_name] = merged_df
                 # Inherit date_column and id_column metadata for the merged dataset from the left dataset
@@ -233,7 +250,9 @@ class DataManager:
                     self._ingestion_metadata[output_name] = self._ingestion_metadata[
                         left_dataset_name
                     ]
-                logger.info(f"Merge complete. Resulting shape: {merged_df.shape}")
+                logger.info(
+                    f"  -> Merge complete. New dataset '{output_name}' shape: {merged_df.shape}"
+                )
 
             elif operation_type == "lag":
                 periods = operation_config["periods"]
@@ -259,7 +278,6 @@ class DataManager:
                         f"Lag operation currently only supports periods greater or equal to 1. Found '{periods}'."
                     )
 
-                # Validation: If restore_names is true, drop_original_cols_after_lag must be true
                 if restore_names and not drop_original_cols_after_lag:
                     raise ValueError(
                         "Configuration Error for 'lag' operation: "
@@ -270,7 +288,6 @@ class DataManager:
                 df_to_lag = self.datasets[dataset_name]
                 all_cols = df_to_lag.columns
 
-                # Determine columns to lag based on method
                 lag_method = columns_to_lag_config[0]["method"]
                 specified_cols = columns_to_lag_config[1]["columns"]
 
@@ -282,9 +299,14 @@ class DataManager:
                         f"Unsupported lag method: '{lag_method}'. Only 'all_except' is currently supported."
                     )
 
-                logger.info(
-                    f"Performing lag operation on dataset '{dataset_name}' for columns: {cols_to_lag} with periods={periods}..."
-                )
+                logger.info(f"  Input Dataset: '{dataset_name}'")
+                logger.info(f"  Periods: {periods}")
+                logger.info(f"  Columns to Lag: {cols_to_lag}")
+                logger.info(f"  Drop Original Columns: {drop_original_cols_after_lag}")
+                logger.info(f"  Restore Names: {restore_names}")
+                logger.info(f"  Drop Generated NaNs: {drop_generated_nans}")
+                logger.info(f"  Output Dataset: '{output_name}'")
+
                 lagged_df = lag_columns(
                     df_to_lag,
                     date_col,
@@ -302,7 +324,7 @@ class DataManager:
                     "id_column": id_col,
                 }
                 logger.info(
-                    f"Lag operation complete. Resulting shape: {lagged_df.shape}"
+                    f"  -> Lag operation complete. New dataset '{output_name}' shape: {lagged_df.shape}"
                 )
 
             elif operation_type == "dummy_generation":
@@ -321,9 +343,11 @@ class DataManager:
 
                 df_to_dummy = self.datasets[dataset_name]
 
-                logger.info(
-                    f"Performing dummy generation on dataset '{dataset_name}' for column '{column_to_dummy}'..."
-                )
+                logger.info(f"  Input Dataset: '{dataset_name}'")
+                logger.info(f"  Column to Dummy: '{column_to_dummy}'")
+                logger.info(f"  Drop Original Column: {drop_original_col}")
+                logger.info(f"  Output Dataset: '{output_name}'")
+
                 dummied_df = create_dummies(
                     df_to_dummy, column_to_dummy, drop_original_col
                 )
@@ -336,7 +360,7 @@ class DataManager:
                     ]
 
                 logger.info(
-                    f"Dummy generation complete. Resulting shape: {dummied_df.shape}"
+                    f"  -> Dummy generation complete. New dataset '{output_name}' shape: {dummied_df.shape}"
                 )
 
             elif operation_type == "create_macro_interactions":
@@ -360,9 +384,12 @@ class DataManager:
 
                 df_to_interact = self.datasets[dataset_name]
 
-                logger.info(
-                    f"Creating macro-firm interaction columns for dataset '{dataset_name}'..."
-                )
+                logger.info(f"  Input Dataset: '{dataset_name}'")
+                logger.info(f"  Macro Columns: {macro_columns}")
+                logger.info(f"  Firm Columns: {firm_columns}")
+                logger.info(f"  Drop Macro Columns: {drop_macro_columns}")
+                logger.info(f"  Output Dataset: '{output_name}'")
+
                 interactions_df = create_macro_firm_interactions(
                     df_to_interact, macro_columns, firm_columns, drop_macro_columns
                 )
@@ -373,7 +400,7 @@ class DataManager:
                         dataset_name
                     ]
                 logger.info(
-                    f"Macro-firm interaction creation complete. Resulting shape: {interactions_df.shape}"
+                    f"  -> Macro-firm interaction creation complete. New dataset '{output_name}' shape: {interactions_df.shape}"
                 )
 
             else:

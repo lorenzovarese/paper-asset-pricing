@@ -49,7 +49,13 @@ class CSVLoader(DataConnector):
 
         missing = {self._date_col, self._id_col} - set(df.columns)
         if missing:
-            raise ValueError(f"missing required column(s): {', '.join(missing)}")
+            error_msg = (
+                f"Missing required columns: {', '.join(missing)} from file '{self._path.name}'.\n"
+                f"  - Expected columns based on config: ['{self._date_col}', '{self._id_col}']\n"
+                f"  - Columns found in file: {df.columns}\n"
+                "  - Please check your 'data-config.yaml' for typos and ensure the column names (and their casing) match the CSV file."
+            )
+            raise ValueError(error_msg)
 
         if date_format is not None:
             # Check the current dtype of the date column

@@ -2,6 +2,8 @@ import sys
 from pathlib import Path
 import logging
 import argparse
+import atexit
+import joblib  # type: ignore
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -14,7 +16,29 @@ DEFAULT_CONFIG_FILENAME = "models-config.yaml"
 LOG_FILE_NAME = "logs.log"
 
 
+def _cleanup_joblib():
+    """
+    Clean up any active joblib parallel backends upon script exit.
+    This is crucial for preventing orphaned processes when using n_jobs=-1 in scikit-learn.
+    """
+    try:
+        # Terminate the default parallel backend managed by joblib
+        if (
+            hasattr(joblib.parallel, "DEFAULT_BACKEND")
+            and joblib.parallel.DEFAULT_BACKEND is not None
+        ):
+            joblib.parallel.DEFAULT_BACKEND.terminate()
+            logging.info("Successfully cleaned up joblib parallel backend.")
+        else:
+            logging.info("No active joblib parallel backend to clean up.")
+    except Exception as e:
+        # Log any errors during cleanup, but don't raise them as the program is already exiting
+        logging.error(f"Error during joblib cleanup: {e}", exc_info=False)
+
+
 def main():
+    atexit.register(_cleanup_joblib)
+
     # --- 1. Set up Argument Parser ---
     parser = argparse.ArgumentParser(
         description="Run the paper-model pipeline for a specific project directory."
@@ -45,26 +69,19 @@ def main():
 
     # Determine the configuration file path based on the provided argument
     if args.config:
-        # If a specific config file is provided, resolve its path
         models_config_path = Path(args.config).resolve()
     else:
-        # Otherwise, use the default path within the project root
         models_config_path = paper_project_root / "configs" / DEFAULT_CONFIG_FILENAME
 
     log_file_path = paper_project_root / LOG_FILE_NAME
-
-    # Ensure the log directory exists
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Get the root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(LOG_LEVEL.upper())
 
-    # Clear existing handlers to prevent duplicate output
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # Configure FileHandler
     file_handler = logging.FileHandler(log_file_path, mode="a")
     file_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -72,14 +89,12 @@ def main():
     file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
 
-    # Configure StreamHandler for console errors
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.ERROR)
     console_formatter = logging.Formatter("%(levelname)s: %(message)s")
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
 
-    # Initial messages to console
     print(f"Using project root: {paper_project_root}")
     print(f"Attempting to load config from: {models_config_path}")
     print(f"Detailed logs will be written to: {log_file_path}")
@@ -102,6 +117,10 @@ def main():
         root_logger.info("Model pipeline completed successfully.")
 
         root_logger.info("\n--- Final Generated Prediction Results ---")
+        if not generated_predictions:
+            root_logger.info(
+                "Prediction results were written to files in the models/predictions directory."
+            )
         for name, df in generated_predictions.items():
             root_logger.info(f"Predictions for '{name}':")
             root_logger.info(f"  Shape: {df.shape}")

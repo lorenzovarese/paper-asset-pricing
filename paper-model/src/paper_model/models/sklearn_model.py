@@ -165,13 +165,16 @@ class SklearnModel(BaseModel[Pipeline]):
                         loss="huber",
                         penalty="elasticnet",
                         random_state=random_state,
-                        max_iter=1000,
+                        max_iter=model_config.get("max_iter", 1000),
                         tol=1e-3,
                     )
                     if not isinstance(model_config.get("l1_ratio"), list):
                         base_model.set_params(l1_ratio=model_config.get("l1_ratio"))
                 else:
-                    base_model = ElasticNet(random_state=random_state)
+                    base_model = ElasticNet(
+                        random_state=random_state,
+                        max_iter=model_config.get("max_iter", 1000),
+                    )
                     if not isinstance(model_config.get("alpha"), list):
                         base_model.set_params(alpha=model_config.get("alpha"))
                     if not isinstance(model_config.get("l1_ratio"), list):
@@ -331,12 +334,14 @@ class SklearnModel(BaseModel[Pipeline]):
                         alpha=model_config["alpha"],
                         l1_ratio=model_config["l1_ratio"],
                         random_state=random_state,
+                        max_iter=model_config.get("max_iter", 1000),
                     )
                 else:
                     model_instance = ElasticNet(
                         alpha=model_config["alpha"],
                         l1_ratio=model_config["l1_ratio"],
                         random_state=random_state,
+                        max_iter=model_config.get("max_iter", 1000),
                     )
 
             elif model_type == "pcr":

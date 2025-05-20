@@ -123,6 +123,9 @@ class ElasticNetConfig(BaseModelConfig):
     l1_ratio: Union[float, List[float]] = Field(
         0.5, description="ElasticNet mixing parameter or list of parameters for tuning"
     )
+    max_iter: int = Field(
+        1000, description="Maximum number of iterations for the solver."
+    )
 
     @property
     def requires_tuning(self) -> bool:

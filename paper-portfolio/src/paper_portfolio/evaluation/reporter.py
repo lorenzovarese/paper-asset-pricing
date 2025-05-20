@@ -145,29 +145,29 @@ class PortfolioReporter:
 
         plt.figure(figsize=(14, 8))
 
-        # Use a color map for visual distinction between deciles
         try:
-            # Modern Matplotlib API (3.5+)
-            colormap = plt.colormaps.get_cmap("viridis")
+            colormap = plt.colormaps.get_cmap("tab10")
         except AttributeError:
-            # Older Matplotlib API
-            colormap = plt.cm.get_cmap("viridis")
+            colormap = plt.cm.get_cmap("tab10")
 
-        deciles = sorted(decile_returns_df["decile"].unique().to_list())
-        num_deciles = len(deciles)
+        unique_deciles = decile_returns_df["decile"].unique().to_list()
+        sorted_deciles = sorted(unique_deciles, key=lambda s: int(s.split(" ")[1]))
+        num_deciles = len(sorted_deciles)
 
-        for i, decile_name in enumerate(deciles):
+        for i, decile_name in enumerate(sorted_deciles):
             decile_data = decile_returns_df.filter(
                 pl.col("decile") == decile_name
             ).sort("date")
             if decile_data.is_empty():
                 continue
 
+            color = colormap(i / (num_deciles - 1) if num_deciles > 1 else 0.5)
+
             plt.plot(
                 decile_data["date"],
                 decile_data["cumulative_return"],
                 label=str(decile_name),
-                color=colormap(i / (num_deciles - 1) if num_deciles > 1 else 0.5),
+                color=color,
                 linewidth=1.5,
             )
 

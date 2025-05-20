@@ -65,6 +65,15 @@ class ModelManager:
                 raise FileNotFoundError(f"Data file {file_path} not found.")
             df = pl.read_parquet(file_path)
 
+        # Cast all 64-bit float columns to 32-bit floats to reduce memory usage.
+        # This is safe as monthly financial data rarely requires double precision.
+        float64_cols = [col.name for col in df if col.dtype == pl.Float64]
+        if float64_cols:
+            df = df.with_columns([pl.col(c).cast(pl.Float32) for c in float64_cols])
+            logger.info(
+                f"Casted {len(float64_cols)} columns to Float32 to save memory."
+            )
+
         if df[input_conf.date_column].dtype != pl.Date:
             df = df.with_columns(pl.col(input_conf.date_column).cast(pl.Date))
 

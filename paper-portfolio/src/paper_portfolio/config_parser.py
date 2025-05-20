@@ -1,7 +1,7 @@
 from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, ValidationError
-from typing import List, Literal, Union
+from typing import List, Literal, Union, Optional
 
 
 class PortfolioStrategyConfig(BaseModel):
@@ -20,10 +20,32 @@ class InputDataConfig(BaseModel):
     value_weight_col: str = "bm"
 
 
+class MarketBenchmarkConfig(BaseModel):
+    """Configuration for a market index benchmark."""
+
+    name: str = Field(
+        ..., description="Display name for the benchmark (e.g., 'S&P 500')."
+    )
+    file_name: str = Field(
+        ...,
+        description="The name of the CSV file in the 'portfolios/indexes/' directory.",
+    )
+    date_column: str = Field(
+        "date", description="The name of the date column in the CSV file."
+    )
+    return_column: str = Field(
+        "ret", description="The name of the return column in the CSV file."
+    )
+    date_format: str = Field(
+        "%Y-%m-%d", description="The date format string for parsing the date column."
+    )
+
+
 class PortfolioConfig(BaseModel):
     input_data: InputDataConfig
     strategies: List[PortfolioStrategyConfig]
     metrics: List[Literal["sharpe_ratio", "expected_shortfall", "cumulative_return"]]
+    market_benchmark: Optional[MarketBenchmarkConfig] = None
 
 
 def load_config(config_path: Union[str, Path]) -> PortfolioConfig:
@@ -39,7 +61,6 @@ def load_config(config_path: Union[str, Path]) -> PortfolioConfig:
                 f"Error parsing YAML file {config_path}: {exc}"
             ) from exc
 
-    # Check if the loaded config is a dictionary. This handles empty files.
     if not isinstance(raw_config, dict):
         raise ValueError(
             f"Configuration file '{config_path}' is empty or does not contain a valid YAML mapping (dictionary)."

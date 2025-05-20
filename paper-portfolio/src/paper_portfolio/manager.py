@@ -1,9 +1,9 @@
 import polars as pl
 import logging
 from pathlib import Path
-from typing import Dict, Union, Any
+from typing import Dict, Union, Any, Optional
 
-from .config_parser import PortfolioConfig
+from .config_parser import PortfolioConfig, MarketBenchmarkConfig
 from .evaluation import metrics, reporter
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,6 @@ class PortfolioManager:
         predictions_dir = project_root / "models" / "predictions"
         processed_dir = project_root / "data" / "processed"
 
-        # Load main processed data
         processed_files = list(
             processed_dir.glob(f"{input_conf.processed_dataset_name}_*.parquet")
         )
@@ -41,8 +40,6 @@ class PortfolioManager:
                 continue
 
             preds_df = pl.read_parquet(pred_file)
-
-            # Merge predictions with necessary columns from the main dataset
             data_for_model = preds_df.join(
                 main_df.select(
                     [
@@ -58,6 +55,41 @@ class PortfolioManager:
             merged_data[model_name] = data_for_model
 
         return merged_data
+
+    def _load_index_data(
+        self, project_root: Path, benchmark_config: MarketBenchmarkConfig
+    ) -> Optional[pl.DataFrame]:
+        """Loads a market index from a specified file."""
+        index_file_path = (
+            project_root / "portfolios" / "indexes" / benchmark_config.file_name
+        )
+        if not index_file_path.is_file():
+            logger.error(f"Market benchmark file not found at: {index_file_path}")
+            return None
+
+        logger.info(
+            f"Loading market index benchmark '{benchmark_config.name}' from: {index_file_path}"
+        )
+        try:
+            index_data = (
+                pl.read_csv(index_file_path)
+                .with_columns(
+                    pl.col(benchmark_config.date_column).str.to_date(
+                        format=benchmark_config.date_format
+                    )
+                )
+                .rename(
+                    {
+                        benchmark_config.date_column: "date",
+                        benchmark_config.return_column: "index_ret",
+                    }
+                )
+                .select(["date", "index_ret"])
+            )
+            return index_data
+        except Exception as e:
+            logger.error(f"Failed to load or parse index file {index_file_path}: {e}")
+            return None
 
     def _calculate_monthly_returns(self, data: pl.DataFrame) -> pl.DataFrame:
         """Calculates portfolio returns for each month based on all strategies."""
@@ -88,22 +120,18 @@ class PortfolioManager:
                 if n == 0:
                     continue
 
-                # Create a percentile rank column. `rank("ordinal")` ensures unique ranks even for ties.
-                # A low rank corresponds to a low predicted return.
                 ranked_data = monthly_data_for_strat.with_columns(
                     (
                         pl.col("predicted_ret").rank("ordinal", descending=False) / n
                     ).alias("pred_rank_pct")
                 )
 
-                # Long portfolio (stocks with the highest predicted returns)
                 long_portfolio = ranked_data.filter(
                     pl.col("pred_rank_pct").is_between(
                         strat.long_quantiles[0], strat.long_quantiles[1], closed="right"
                     )
                 ).drop_nulls(subset=["actual_ret"])
 
-                # Short portfolio (stocks with the lowest predicted returns)
                 short_portfolio = ranked_data.filter(
                     pl.col("pred_rank_pct").is_between(
                         strat.short_quantiles[0],
@@ -115,7 +143,6 @@ class PortfolioManager:
                 if long_portfolio.is_empty() or short_portfolio.is_empty():
                     continue
 
-                # Extract permno identifiers for each leg
                 long_permnos = long_portfolio.get_column(id_col).to_list()
                 short_permnos = short_portfolio.get_column(id_col).to_list()
 
@@ -125,18 +152,16 @@ class PortfolioManager:
                 if strat.weighting_scheme == "equal":
                     mean_long = long_portfolio["actual_ret"].mean()
                     mean_short = short_portfolio["actual_ret"].mean()
-
                     if isinstance(mean_long, (float, int)) and isinstance(
                         mean_short, (float, int)
                     ):
-                        long_return = mean_long
-                        short_return = mean_short
-
+                        long_return, short_return = mean_long, mean_short
                 elif strat.weighting_scheme == "value":
                     value_col = self.config.input_data.value_weight_col
-                    long_sum = long_portfolio[value_col].sum()
-                    short_sum = short_portfolio[value_col].sum()
-
+                    long_sum, short_sum = (
+                        long_portfolio[value_col].sum(),
+                        short_portfolio[value_col].sum(),
+                    )
                     if (
                         isinstance(long_sum, (int, float))
                         and long_sum > 0
@@ -161,7 +186,6 @@ class PortfolioManager:
                     continue
 
                 portfolio_return = long_return - short_return
-
                 risk_free_rate = monthly_data[
                     self.config.input_data.risk_free_rate_col
                 ].first()
@@ -186,7 +210,6 @@ class PortfolioManager:
 
         if not all_monthly_returns:
             return pl.DataFrame()
-
         return pl.DataFrame(all_monthly_returns)
 
     def run(self, project_root: Union[str, Path]):
@@ -197,11 +220,20 @@ class PortfolioManager:
         )
 
         logger.info("--- Loading Portfolio Data ---")
+
+        index_data = None
+        index_name = None
+        if self.config.market_benchmark:
+            index_data = self._load_index_data(
+                project_root, self.config.market_benchmark
+            )
+            if index_data is not None:
+                index_name = self.config.market_benchmark.name
+
         all_model_data = self._load_data(project_root)
 
         for model_name, data in all_model_data.items():
             logger.info(f"--- Processing Portfolios for Model: {model_name} ---")
-
             monthly_returns_df = self._calculate_monthly_returns(data)
             if monthly_returns_df.is_empty():
                 logger.warning(
@@ -213,10 +245,14 @@ class PortfolioManager:
                 "strategy", maintain_order=True
             ):
                 strat_name = str(strat_name_raw)
-
                 logger.info(f"Evaluating strategy: {strat_name}")
-
                 strategy_returns = strategy_returns.sort("date")
+
+                if index_data is not None:
+                    strategy_returns = strategy_returns.join(
+                        index_data, on="date", how="left"
+                    )
+
                 if self.reporter:
                     self.reporter.save_monthly_returns(
                         model_name, strat_name, strategy_returns
@@ -234,19 +270,21 @@ class PortfolioManager:
                     )
 
                 if "cumulative_return" in self.config.metrics:
-                    # The short component for plotting represents the profit
-                    # from the short position by inverting the returns.
                     plot_df = strategy_returns.with_columns(
                         cumulative_long=((1 + pl.col("long_return")).cum_prod() - 1),
                         cumulative_short=((1 - pl.col("short_return")).cum_prod() - 1),
                         cumulative_portfolio=(
                             (1 + pl.col("portfolio_return")).cum_prod() - 1
                         ),
-                        # De-annualize the risk-free rate before calculating cumulative product
                         cumulative_risk_free=(
                             (1 + pl.col("risk_free_rate") / 12).cum_prod() - 1
                         ),
                     )
+
+                    if "index_ret" in plot_df.columns:
+                        plot_df = plot_df.with_columns(
+                            cumulative_index=((1 + pl.col("index_ret")).cum_prod() - 1)
+                        )
 
                     if not plot_df.is_empty():
                         summary_metrics["final_cumulative_return"] = plot_df[
@@ -255,7 +293,7 @@ class PortfolioManager:
 
                     if self.reporter:
                         self.reporter.plot_cumulative_returns(
-                            model_name, strat_name, plot_df
+                            model_name, strat_name, plot_df, index_name=index_name
                         )
 
                 if self.reporter:

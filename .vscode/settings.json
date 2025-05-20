@@ -35,5 +35,10 @@
     "workbench.editorAssociations": {
         "*.copilotmd": "vscode.markdown.preview.editor",
         "file:/**/*.parquet": "jupyter-data-wrangler"
+    },
+
+    // Force .csv files to open as plain text to disable preview
+    "files.associations": {
+        "*.csv": "plaintext"
     }
 }

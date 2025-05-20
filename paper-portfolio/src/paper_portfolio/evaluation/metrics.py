@@ -10,11 +10,14 @@ def annualized_sharpe_ratio(
 ) -> float:
     """
     Calculates the annualized Sharpe ratio with robust type checking.
+    Assumes portfolio_returns are monthly and risk_free_rate is annualized.
     """
     if portfolio_returns.is_empty():
         return np.nan
 
-    excess_returns = portfolio_returns - risk_free_rate
+    # De-annualize the risk-free rate to get the monthly rate before calculating excess returns.
+    monthly_risk_free_rate = risk_free_rate / periods_per_year
+    excess_returns = portfolio_returns - monthly_risk_free_rate
 
     # Get the mean and validate its type.
     mean_val = excess_returns.mean()

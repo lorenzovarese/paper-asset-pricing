@@ -242,6 +242,10 @@ class PortfolioManager:
                         cumulative_portfolio=(
                             (1 + pl.col("portfolio_return")).cum_prod() - 1
                         ),
+                        # De-annualize the risk-free rate before calculating cumulative product
+                        cumulative_risk_free=(
+                            (1 + pl.col("risk_free_rate") / 12).cum_prod() - 1
+                        ),
                     )
 
                     if not plot_df.is_empty():

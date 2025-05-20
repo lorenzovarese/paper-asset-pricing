@@ -45,9 +45,15 @@ class PortfolioReporter:
     ):
         """
         Plots and saves the cumulative return chart for the long, short,
-        and combined long-short portfolio.
+        and combined long-short portfolio, including a risk-free benchmark.
         """
-        required_cols = ["cumulative_long", "cumulative_short", "cumulative_portfolio"]
+        required_cols = [
+            "cumulative_long",
+            "cumulative_short",
+            "cumulative_portfolio",
+            "cumulative_risk_free",
+        ]
+
         if returns_df.is_empty() or not all(
             c in returns_df.columns for c in required_cols
         ):
@@ -79,6 +85,16 @@ class PortfolioReporter:
             label="Long-Short Strategy",
             color="blue",
             linewidth=2.5,  # Make the main strategy line thicker
+        )
+
+        # Plot the risk-free benchmark
+        plt.plot(
+            returns_df["date"],
+            returns_df["cumulative_risk_free"],
+            label="Risk-Free Benchmark",
+            color="gray",
+            linestyle="--",
+            linewidth=1.5,
         )
 
         plt.title(f"Cumulative Return for {model_name} - {strategy_name}")

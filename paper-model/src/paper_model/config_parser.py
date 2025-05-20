@@ -50,6 +50,15 @@ class EvaluationConfig(BaseModel):
     metrics: List[str] = Field(default_factory=list)
 
 
+class FeatureSelectionConfig(BaseModel):
+    """Defines the 'all_except' feature selection method."""
+
+    method: Literal["all_except"]
+    columns: List[str] = Field(
+        ..., description="List of columns to exclude from features."
+    )
+
+
 # --- Model-specific Configurations ---
 
 
@@ -57,7 +66,10 @@ class BaseModelConfig(BaseModel):
     name: str
     type: str
     target_column: str
-    feature_columns: List[str]
+    features: Union[List[str], FeatureSelectionConfig] = Field(
+        ...,
+        description="Defines the feature set for the model, either by explicit list or by exclusion.",
+    )
     objective_function: ObjectiveFunction = ObjectiveFunction.L2
     save_model_checkpoints: bool = False
     save_prediction_results: bool = False

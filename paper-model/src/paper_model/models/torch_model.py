@@ -69,7 +69,7 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
     def __init__(self, name: str, config: Dict[str, Any]):
         super().__init__(name, config)
         self.target_col = config["target_column"]
-        self.feature_cols = config["feature_columns"]
+        self.feature_cols = config.get("feature_columns", [])
         self.model: Optional[List[FeedForwardNN]] = None
         self.scaler = StandardScaler()
 

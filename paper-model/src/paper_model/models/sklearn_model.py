@@ -33,7 +33,7 @@ class SklearnModel(BaseModel[Pipeline]):
     def __init__(self, name: str, config: Dict[str, Any]):
         super().__init__(name, config)
         self.target_col = config["target_column"]
-        self.feature_cols = config["feature_columns"]
+        self.feature_cols = config.get("feature_columns", [])
         self.model: Optional[Pipeline] = None
 
     def _create_pipeline(self, model_instance: Any) -> Pipeline:
@@ -110,11 +110,13 @@ class SklearnModel(BaseModel[Pipeline]):
         required_cols = [self.target_col] + self.feature_cols
         ps: Optional[PredefinedSplit] = None
 
+        initial_rows = train_data.height
         if is_tuning_required:
             if validation_data is None:
                 raise ValueError(
                     "Logically unreachable: Validation data is required for tuning."
                 )
+            initial_rows += validation_data.height
             full_train_data = pl.concat([train_data, validation_data])
             clean_data = full_train_data.drop_nulls(subset=required_cols)
             train_indices = np.full(
@@ -130,8 +132,12 @@ class SklearnModel(BaseModel[Pipeline]):
 
         if clean_data.is_empty():
             logger.warning(
-                f"No clean data available for training for model '{self.name}'."
+                f"[{self.name}] Skipped training for this window: "
+                f"No clean data available after dropping nulls from required columns. "
+                f"Initial rows: {initial_rows}, Clean rows: 0. "
+                f"Check for nulls in target '{self.target_col}' or features: {self.feature_cols[:5]}..."
             )
+            self.model = None
             return
 
         X = clean_data.select(self.feature_cols).to_numpy()

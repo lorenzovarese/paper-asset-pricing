@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Union
 import joblib  # type: ignore
 
-from paper_model.config_parser import ModelsConfig
+from paper_model.config_parser import ModelsConfig, FeatureSelectionConfig
 from paper_model.models.base import BaseModel
 from paper_model.models.sklearn_model import SklearnModel
 from paper_model.models.torch_model import TorchModel
@@ -70,7 +70,50 @@ class ModelManager:
 
         return df.sort(input_conf.date_column, input_conf.id_column)
 
-    def _initialize_models(self) -> None:
+    def _resolve_feature_columns(
+        self,
+        features_config: Union[List[str], FeatureSelectionConfig],
+        all_df_columns: List[str],
+    ) -> List[str]:
+        """
+        Resolves the feature configuration into a final list of feature column names.
+        """
+        if isinstance(features_config, list):
+            # Method 1: Explicit list of features
+            missing = [col for col in features_config if col not in all_df_columns]
+            if missing:
+                raise ValueError(
+                    f"Specified feature columns not found in data: {missing}"
+                )
+            return features_config
+
+        elif isinstance(features_config, FeatureSelectionConfig):
+            # Method 2: 'all_except'
+            if features_config.method == "all_except":
+                exclude_cols = set(features_config.columns)
+                resolved_features = [
+                    col for col in all_df_columns if col not in exclude_cols
+                ]
+                if not resolved_features:
+                    raise ValueError(
+                        "Feature selection by exclusion resulted in an empty feature list."
+                    )
+                return resolved_features
+            else:
+                # This case is for future-proofing if more methods are added
+                raise NotImplementedError(
+                    f"Feature selection method '{features_config.method}' is not implemented."
+                )
+
+        else:
+            raise TypeError(
+                f"Invalid type for 'features' configuration: {type(features_config)}"
+            )
+
+    def _initialize_models(self, all_data_columns: List[str]) -> None:
+        """
+        Initializes models and resolves their feature columns.
+        """
         for model_config in self.config.models:
             model_name = model_config.name
             model_type = model_config.type
@@ -80,15 +123,23 @@ class ModelManager:
 
             model_class = self.MODEL_REGISTRY[model_type]
 
-            # Pass the Pydantic model object itself as the config
-            model_config_dict = model_config.model_dump()
-            model_config_dict["date_column"] = self.config.input_data.date_column
-            model_config_dict["id_column"] = self.config.input_data.id_column
+            # Resolve the feature list for this specific model
+            resolved_features = self._resolve_feature_columns(
+                model_config.features, all_data_columns
+            )
 
-            self.models[model_name] = model_class(model_name, model_config_dict)
+            # Create the final config dictionary to pass to the model instance
+            final_model_config_dict = model_config.model_dump()
+            final_model_config_dict["feature_columns"] = resolved_features
+            final_model_config_dict["date_column"] = self.config.input_data.date_column
+            final_model_config_dict["id_column"] = self.config.input_data.id_column
+
+            self.models[model_name] = model_class(model_name, final_model_config_dict)
             self.all_evaluation_results[model_name] = []
             self.all_prediction_results[model_name] = pl.DataFrame()
-            logger.info(f"Initialized model: '{model_name}' of type '{model_type}'.")
+            logger.info(
+                f"Initialized model: '{model_name}' with {len(resolved_features)} features."
+            )
 
     def _run_rolling_window_evaluation(self, data: pl.DataFrame) -> None:
         eval_config = self.config.evaluation
@@ -233,7 +284,6 @@ class ModelManager:
 
             window_start_idx += eval_config.step_month
 
-    # ... (the rest of the ModelManager class remains the same) ...
     def _save_checkpoint(self, model_instance: BaseModel, date: Any) -> None:
         if self._project_root is None:
             return
@@ -273,14 +323,19 @@ class ModelManager:
                 preds.write_parquet(pred_dir / f"{name}_predictions.parquet")
 
     def run(self, project_root: Union[str, Path]) -> Dict[str, pl.DataFrame]:
+        """
+        Executes the full model training and evaluation pipeline.
+        """
         self._project_root = Path(project_root).expanduser()
         logger.info(f"Running model pipeline for project: {self._project_root}")
 
-        logger.info("--- Initializing Models ---")
-        self._initialize_models()
-
         logger.info("--- Loading Processed Data ---")
         full_data = self._load_processed_data()
+        all_data_columns = full_data.columns
+        logger.info(f"Data loaded successfully. Shape: {full_data.shape}")
+
+        logger.info("--- Initializing Models ---")
+        self._initialize_models(all_data_columns)
 
         logger.info("--- Running Rolling Window Evaluation ---")
         self._run_rolling_window_evaluation(full_data)

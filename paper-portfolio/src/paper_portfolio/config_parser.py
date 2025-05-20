@@ -39,6 +39,12 @@ def load_config(config_path: Union[str, Path]) -> PortfolioConfig:
                 f"Error parsing YAML file {config_path}: {exc}"
             ) from exc
 
+    # Check if the loaded config is a dictionary. This handles empty files.
+    if not isinstance(raw_config, dict):
+        raise ValueError(
+            f"Configuration file '{config_path}' is empty or does not contain a valid YAML mapping (dictionary)."
+        )
+
     try:
         return PortfolioConfig(**raw_config)
     except ValidationError as e:

@@ -91,6 +91,47 @@ class PortfolioManager:
             logger.error(f"Failed to load or parse index file {index_file_path}: {e}")
             return None
 
+    def _calculate_cross_sectional_returns(self, data: pl.DataFrame) -> pl.DataFrame:
+        """
+        Calculates monthly returns for 10 deciles of assets based on predicted returns.
+        """
+        date_col = self.config.input_data.date_column
+
+        # Calculate decile returns for each month
+        monthly_decile_returns = (
+            data.drop_nulls(subset=["predicted_ret", "actual_ret"])
+            .with_columns(
+                pl.col("predicted_ret")
+                .qcut(
+                    10,
+                    labels=[f"Decile {i + 1}" for i in range(10)],
+                    allow_duplicates=True,
+                )
+                .over(date_col)  # Perform qcut within each date group
+                .alias("decile")
+            )
+            .group_by([date_col, "decile"], maintain_order=True)
+            .agg(pl.col("actual_ret").mean().alias("return"))
+            .sort(date_col, "decile")
+        )
+
+        if monthly_decile_returns.is_empty():
+            logger.warning("Could not calculate any cross-sectional decile returns.")
+            return pl.DataFrame()
+
+        # Calculate cumulative returns for each decile over time
+        cumulative_decile_returns = (
+            monthly_decile_returns.group_by("decile", maintain_order=True)
+            .agg(
+                pl.col(date_col),
+                ((1 + pl.col("return")).cum_prod() - 1).alias("cumulative_return"),
+            )
+            .explode(["date", "cumulative_return"])
+            .sort(date_col)
+        )
+
+        return cumulative_decile_returns
+
     def _calculate_monthly_returns(self, data: pl.DataFrame) -> pl.DataFrame:
         """Calculates portfolio returns for each month based on all strategies."""
         all_monthly_returns = []
@@ -233,6 +274,17 @@ class PortfolioManager:
         all_model_data = self._load_data(project_root)
 
         for model_name, data in all_model_data.items():
+            if self.config.cross_sectional_analysis:
+                logger.info(
+                    f"--- Performing Cross-Sectional Analysis for Model: {model_name} ---"
+                )
+                cross_sectional_df = self._calculate_cross_sectional_returns(data)
+
+                if not cross_sectional_df.is_empty() and self.reporter:
+                    self.reporter.plot_cross_sectional_returns(
+                        model_name, cross_sectional_df
+                    )
+
             logger.info(f"--- Processing Portfolios for Model: {model_name} ---")
             monthly_returns_df = self._calculate_monthly_returns(data)
             if monthly_returns_df.is_empty():

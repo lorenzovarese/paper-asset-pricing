@@ -11,6 +11,8 @@ class PortfolioReporter:
     def __init__(self, output_dir: Union[str, Path]):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.cross_sectional_dir = self.output_dir / "cross_sectional_analysis"
+        self.cross_sectional_dir.mkdir(exist_ok=True)
 
     def generate_report(
         self, model_name: str, strategy_name: str, metrics: Dict[str, Any]
@@ -126,3 +128,62 @@ class PortfolioReporter:
         plt.savefig(plot_filename)
         plt.close()
         logger.info(f"Cumulative return plot saved to: {plot_filename}")
+
+    def plot_cross_sectional_returns(
+        self,
+        model_name: str,
+        decile_returns_df: pl.DataFrame,
+    ):
+        """
+        Plots and saves the cumulative return for each performance decile.
+        """
+        if decile_returns_df.is_empty():
+            logger.warning(
+                f"Decile returns data for model '{model_name}' is empty. Skipping cross-sectional plot."
+            )
+            return
+
+        plt.figure(figsize=(14, 8))
+
+        # Use a color map for visual distinction between deciles
+        try:
+            # Modern Matplotlib API (3.5+)
+            colormap = plt.colormaps.get_cmap("viridis")
+        except AttributeError:
+            # Older Matplotlib API
+            colormap = plt.cm.get_cmap("viridis")
+
+        deciles = sorted(decile_returns_df["decile"].unique().to_list())
+        num_deciles = len(deciles)
+
+        for i, decile_name in enumerate(deciles):
+            decile_data = decile_returns_df.filter(
+                pl.col("decile") == decile_name
+            ).sort("date")
+            if decile_data.is_empty():
+                continue
+
+            plt.plot(
+                decile_data["date"],
+                decile_data["cumulative_return"],
+                label=str(decile_name),
+                color=colormap(i / (num_deciles - 1) if num_deciles > 1 else 0.5),
+                linewidth=1.5,
+            )
+
+        plt.title(f"Cross-Sectional Cumulative Returns by Decile for {model_name}")
+        plt.xlabel("Date")
+        plt.ylabel("Cumulative Return")
+        plt.grid(True, linestyle="--", alpha=0.6)
+        plt.legend(
+            title="Performance Decile", bbox_to_anchor=(1.05, 1), loc="upper left"
+        )
+        plt.tight_layout()
+
+        plot_filename = (
+            self.cross_sectional_dir / f"{model_name}_cross_sectional_returns.png"
+        )
+        # Use bbox_inches='tight' to ensure the legend fits into the saved image
+        plt.savefig(plot_filename, bbox_inches="tight")
+        plt.close()
+        logger.info(f"Cross-sectional returns plot saved to: {plot_filename}")

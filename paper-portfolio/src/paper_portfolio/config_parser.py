@@ -46,6 +46,7 @@ class PortfolioConfig(BaseModel):
     strategies: List[PortfolioStrategyConfig]
     metrics: List[Literal["sharpe_ratio", "expected_shortfall", "cumulative_return"]]
     market_benchmark: Optional[MarketBenchmarkConfig] = None
+    cross_sectional_analysis: Optional[bool] = False
 
 
 def load_config(config_path: Union[str, Path]) -> PortfolioConfig:

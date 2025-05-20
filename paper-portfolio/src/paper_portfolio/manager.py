@@ -62,6 +62,7 @@ class PortfolioManager:
     def _calculate_monthly_returns(self, data: pl.DataFrame) -> pl.DataFrame:
         """Calculates portfolio returns for each month based on all strategies."""
         all_monthly_returns = []
+        id_col = self.config.input_data.id_column
 
         for (date,), monthly_data in data.group_by(
             self.config.input_data.date_column, maintain_order=True
@@ -130,6 +131,10 @@ class PortfolioManager:
                 if long_portfolio.is_empty() or short_portfolio.is_empty():
                     continue
 
+                # Extract permno identifiers for each leg
+                long_permnos = long_portfolio.get_column(id_col).to_list()
+                short_permnos = short_portfolio.get_column(id_col).to_list()
+
                 long_return: Union[float, int, None] = None
                 short_return: Union[float, int, None] = None
 
@@ -190,6 +195,8 @@ class PortfolioManager:
                         "short_return": short_return,
                         "portfolio_return": portfolio_return,
                         "risk_free_rate": risk_free_rate,
+                        "long_leg_permnos": long_permnos,
+                        "short_leg_permnos": short_permnos,
                     }
                 )
 

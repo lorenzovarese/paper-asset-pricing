@@ -373,27 +373,21 @@ class DataManager:
                 f"Cannot partition by 'year'. Dataset '{dataset_name}' does not have a recognized date column of type Date or Datetime."
             )
 
-        # Add a 'year' column for partitioning if not already present
-        # This column is temporary for filtering and will not be in the final output unless explicitly kept
-        if "year" not in df_to_export.columns:
-            df_to_export = df_to_export.with_columns(
-                pl.col(date_col_for_export).dt.year().alias("year")
-            )
+        # Use a temporary, uniquely named column for partitioning to avoid conflicts
+        temp_year_col = "__temp_year__"
+        df_for_partitioning = df_to_export.with_columns(
+            pl.col(date_col_for_export).dt.year().alias(temp_year_col)
+        )
 
-        unique_years = df_to_export["year"].unique().sort().to_list()
+        unique_years = df_for_partitioning[temp_year_col].unique().sort().to_list()
         logger.info(
             f"Exporting '{dataset_name}' by year to separate files: {unique_years}"
         )
 
         for year in unique_years:
-            # Filter data for the current year
-            df_year = df_to_export.filter(pl.col("year") == year)
-
-            # Define the output path for the current year's data, appending year to filename
+            df_year = df_for_partitioning.filter(pl.col(temp_year_col) == year)
             file_path = output_dir / f"{output_filename_base}_{year}.parquet"
-
-            # Write the filtered DataFrame to the specific year file
-            df_year.write_parquet(file_path)
+            df_year.drop(temp_year_col).write_parquet(file_path)
             logger.info(f"  Exported data for year {year} to '{file_path}'.")
 
     def _export_data(self):

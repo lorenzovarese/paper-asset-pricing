@@ -89,24 +89,84 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
             f"[{self.name}] Using device: '{self.device}' with {self.num_workers} data loader workers."
         )
 
-    def _train_ensemble(
+    def _train_single_net(
         self,
-        train_data: pl.DataFrame,
-        validation_data: pl.DataFrame,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+        input_size: int,
         alpha: float,
         learning_rate: float,
-    ) -> List[FeedForwardNN]:
-        """Trains an ensemble of neural networks."""
+        ensemble_member_idx: int,
+    ) -> FeedForwardNN:
+        """Trains a single neural network, to be used as part of an ensemble."""
+        logger.debug(
+            f"Training ensemble member {ensemble_member_idx + 1}/{self.config['n_ensembles']}..."
+        )
+        torch.manual_seed(self.config.get("random_state", 0) + ensemble_member_idx)
 
+        net = FeedForwardNN(
+            input_size=input_size,
+            hidden_layer_sizes=self.config["hidden_layer_sizes"],
+        ).to(self.device)
+
+        optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
+        loss_fn = nn.MSELoss()
+        early_stopper = EarlyStopper(patience=self.config["patience"])
+
+        for epoch in range(self.config["epochs"]):
+            net.train()
+            for X_batch, y_batch in train_loader:
+                X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+
+                y_pred = net(X_batch)
+                l2_loss = loss_fn(y_pred, y_batch)
+                l1_loss = sum(
+                    torch.linalg.vector_norm(p, ord=1) for p in net.parameters()
+                )
+                total_loss = l2_loss + alpha * l1_loss
+                optimizer.zero_grad()
+                total_loss.backward()
+                optimizer.step()
+
+            net.eval()
+            val_loss = 0
+            with torch.no_grad():
+                for X_val_batch, y_val_batch in val_loader:
+                    X_val_batch, y_val_batch = (
+                        X_val_batch.to(self.device),
+                        y_val_batch.to(self.device),
+                    )
+                    y_val_pred = net(X_val_batch)
+                    val_loss += loss_fn(y_val_pred, y_val_batch).item()
+            avg_val_loss = val_loss / len(val_loader)
+            if early_stopper.early_stop(avg_val_loss):
+                logger.info(
+                    f"Early stopping triggered at epoch {epoch + 1} for ensemble member {ensemble_member_idx + 1}."
+                )
+                break
+        return net
+
+    def train(
+        self, train_data: pl.DataFrame, validation_data: Optional[pl.DataFrame] = None
+    ) -> None:
+        """
+        Orchestrates the training process, including data preparation and hyperparameter tuning.
+        """
+        if validation_data is None or validation_data.is_empty():
+            raise ValueError(
+                f"Neural network model '{self.name}' requires a validation set for early stopping."
+            )
+
+        logger.info(f"[{self.name}] Preparing data for training...")
         required_cols = self.feature_cols + [self.target_col]
         clean_train_data = train_data.drop_nulls(subset=required_cols)
         clean_val_data = validation_data.drop_nulls(subset=required_cols)
 
         if clean_train_data.is_empty() or clean_val_data.is_empty():
             logger.warning(
-                f"Not enough clean data to train or validate model '{self.name}'."
+                f"[{self.name}] Skipped training: not enough clean data in training or validation set."
             )
-            return []
+            return
 
         X_train_raw = clean_train_data.select(self.feature_cols).to_numpy()
         y_train_np = clean_train_data.select(self.target_col).to_numpy().ravel()
@@ -135,73 +195,14 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
             num_workers=self.num_workers,
             pin_memory=pin_memory,
         )
-
-        ensemble_models: List[FeedForwardNN] = []
-        for i in range(self.config["n_ensembles"]):
-            logger.debug(
-                f"Training ensemble member {i + 1}/{self.config['n_ensembles']}..."
-            )
-            torch.manual_seed(self.config.get("random_state", 0) + i)
-
-            net = FeedForwardNN(
-                input_size=X_train_tensor.shape[1],
-                hidden_layer_sizes=self.config["hidden_layer_sizes"],
-            ).to(self.device)
-
-            optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
-            loss_fn = nn.MSELoss()
-            early_stopper = EarlyStopper(patience=self.config["patience"])
-
-            for epoch in range(self.config["epochs"]):
-                net.train()
-                for X_batch, y_batch in train_loader:
-                    X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
-
-                    y_pred = net(X_batch)
-                    l2_loss = loss_fn(y_pred, y_batch)
-                    l1_loss = sum(
-                        torch.linalg.vector_norm(param, ord=1)
-                        for param in net.parameters()
-                    )
-                    total_loss = l2_loss + alpha * l1_loss
-                    optimizer.zero_grad()
-                    total_loss.backward()
-                    optimizer.step()
-
-                net.eval()
-                val_loss = 0
-                with torch.no_grad():
-                    for X_val_batch, y_val_batch in val_loader:
-                        X_val_batch, y_val_batch = (
-                            X_val_batch.to(self.device),
-                            y_val_batch.to(self.device),
-                        )
-                        y_val_pred = net(X_val_batch)
-                        val_loss += loss_fn(y_val_pred, y_val_batch).item()
-                avg_val_loss = val_loss / len(val_loader)
-                if early_stopper.early_stop(avg_val_loss):
-                    logger.info(
-                        f"Early stopping triggered at epoch {epoch + 1} for ensemble member {i + 1}."
-                    )
-                    break
-            ensemble_models.append(net)
-        return ensemble_models
-
-    def train(
-        self, train_data: pl.DataFrame, validation_data: Optional[pl.DataFrame] = None
-    ) -> None:
-        """Orchestrates the training process, including hyperparameter tuning."""
-        if validation_data is None or validation_data.is_empty():
-            raise ValueError(
-                f"Neural network model '{self.name}' requires a validation set for early stopping."
-            )
+        input_size = X_train_tensor.shape[1]
 
         is_tuning_required = isinstance(self.config["alpha"], list) or isinstance(
             self.config["learning_rate"], list
         )
 
         if is_tuning_required:
-            logger.info(f"Starting hyperparameter tuning for '{self.name}'...")
+            logger.info(f"[{self.name}] Starting hyperparameter tuning...")
             best_score = -np.inf
             best_params = {}
             best_ensemble = None
@@ -220,28 +221,26 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
             for alpha in alphas:
                 for lr in learning_rates:
                     logger.debug(f"Testing NN with alpha={alpha}, learning_rate={lr}")
-                    current_ensemble = self._train_ensemble(
-                        train_data, validation_data, alpha, lr
-                    )
-                    if not current_ensemble:
-                        continue
+                    current_ensemble = [
+                        self._train_single_net(
+                            train_loader, val_loader, input_size, alpha, lr, i
+                        )
+                        for i in range(self.config["n_ensembles"])
+                    ]
 
                     y_val_pred_full = self.predict(
                         validation_data, ensemble=current_ensemble
                     )
-
                     temp_df = pl.DataFrame(
                         {
                             "y_true": validation_data.get_column(self.target_col),
                             "y_pred": y_val_pred_full,
                         }
-                    )
-                    aligned_df = temp_df.drop_nulls()
+                    ).drop_nulls()
 
-                    if not aligned_df.is_empty():
+                    if not temp_df.is_empty():
                         score = r2_out_of_sample(
-                            aligned_df.get_column("y_true").to_numpy(),
-                            aligned_df.get_column("y_pred").to_numpy(),
+                            temp_df["y_true"].to_numpy(), temp_df["y_pred"].to_numpy()
                         )
                         if score > best_score:
                             best_score = score
@@ -253,17 +252,18 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
         else:
             alpha = self.config["alpha"]
             learning_rate = self.config["learning_rate"]
-            if not isinstance(alpha, (int, float)):
+            if not isinstance(alpha, (int, float)) or not isinstance(
+                learning_rate, (int, float)
+            ):
                 raise TypeError(
-                    f"Expected 'alpha' to be a float for non-tuned model, but got {type(alpha)}"
+                    "For non-tuned models, 'alpha' and 'learning_rate' must be single float values."
                 )
-            if not isinstance(learning_rate, (int, float)):
-                raise TypeError(
-                    f"Expected 'learning_rate' to be a float for non-tuned model, but got {type(learning_rate)}"
+            self.model = [
+                self._train_single_net(
+                    train_loader, val_loader, input_size, alpha, learning_rate, i
                 )
-            self.model = self._train_ensemble(
-                train_data, validation_data, alpha=alpha, learning_rate=learning_rate
-            )
+                for i in range(self.config["n_ensembles"])
+            ]
 
     def predict(
         self, data: pl.DataFrame, ensemble: Optional[List[FeedForwardNN]] = None
@@ -291,14 +291,12 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
 
         X_raw = data_for_prediction.select(self.feature_cols).to_numpy()
         X_scaled = self.scaler.transform(X_raw)
-
         X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(self.device)
 
         with torch.no_grad():
             for net in models_to_use:
                 net.eval()
-                net.to(self.device)  # Ensure model is on the correct device
-
+                net.to(self.device)
             all_preds = [net(X_tensor).cpu().numpy().ravel() for net in models_to_use]
 
         avg_preds = np.mean(all_preds, axis=0)

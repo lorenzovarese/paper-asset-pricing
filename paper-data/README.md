@@ -17,6 +17,7 @@ Built with [Polars](https://pola.rs/) for high performance and memory efficiency
 *   **Comprehensive Wrangling Operations:** Apply common data transformations declaratively via a YAML configuration:
     *   **Monthly Imputation:** Fill missing numeric values with cross-sectional medians and categorical values with modes.
     *   **Min-Max Scaling:** Normalize features to a specified range (e.g., `[-1, 1]`) on a monthly cross-sectional basis.
+    *   **Dummy Variable Generation:** Create one-hot encoded (dummy) columns from a categorical feature (e.g., industry codes).
     *   **Dataset Merging:** Combine different datasets (e.g., firm-level with macro-level data) using various join types.
     *   **Lagging/Leading:** Create lagged or lead versions of columns for time-series analysis, with support for panel data grouping.
     *   **Interaction Terms:** Generate interaction features between different sets of columns (e.g., firm characteristics and macro indicators).
@@ -286,6 +287,11 @@ A sequential list of operations to apply to your datasets. Operations are applie
     *   `dataset` (string, required): The name of the dataset to scale.
     *   `range` (object, required): Defines the target `min` and `max` for scaling. E.g., `{ min: -1, max: 1 }`.
     *   `cols_to_scale` (list of strings, required): Numeric columns to apply min-max scaling to.
+    *   `output_name` (string, required): The name for the resulting dataset.
+*   **`operation: "dummy_generation"`**
+    *   `dataset` (string, required): The name of the dataset to use.
+    *   `column_to_dummy` (string, required): The name of the categorical column to convert into dummy variables.
+    *   `drop_original_col` (boolean, optional, default: `false`): If `true`, the original categorical column is removed from the output.
     *   `output_name` (string, required): The name for the resulting dataset.
 *   **`operation: "merge"`**
     *   `left_dataset` (string, required): The name of the left dataset.

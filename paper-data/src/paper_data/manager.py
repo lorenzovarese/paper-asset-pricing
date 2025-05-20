@@ -10,6 +10,7 @@ from paper_data.wrangling.augmenter import (
     merge_datasets,
     lag_columns,
     create_macro_firm_interactions,
+    create_dummies,
 )
 from paper_data.wrangling.cleaner import (
     impute_monthly,
@@ -302,6 +303,40 @@ class DataManager:
                 }
                 logger.info(
                     f"Lag operation complete. Resulting shape: {lagged_df.shape}"
+                )
+
+            elif operation_type == "dummy_generation":
+                column_to_dummy = operation_config.get("column_to_dummy")
+                drop_original_col = operation_config.get("drop_original_col", False)
+                output_name = operation_config["output_name"]
+
+                if dataset_name not in self.datasets:
+                    raise ValueError(
+                        f"Dataset '{dataset_name}' not found for dummy_generation operation."
+                    )
+                if not column_to_dummy:
+                    raise ValueError(
+                        f"Operation 'dummy_generation' for dataset '{dataset_name}' is missing 'column_to_dummy'."
+                    )
+
+                df_to_dummy = self.datasets[dataset_name]
+
+                logger.info(
+                    f"Performing dummy generation on dataset '{dataset_name}' for column '{column_to_dummy}'..."
+                )
+                dummied_df = create_dummies(
+                    df_to_dummy, column_to_dummy, drop_original_col
+                )
+
+                self.datasets[output_name] = dummied_df
+                # Inherit metadata from the input dataset
+                if dataset_name in self._ingestion_metadata:
+                    self._ingestion_metadata[output_name] = self._ingestion_metadata[
+                        dataset_name
+                    ]
+
+                logger.info(
+                    f"Dummy generation complete. Resulting shape: {dummied_df.shape}"
                 )
 
             elif operation_type == "create_macro_interactions":

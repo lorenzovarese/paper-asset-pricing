@@ -244,3 +244,43 @@ def create_macro_firm_interactions(
 
     logger.info(f"Interaction creation complete. Resulting shape: {out_df.shape}")
     return out_df
+
+
+def create_dummies(
+    df: pl.DataFrame,
+    column_to_dummy: str,
+    drop_original_col: bool,
+) -> pl.DataFrame:
+    """
+    Creates one-hot encoded (dummy) columns from a specified categorical column.
+
+    Args:
+        df: The input Polars DataFrame.
+        column_to_dummy: The name of the column to convert to dummies.
+        drop_original_col: If True, the original column is dropped from the output.
+
+    Returns:
+        A new Polars DataFrame with the added dummy columns.
+    """
+    if column_to_dummy not in df.columns:
+        raise ValueError(
+            f"Column '{column_to_dummy}' not found in DataFrame for dummy generation."
+        )
+
+    logger.info(f"Creating dummy variables for column '{column_to_dummy}'...")
+
+    # Create a DataFrame containing only the one-hot encoded columns.
+    # This is a robust way to handle it, as to_dummies works on a selection.
+    dummy_df = df.select(pl.col(column_to_dummy)).to_dummies(drop_first=False)
+
+    logger.info(f"Generated {dummy_df.shape[1]} new dummy columns.")
+
+    # Concatenate the new dummy columns with the original DataFrame
+    out_df = pl.concat([df, dummy_df], how="horizontal")
+
+    if drop_original_col:
+        logger.info(f"Dropping original column '{column_to_dummy}'.")
+        out_df = out_df.drop(column_to_dummy)
+
+    logger.info(f"Dummy generation complete. Resulting shape: {out_df.shape}")
+    return out_df

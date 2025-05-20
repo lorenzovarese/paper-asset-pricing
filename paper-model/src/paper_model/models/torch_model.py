@@ -73,6 +73,22 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
         self.model: Optional[List[FeedForwardNN]] = None
         self.scaler = StandardScaler()
 
+        self.device_str = config.get("device", "auto")
+        if self.device_str == "auto":
+            if torch.cuda.is_available():
+                self.device = torch.device("cuda")
+            elif torch.backends.mps.is_available():
+                self.device = torch.device("mps")
+            else:
+                self.device = torch.device("cpu")
+        else:
+            self.device = torch.device(self.device_str)
+
+        self.num_workers = config.get("num_workers", 0)
+        logger.info(
+            f"[{self.name}] Using device: '{self.device}' with {self.num_workers} data loader workers."
+        )
+
     def _train_ensemble(
         self,
         train_data: pl.DataFrame,
@@ -105,14 +121,19 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
         X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32)
         y_val_tensor = torch.tensor(y_val_np, dtype=torch.float32).view(-1, 1)
 
+        pin_memory = self.device.type == "cuda"
         train_loader = DataLoader(
             TensorDataset(X_train_tensor, y_train_tensor),
             batch_size=self.config["batch_size"],
             shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=pin_memory,
         )
         val_loader = DataLoader(
             TensorDataset(X_val_tensor, y_val_tensor),
             batch_size=self.config["batch_size"],
+            num_workers=self.num_workers,
+            pin_memory=pin_memory,
         )
 
         ensemble_models: List[FeedForwardNN] = []
@@ -121,10 +142,12 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                 f"Training ensemble member {i + 1}/{self.config['n_ensembles']}..."
             )
             torch.manual_seed(self.config.get("random_state", 0) + i)
+
             net = FeedForwardNN(
                 input_size=X_train_tensor.shape[1],
                 hidden_layer_sizes=self.config["hidden_layer_sizes"],
-            )
+            ).to(self.device)
+
             optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
             loss_fn = nn.MSELoss()
             early_stopper = EarlyStopper(patience=self.config["patience"])
@@ -132,6 +155,8 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
             for epoch in range(self.config["epochs"]):
                 net.train()
                 for X_batch, y_batch in train_loader:
+                    X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+
                     y_pred = net(X_batch)
                     l2_loss = loss_fn(y_pred, y_batch)
                     l1_loss = sum(
@@ -147,6 +172,10 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
                 val_loss = 0
                 with torch.no_grad():
                     for X_val_batch, y_val_batch in val_loader:
+                        X_val_batch, y_val_batch = (
+                            X_val_batch.to(self.device),
+                            y_val_batch.to(self.device),
+                        )
                         y_val_pred = net(X_val_batch)
                         val_loss += loss_fn(y_val_pred, y_val_batch).item()
                 avg_val_loss = val_loss / len(val_loader)
@@ -262,12 +291,15 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
 
         X_raw = data_for_prediction.select(self.feature_cols).to_numpy()
         X_scaled = self.scaler.transform(X_raw)
-        X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+
+        X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(self.device)
 
         with torch.no_grad():
             for net in models_to_use:
                 net.eval()
-            all_preds = [net(X_tensor).numpy().ravel() for net in models_to_use]
+                net.to(self.device)  # Ensure model is on the correct device
+
+            all_preds = [net(X_tensor).cpu().numpy().ravel() for net in models_to_use]
 
         avg_preds = np.mean(all_preds, axis=0)
 

@@ -239,6 +239,14 @@ class NNConfig(BaseModelConfig):
     n_ensembles: int = Field(
         10, description="Number of models to train in the ensemble."
     )
+    device: Literal["auto", "cpu", "cuda", "mps"] = Field(
+        "auto",
+        description="Device to use for training, e.g., 'auto', 'cpu', 'cuda', 'mps'.",
+    )
+    num_workers: int = Field(
+        0,
+        description="Number of subprocesses to use for data loading. 0 means data is loaded in the main process.",
+    )
 
     @property
     def requires_tuning(self) -> bool:

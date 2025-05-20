@@ -9,7 +9,11 @@ from sklearn.linear_model import (  # type: ignore
     HuberRegressor,
     SGDRegressor,
 )
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor  # type: ignore
+from sklearn.ensemble import (  # type: ignore
+    RandomForestRegressor,
+    GradientBoostingRegressor,
+    HistGradientBoostingRegressor,
+)
 from sklearn.pipeline import Pipeline  # type: ignore
 from sklearn.preprocessing import StandardScaler, SplineTransformer  # type: ignore
 from sklearn.compose import ColumnTransformer  # type: ignore
@@ -249,19 +253,31 @@ class SklearnModel(BaseModel[Pipeline]):
                 base_model = RandomForestRegressor(
                     n_estimators=model_config["n_estimators"],
                     random_state=random_state,
-                    n_jobs=-1,  # Use all cores for fitting trees
+                    n_jobs=-1,
                 )
 
             elif model_type == "gbrt":
-                param_grid["n_estimators"] = model_config["n_estimators"]
-                param_grid["max_depth"] = model_config["max_depth"]
-                param_grid["learning_rate"] = model_config["learning_rate"]
-
-                # Map objective to GBRT loss function
-                loss = "huber" if objective == "huber" else "squared_error"
-                base_model = GradientBoostingRegressor(
-                    loss=loss, random_state=random_state
-                )
+                if model_config.get("use_hist_implementation"):
+                    param_grid["max_iter"] = model_config["n_estimators"]
+                    param_grid["max_depth"] = model_config["max_depth"]
+                    param_grid["learning_rate"] = model_config["learning_rate"]
+                    loss = "squared_error"
+                    if objective == "huber":
+                        loss = "absolute_error"
+                        logger.info(
+                            "Mapping 'huber' objective to 'absolute_error' loss for HistGradientBoostingRegressor."
+                        )
+                    base_model = HistGradientBoostingRegressor(
+                        loss=loss, random_state=random_state
+                    )
+                else:
+                    param_grid["n_estimators"] = model_config["n_estimators"]
+                    param_grid["max_depth"] = model_config["max_depth"]
+                    param_grid["learning_rate"] = model_config["learning_rate"]
+                    loss = "huber" if objective == "huber" else "squared_error"
+                    base_model = GradientBoostingRegressor(
+                        loss=loss, random_state=random_state
+                    )
 
             pipeline = self._create_pipeline(base_model)
             grid_search = GridSearchCV(
@@ -406,13 +422,27 @@ class SklearnModel(BaseModel[Pipeline]):
 
             elif model_type == "gbrt":
                 loss = "huber" if objective == "huber" else "squared_error"
-                model_instance = GradientBoostingRegressor(
-                    loss=loss,
-                    n_estimators=model_config["n_estimators"],
-                    max_depth=model_config["max_depth"],
-                    learning_rate=model_config["learning_rate"],
-                    random_state=random_state,
-                )
+                if model_config.get("use_hist_implementation"):
+                    if loss == "huber":
+                        loss = "absolute_error"
+                        logger.info(
+                            "Mapping 'huber' objective to 'absolute_error' loss for HistGradientBoostingRegressor."
+                        )
+                    model_instance = HistGradientBoostingRegressor(
+                        loss=loss,
+                        max_iter=model_config["n_estimators"],
+                        max_depth=model_config["max_depth"],
+                        learning_rate=model_config["learning_rate"],
+                        random_state=random_state,
+                    )
+                else:
+                    model_instance = GradientBoostingRegressor(
+                        loss=loss,
+                        n_estimators=model_config["n_estimators"],
+                        max_depth=model_config["max_depth"],
+                        learning_rate=model_config["learning_rate"],
+                        random_state=random_state,
+                    )
 
             else:
                 raise ValueError(

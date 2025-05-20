@@ -183,9 +183,9 @@ class RandomForestConfig(BaseModelConfig):
     max_depth: Union[int, List[int]] = Field(
         ..., description="Maximum depth of the tree (L) or list for tuning."
     )
-    max_features: Union[float, str, List[Union[float, str]]] = Field(
+    max_features: Union[int, float, str, List[Union[int, float, str]]] = Field(
         "sqrt",
-        description="Number of features to consider for each split (e.g., 'sqrt', 0.5) or list for tuning.",
+        description="Number of features to consider for each split (e.g., 'sqrt', 0.5, 50) or list for tuning.",
     )
 
     @property
@@ -205,6 +205,10 @@ class GBRTConfig(BaseModelConfig):
     learning_rate: Union[float, List[float]] = Field(
         ...,
         description="Learning rate shrinks the contribution of each tree (ν) or list for tuning.",
+    )
+    use_hist_implementation: bool = Field(
+        False,
+        description="If true, use the faster HistGradientBoostingRegressor implementation.",
     )
 
     @property

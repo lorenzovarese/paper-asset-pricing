@@ -40,7 +40,7 @@ class ModelManager:
         self.config = config
         self.models: Dict[str, BaseModel] = {}
         self.all_evaluation_results: Dict[str, List[Dict[str, Any]]] = {}
-        self.all_prediction_results: Dict[str, pl.DataFrame] = {}
+        self.all_prediction_results: Dict[str, List[pl.DataFrame]] = {}
         self._project_root: Path | None = None
 
     def _load_processed_data(self) -> pl.DataFrame:
@@ -79,7 +79,6 @@ class ModelManager:
         Resolves the feature configuration into a final list of feature column names.
         """
         if isinstance(features_config, list):
-            # Method 1: Explicit list of features
             missing = [col for col in features_config if col not in all_df_columns]
             if missing:
                 raise ValueError(
@@ -88,7 +87,6 @@ class ModelManager:
             return features_config
 
         elif isinstance(features_config, FeatureSelectionConfig):
-            # Method 2: 'all_except'
             if features_config.method == "all_except":
                 exclude_cols = set(features_config.columns)
                 resolved_features = [
@@ -100,7 +98,6 @@ class ModelManager:
                     )
                 return resolved_features
             else:
-                # This case is for future-proofing if more methods are added
                 raise NotImplementedError(
                     f"Feature selection method '{features_config.method}' is not implemented."
                 )
@@ -122,13 +119,9 @@ class ModelManager:
                 raise ValueError(f"Unknown model type: '{model_type}'")
 
             model_class = self.MODEL_REGISTRY[model_type]
-
-            # Resolve the feature list for this specific model
             resolved_features = self._resolve_feature_columns(
                 model_config.features, all_data_columns
             )
-
-            # Create the final config dictionary to pass to the model instance
             final_model_config_dict = model_config.model_dump()
             final_model_config_dict["feature_columns"] = resolved_features
             final_model_config_dict["date_column"] = self.config.input_data.date_column
@@ -136,7 +129,7 @@ class ModelManager:
 
             self.models[model_name] = model_class(model_name, final_model_config_dict)
             self.all_evaluation_results[model_name] = []
-            self.all_prediction_results[model_name] = pl.DataFrame()
+            self.all_prediction_results[model_name] = []
             logger.info(
                 f"Initialized model: '{model_name}' with {len(resolved_features)} features."
             )
@@ -176,7 +169,6 @@ class ModelManager:
                 logger.info("Reached the end of the dataset. Stopping evaluation.")
                 break
 
-            # Define date boundaries for clarity
             train_start_date = unique_months[window_start_idx]
             train_end_date = unique_months[train_end_idx - 1]
             validation_start_date = unique_months[train_end_idx]
@@ -198,7 +190,6 @@ class ModelManager:
                 f"{test_end_date.strftime('%Y-%m')}"
             )
 
-            # --- Slicing Data for the Current Window ---
             train_data = data.filter(
                 pl.col(date_col).is_between(train_start_date, train_end_date)
             )
@@ -221,13 +212,11 @@ class ModelManager:
 
                     model_instance.train(train_data, validation_data)
 
-                    # Month-by-month evaluation on the test set
                     for test_month_idx in range(validation_end_idx, test_end_idx):
                         current_month = unique_months[test_month_idx]
                         monthly_test_data = data.filter(
                             pl.col(date_col).dt.truncate("1mo") == current_month
                         )
-
                         if monthly_test_data.is_empty():
                             continue
 
@@ -238,7 +227,6 @@ class ModelManager:
                         aligned_df = pl.DataFrame(
                             {"y_true": y_true_month, "y_pred": y_pred_month}
                         ).drop_nulls()
-
                         if aligned_df.is_empty():
                             continue
 
@@ -260,7 +248,6 @@ class ModelManager:
                                     monthly_metrics[metric_name] = metric_func(
                                         y_true_np, y_pred_np
                                     )
-
                         self.all_evaluation_results[model_name].append(monthly_metrics)
 
                         if model_instance.config.get("save_prediction_results"):
@@ -269,8 +256,8 @@ class ModelManager:
                             ).with_columns(
                                 predicted_ret=y_pred_month, actual_ret=y_true_month
                             )
-                            self.all_prediction_results[model_name] = pl.concat(
-                                [self.all_prediction_results[model_name], preds_to_save]
+                            self.all_prediction_results[model_name].append(
+                                preds_to_save
                             )
 
                     if model_instance.config.get("save_model_checkpoints"):
@@ -318,9 +305,15 @@ class ModelManager:
                         agg_metrics[f"std_{metric}"] = df.get_column(metric).std()
                 reporter.generate_text_report(name, agg_metrics)
 
-        for name, preds in self.all_prediction_results.items():
-            if not preds.is_empty():
-                preds.write_parquet(pred_dir / f"{name}_predictions.parquet")
+        for name, preds_list in self.all_prediction_results.items():
+            if preds_list:
+                final_preds_df = pl.concat(preds_list)
+                if not final_preds_df.is_empty():
+                    pred_file_path = pred_dir / f"{name}_predictions.parquet"
+                    final_preds_df.write_parquet(pred_file_path)
+                    logger.info(
+                        f"Saved final predictions for '{name}' to {pred_file_path}"
+                    )
 
     def run(self, project_root: Union[str, Path]) -> Dict[str, pl.DataFrame]:
         """
@@ -344,4 +337,7 @@ class ModelManager:
         self._export_results()
 
         logger.info("Model pipeline completed successfully.")
-        return self.all_prediction_results
+
+        # This method now returns an empty dictionary as results are written directly to disk.
+        # We could optionally load them back from disk if needed, but for now this is cleaner.
+        return {}

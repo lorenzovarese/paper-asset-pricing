@@ -133,6 +133,7 @@ class PortfolioReporter:
         self,
         model_name: str,
         decile_returns_df: pl.DataFrame,
+        descending_sort: bool,
     ):
         """
         Plots and saves the cumulative return for each performance decile.
@@ -143,7 +144,7 @@ class PortfolioReporter:
             )
             return
 
-        plt.figure(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(14, 8))
 
         try:
             colormap = plt.colormaps.get_cmap("tab10")
@@ -163,7 +164,7 @@ class PortfolioReporter:
 
             color = colormap(i / (num_deciles - 1) if num_deciles > 1 else 0.5)
 
-            plt.plot(
+            ax.plot(
                 decile_data["date"],
                 decile_data["cumulative_return"],
                 label=str(decile_name),
@@ -171,19 +172,35 @@ class PortfolioReporter:
                 linewidth=1.5,
             )
 
-        plt.title(f"Cross-Sectional Cumulative Returns by Decile for {model_name}")
-        plt.xlabel("Date")
-        plt.ylabel("Cumulative Return")
-        plt.grid(True, linestyle="--", alpha=0.6)
-        plt.legend(
+        ax.set_title(f"Cross-Sectional Cumulative Returns by Decile for {model_name}")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Cumulative Return")
+        ax.grid(True, linestyle="--", alpha=0.6)
+        ax.legend(
             title="Performance Decile", bbox_to_anchor=(1.05, 1), loc="upper left"
         )
-        plt.tight_layout()
+
+        if descending_sort:
+            note = "Note: Deciles are formed on predicted returns. Decile 1 represents the highest predictions, and Decile 10 the lowest."
+        else:
+            note = "Note: Deciles are formed on predicted returns. Decile 1 represents the lowest predictions, and Decile 10 the highest."
+
+        fig.text(
+            0.5,
+            0.01,
+            note,
+            wrap=True,
+            ha="center",
+            fontsize=9,
+            style="italic",
+            color="gray",
+        )
+
+        fig.tight_layout(rect=(0, 0.05, 1, 1))
 
         plot_filename = (
             self.cross_sectional_dir / f"{model_name}_cross_sectional_returns.png"
         )
-        # Use bbox_inches='tight' to ensure the legend fits into the saved image
-        plt.savefig(plot_filename, bbox_inches="tight")
-        plt.close()
+        fig.savefig(plot_filename, bbox_inches="tight")
+        plt.close(fig)
         logger.info(f"Cross-sectional returns plot saved to: {plot_filename}")

@@ -1,7 +1,7 @@
 import polars as pl
 import logging
 from pathlib import Path
-from typing import Dict, Union, Any, Optional
+from typing import Dict, Union, Any, Optional, Tuple
 
 from .config_parser import PortfolioConfig, MarketBenchmarkConfig
 from .evaluation import metrics, reporter
@@ -91,13 +91,16 @@ class PortfolioManager:
             logger.error(f"Failed to load or parse index file {index_file_path}: {e}")
             return None
 
-    def _calculate_cross_sectional_returns(self, data: pl.DataFrame) -> pl.DataFrame:
+    def _calculate_cross_sectional_returns(
+        self, data: pl.DataFrame
+    ) -> Tuple[pl.DataFrame, bool]:
         """
         Calculates monthly returns for 10 deciles of assets based on predicted returns.
+        Returns the DataFrame and a boolean indicating if the sort was descending.
         """
         date_col = self.config.input_data.date_column
+        is_descending = False
 
-        # Calculate decile returns for each month
         monthly_decile_returns = (
             data.drop_nulls(subset=["predicted_ret", "actual_ret"])
             .with_columns(
@@ -107,7 +110,7 @@ class PortfolioManager:
                     labels=[f"Decile {i + 1}" for i in range(10)],
                     allow_duplicates=True,
                 )
-                .over(date_col)  # Perform qcut within each date group
+                .over(date_col)
                 .alias("decile")
             )
             .group_by([date_col, "decile"], maintain_order=True)
@@ -117,9 +120,8 @@ class PortfolioManager:
 
         if monthly_decile_returns.is_empty():
             logger.warning("Could not calculate any cross-sectional decile returns.")
-            return pl.DataFrame()
+            return pl.DataFrame(), is_descending
 
-        # Calculate cumulative returns for each decile over time
         cumulative_decile_returns = (
             monthly_decile_returns.group_by("decile", maintain_order=True)
             .agg(
@@ -130,7 +132,7 @@ class PortfolioManager:
             .sort(date_col)
         )
 
-        return cumulative_decile_returns
+        return cumulative_decile_returns, is_descending
 
     def _calculate_monthly_returns(self, data: pl.DataFrame) -> pl.DataFrame:
         """Calculates portfolio returns for each month based on all strategies."""
@@ -278,11 +280,13 @@ class PortfolioManager:
                 logger.info(
                     f"--- Performing Cross-Sectional Analysis for Model: {model_name} ---"
                 )
-                cross_sectional_df = self._calculate_cross_sectional_returns(data)
+                cross_sectional_df, is_descending = (
+                    self._calculate_cross_sectional_returns(data)
+                )
 
                 if not cross_sectional_df.is_empty() and self.reporter:
                     self.reporter.plot_cross_sectional_returns(
-                        model_name, cross_sectional_df
+                        model_name, cross_sectional_df, descending_sort=is_descending
                     )
 
             logger.info(f"--- Processing Portfolios for Model: {model_name} ---")

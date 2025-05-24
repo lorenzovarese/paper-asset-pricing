@@ -1,7 +1,7 @@
 # Similar to Fama and French 3 factor model
 
 dataset:
-  path: "data/out_cut.parquet"
+  path: "data/out.parquet"
   date_column: "date"
   id_column: "permno"
 
@@ -17,7 +17,7 @@ model:
   output_path: "models/ols.joblib"
 
 evaluation:
-  train_years: 2
-  val_years: 1
-  test_years: 1
-  roll_years: 1
+  train_years: 7
+  val_years: 2
+  test_years: 2
+  roll_years: 2

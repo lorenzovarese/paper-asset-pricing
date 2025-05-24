@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from typer import BadParameter
 
-from paperassetpricing.commands.experiment import (
+from paperassetpricing.commands.experiment import (  # type: ignore
     load_config,
     prepare_data_source,
     get_features_and_target,
@@ -15,7 +15,7 @@ from paperassetpricing.commands.experiment import (
     evaluate_window,
     save_model_and_metrics,
     experiment,
-)  # type: ignore
+)
 from paperassetpricing.models.linear_model import LinearModel  # type: ignore
 
 # --- Helpers -------------------------------------------------------------

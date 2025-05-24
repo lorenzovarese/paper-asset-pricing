@@ -1,24 +1,48 @@
 {
   "version": "0.2.0",
   "configurations": [
+    /* ────────────────────────────────────────────────────────────────
+       1.  aggregate_data          */
     {
       "name": "aggregate_data (uv)",
       "type": "debugpy",
       "request": "launch",
-
-      // run the module exactly as you would with `uv run -m`
       "module": "scripts.aggregate_data",
-
-      // command-line arguments
       "args": [
         "examples/aggregate_config.yaml",
         "--out",
         "data/aggregated_output_debug_results.parquet"
       ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+
+    /* ────────────────────────────────────────────────────────────────
+       2.  paper experiment                                           */
+    {
+      "name": "paper experiment (uv)",
+      "type": "debugpy",
+      "request": "launch",
+
+      // tyically run on the command line as:  paper experiment -c <file>
+      // here we launch the same Typer app via its module:
+      "module": "paperassetpricing.cli",
+      "args": [
+        "experiment",
+        "-c",
+        "configs/experiment/OLS3_20years.yaml"
+      ],
 
       "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
       "console": "integratedTerminal",
-      "justMyCode": true        // flip to false if you need to step into libraries
+      "justMyCode": true
     }
   ]
 }

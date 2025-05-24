@@ -5,6 +5,7 @@ description = "P.A.P.E.R.: Platform for Asset Pricing Experiment & Research"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "dask>=2025.5.1",
     "duckdb>=1.2.2",
     "fastparquet>=2024.11.0",
     "matplotlib>=3.10.3",
@@ -27,6 +28,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
+    "pandas-datareader>=0.10.0",
     "pandas-stubs>=2.2.3.250308",
     "pytest>=8.3.5",
     "ruff>=0.11.8",

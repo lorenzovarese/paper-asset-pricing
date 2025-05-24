@@ -30,11 +30,16 @@ sources:
 transformations:
 - type: cut_by_date
   start_date: 2002-01-01
-  end_date: 2007-12-31
+  end_date: 2021-12-31
 
 - type: clean_numeric # Transformation to convert columns to numeric type
   columns: [ "ret" ] # User provides base name 'ret'. Code will find 'ret_firm' (assuming 'ret' is from a firm source)
   action: "to_nan"
+
+- type: rank_normalize
+  group_by_column: date
+  target_level: firm
+  exclude_columns: [ "sic2" ] # Exclude 'sic2' from normalization
 
 - type: one_hot # One-hot encode a categorical column
   column: "sic2" # User provides base name 'sic2'. Code will find 'sic2_firm'

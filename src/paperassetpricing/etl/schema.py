@@ -64,6 +64,23 @@ class CleanNumericConfig(BaseModel):
     action: Literal["to_nan"] = Field(default="to_nan")
 
 
+class RankNormalizeConfig(BaseModel):
+    """
+    Cross-sectionally ranks each column period-by-period (grouped by
+    `group_by_column`, default = 'date') and maps the ranks to the
+    interval [-1, 1] just like footnote 29 in Gu et al. (2020).
+
+    If *columns* is omitted, every **numeric** column except the
+    group key is normalised.
+    """
+
+    type: Literal["rank_normalize"]
+    group_by_column: str = "date"
+    columns: Optional[List[str]] = None  # whitelist
+    exclude_columns: Optional[List[str]] = None  # blacklist
+    target_level: Literal["firm", "macro", "both"] = "firm"
+
+
 class GroupedFillMissingConfig(BaseModel):
     type: Literal["grouped_fill_missing"]
     method: Literal["mean", "median"]
@@ -147,6 +164,7 @@ TransformationConfig = Union[
     ExpandCartesianConfig,
     DropColumnsConfig,
     CutByDateConfig,
+    RankNormalizeConfig,
 ]
 
 

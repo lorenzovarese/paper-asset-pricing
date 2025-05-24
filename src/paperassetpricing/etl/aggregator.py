@@ -27,6 +27,7 @@ from paperassetpricing.etl.schema import (
     ExpandCartesianConfig,
     DropColumnsConfig,
     CutByDateConfig,
+    RankNormalizeConfig,
 )
 
 
@@ -662,6 +663,86 @@ class DataAggregator:
             df = df[(df["date"] >= start) & (df["date"] <= end)].copy()
             after_n = len(df)
             print(f"  Rows filtered: {before_n} → {after_n}")
+        elif isinstance(tr, RankNormalizeConfig):
+            gb_key = tr.group_by_column.lower()
+            if gb_key not in df.columns:
+                raise ValueError(
+                    f"rank_normalize: group_by_column '{gb_key}' not found."
+                )
+
+            # Which columns?
+            include = [c.lower() for c in tr.columns] if tr.columns else None
+            exclude = (
+                [c.lower() for c in tr.exclude_columns] if tr.exclude_columns else []
+            )
+            exclude.append("permno")  # always exclude permno TODO tix this
+
+            if include is not None:
+                base_list = include
+                target_cols = [
+                    self._find_actual_column_name(
+                        df, bn, self.cfg.sources, self._source_col_rename_map
+                    )
+                    for bn in base_list
+                ]
+                target_cols = [c for c in target_cols if c]  # drop None
+            else:
+                # default: all numeric, except the group key
+                cand = [
+                    c
+                    for c in df.select_dtypes(include=np.number).columns
+                    if c != gb_key
+                ]
+
+                # filter by level unless user over-rode with 'both'
+                if tr.target_level == "firm":
+                    target_cols = [c for c in cand if c.endswith("_firm")]
+                elif tr.target_level == "macro":
+                    target_cols = [c for c in cand if c.endswith("_macro")]
+                else:  # "both"
+                    target_cols = cand
+
+            # apply blacklist
+            if exclude:
+                target_cols = [
+                    c
+                    for c in target_cols
+                    if c
+                    not in {
+                        self._find_actual_column_name(
+                            df, b, self.cfg.sources, self._source_col_rename_map
+                        )
+                        for b in exclude
+                    }
+                ]
+
+            if not target_cols:
+                print("rank_normalize: no columns to normalise – skipped.")
+                return df
+
+            print(
+                f"rank_normalize: normalising {len(target_cols)} column(s) "
+                f"group-wise by '{gb_key}'."
+            )
+
+            def _rank_to_unit(s: pd.Series) -> pd.Series:
+                n = s.notna().sum()
+                if n == 0:
+                    return s
+                if n == 1:
+                    # only one value – map to 0 by convention
+                    return pd.Series(np.where(s.notna(), 0.0, np.nan), index=s.index)
+                ranks = s.rank(method="average", na_option="keep")
+                return 2 * ((ranks - 1) / (n - 1) - 0.5)
+
+            for col in target_cols:
+                df[col] = (
+                    df.groupby(gb_key, group_keys=False)[col]
+                    .transform(_rank_to_unit)
+                    .astype("float32")
+                )
+
+            print("rank_normalize: completed.")
         return df
 
     @staticmethod

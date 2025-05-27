@@ -25,7 +25,6 @@ class HTTPConnector(BaseConnector):
 
     def _download(self) -> Path:
         # Stream download to a temporary file with a progress bar
-        print(f"Downloading {self.url}...")
         resp = requests.get(self.url, stream=True, timeout=self.timeout)
         resp.raise_for_status()
 
@@ -60,7 +59,6 @@ class HTTPConnector(BaseConnector):
         Download the remote file and return it as a DataFrame.
         Supports CSV and Parquet based on file extension.
         """
-        print(f"Fetching data from {self.url}...")
         local_path = self._download()
         try:
             # Determine file format from URL

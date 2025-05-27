@@ -1,13 +1,14 @@
 from typing import Optional
 import webbrowser
 from pathlib import Path
-import pandas as pd
+import polars as pl
 
-from .analyzer import analyze_dataframe
+
+from .analyzer import analyze_dataframe  # type: ignore[import-untyped]
 
 
 def display_report(
-    df: pd.DataFrame | str,
+    df: pl.DataFrame | str,
     output_path: str = "data_profile.html",
     max_rows: Optional[int] = None,
     minimal: bool = True,
@@ -30,11 +31,11 @@ def display_report(
     if isinstance(df, (str, Path)):
         ext = Path(df).suffix.lower()
         df = (
-            pd.read_csv(df)
+            pl.read_csv(df)
             if ext == ".csv"
-            else pd.read_parquet(df)
+            else pl.read_parquet(df)
             if ext in {".parquet", ".pq"}
-            else pd.read_csv(df)
+            else pl.read_csv(df)
         )
 
     # 2) Generate profile (analyze_dataframe will handle max_rows and explorative cap)

@@ -1,4 +1,4 @@
-import pandas as pd
+import polars as pl
 import pytest
 from paper_data.ingestion.google_drive import (  # type: ignore[import-untyped]
     GoogleDriveConnector,
@@ -54,7 +54,7 @@ def test_download_and_get_data(monkeypatch, tmp_path):
     # monkeypatch LocalConnector to read our sample
     from paper_data.ingestion.local import LocalConnector  # type: ignore[import-untyped]
 
-    monkeypatch.setattr(LocalConnector, "get_data", lambda self: pd.read_csv(sample))
+    monkeypatch.setattr(LocalConnector, "get_data", lambda self: pl.read_csv(sample))
     conn = GoogleDriveConnector("https://drive.google.com/file/d/ABCDEFGHIJ/view")
     df = conn.get_data()
     assert list(df.columns) == ["x", "y"]

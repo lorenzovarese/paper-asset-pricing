@@ -1,9 +1,9 @@
 import yaml
 import typer
 import getpass
-import pandas as pd
-import pyarrow as pa  # type: ignore[import-untyped]
-import pyarrow.parquet as pq  # type: ignore[import-untyped]
+import polars as pl
+from pyarrow import Table  # type: ignore[import-untyped]
+from pyarrow.parquet import ParquetWriter  # type: ignore[import-untyped]
 from tqdm import tqdm  # type: ignore[import-untyped]
 from pathlib import Path
 
@@ -63,9 +63,9 @@ def ingest(
 
         out_path = out_base / save_as
         if out_path.suffix.lower() in {".parquet", ".pq"}:
-            df.to_parquet(out_path, index=False)
+            df.write_parquet(out_path)
         else:
-            df.to_csv(out_path, index=False)
+            df.write_csv(out_path)
 
         typer.secho(f"[ingest] ✔ {out_path}", fg=typer.colors.GREEN)
 
@@ -110,9 +110,9 @@ def clean(
     # 1) Load raw data
     ext = source.suffix.lower()
     if ext == ".csv":
-        df = pd.read_csv(source)
+        df = pl.read_csv(source)
     elif ext in {".parquet", ".pq"}:
-        df = pd.read_parquet(source)
+        df = pl.read_parquet(source)
     else:
         typer.secho(f"Unsupported source format: {ext}", fg=typer.colors.RED)
         raise typer.Exit(1)
@@ -132,26 +132,34 @@ def clean(
     # 3) Persist cleaned output
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / (source.stem + "_cleaned.parquet")
-    cleaned_df.to_parquet(out_path, index=False)
+    cleaned_df.write_parquet(out_path)
     typer.secho(f"[clean] ✔ {out_path}", fg=typer.colors.GREEN)
 
 
 @app.command("convert")
 def convert(
     source: Path = typer.Argument(..., exists=True, help="CSV file to convert"),
-    chunksize: int = typer.Option(100_000, help="Number of rows per chunk"),
 ):
     """
-    Convert a large CSV into Parquet in streaming fashion.
+    Convert a large CSV into Parquet in streaming fashion using Polars.
     """
     out_path = source.with_suffix(".parquet")
-    writer: pq.ParquetWriter | None = None
+    writer: ParquetWriter | None = None
 
     typer.secho(f"[convert] → {source} → {out_path}", fg=typer.colors.BLUE)
-    for df in tqdm(pd.read_csv(source, chunksize=chunksize), desc="Chunks"):
-        table = pa.Table.from_pandas(df)
+
+    # 1) Build a lazy CSV scan (no chunk_size arg) :contentReference[oaicite:4]{index=4}
+    lazy_df = pl.scan_csv(str(source))
+
+    # 2) Execute in streaming mode; get DataFrame
+    print("Collecting data...")
+    streaming_df = lazy_df.collect(engine="streaming")
+
+    # 3) Convert to Arrow Table, then iterate its RecordBatches :contentReference[oaicite:6]{index=6}
+    for rb in tqdm(streaming_df.to_arrow().to_batches(), desc="Chunks"):
+        table = Table.from_batches([rb])
         if writer is None:
-            writer = pq.ParquetWriter(out_path, table.schema)
+            writer = ParquetWriter(str(out_path), table.schema)
         writer.write_table(table)
 
     if writer:

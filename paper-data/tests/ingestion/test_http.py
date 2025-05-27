@@ -1,4 +1,4 @@
-import pandas as pd
+import polars as pl
 import pytest
 import requests  # type: ignore[import-untyped]
 
@@ -38,20 +38,20 @@ def test_get_data_csv(monkeypatch, tmp_path):
     monkeypatch.setattr(
         LocalConnector,
         "get_data",
-        lambda self: pd.read_csv(sample_csv),
+        lambda self: pl.read_csv(sample_csv),
     )
 
     conn = HTTPConnector("https://example.com/data.csv")
     df = conn.get_data()
-    expected = pd.DataFrame({"a": [1, 3], "b": [2, 4]})
-    pd.testing.assert_frame_equal(df, expected)
+    expected = pl.DataFrame({"a": [1, 3], "b": [2, 4]})
+    pl.testing.assert_frame_equal(df, expected)
 
 
 def test_get_data_parquet(monkeypatch, tmp_path):
     # Prepare a sample Parquet file
-    df_orig = pd.DataFrame({"x": [10, 20], "y": [30, 40]})
+    df_orig = pl.DataFrame({"x": [10, 20], "y": [30, 40]})
     sample_pq = tmp_path / "data.parquet"
-    df_orig.to_parquet(sample_pq)
+    df_orig.write_parquet(sample_pq)
 
     # Monkey-patch requests.get to return our dummy Parquet bytes
     monkeypatch.setattr(
@@ -62,12 +62,12 @@ def test_get_data_parquet(monkeypatch, tmp_path):
     monkeypatch.setattr(
         LocalConnector,
         "get_data",
-        lambda self: pd.read_parquet(sample_pq),
+        lambda self: pl.read_parquet(sample_pq),
     )
 
     conn = HTTPConnector("http://example.org/data.parquet")
     df = conn.get_data()
-    pd.testing.assert_frame_equal(df, df_orig)
+    pl.testing.assert_frame_equal(df, df_orig)
 
 
 def test_download_http_error(monkeypatch):

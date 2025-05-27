@@ -1,4 +1,4 @@
-import pandas as pd
+import polars as pl
 from paper_data.ingestion.wrds_conn import WRDSConnector  # type: ignore[import-untyped]
 
 
@@ -7,7 +7,7 @@ class DummyConnection:
         pass
 
     def raw_sql(self, query):
-        return pd.DataFrame({"x": [10, 20]})
+        return pl.DataFrame({"x": [10, 20]})
 
     def close(self):
         pass
@@ -20,4 +20,4 @@ def test_get_data(monkeypatch):
     )
     conn = WRDSConnector("SELECT 1 AS x", user="u", password="p", max_rows=1)
     df = conn.get_data()
-    pd.testing.assert_frame_equal(df, pd.DataFrame({"x": [10, 20]}))
+    pl.testing.assert_frame_equal(df, pl.DataFrame({"x": [10, 20]}))

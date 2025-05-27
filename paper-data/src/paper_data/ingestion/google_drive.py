@@ -9,7 +9,8 @@ import re
 import tempfile
 from pathlib import Path
 import requests
-import pandas as pd
+import polars as pl
+
 
 from .base import BaseConnector
 
@@ -45,7 +46,7 @@ class GoogleDriveConnector(BaseConnector):
             tmp.flush()
             return Path(tmp.name)
 
-    def get_data(self) -> pd.DataFrame:
+    def get_data(self) -> pl.DataFrame:
         local_path = self._download()
         try:
             from .local import LocalConnector

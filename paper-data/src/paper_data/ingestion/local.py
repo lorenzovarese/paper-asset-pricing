@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-import pandas as pd
+import polars as pl
 import zipfile
 import tempfile
+import pyarrow as pa  # type: ignore[import-untyped]
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
+from pyarrow import Table
+from pyarrow.parquet import ParquetWriter
 from tqdm import tqdm  # type: ignore[import-untyped]
 
 from .base import BaseConnector
@@ -21,7 +24,7 @@ class LocalConnector(BaseConnector):
         self.member_name = member_name
         self.csv_chunk_size = csv_chunk_size
 
-    def get_data(self) -> pd.DataFrame:
+    def get_data(self) -> pl.DataFrame:
         if not self.path.exists():
             raise FileNotFoundError(f"Path not found: {self.path}")
 
@@ -34,39 +37,58 @@ class LocalConnector(BaseConnector):
             return self._read_from_zip()
         raise ValueError(f"Unsupported file type: {suffix}")
 
-    def _read_csv_with_progress(self, csv_path: Path) -> pd.DataFrame:
+    def _read_csv_with_progress(self, csv_path: Path) -> pl.DataFrame:
+        # 1) File size check
         size_bytes = csv_path.stat().st_size
-        threshold = 2000 * 1024**2  # 2 GB
+        threshold = 2 * 1024**3  # 2 GB
         print(f"CSV file size: {size_bytes / 1024**2:.1f} MB")
         print(f"Threshold for direct load: {threshold / 1024**2:.1f} MB")
+
         if size_bytes > threshold:
             raise ValueError(
                 f"The CSV file size is {size_bytes / 1024**3:.1f} GB, which is too large to load directly.\n"
-                f"Consider converting it to Parquet first (e.g., using `paper-data convert`).\n"
-                f"Don't forget to update the path in your configuration file afterward."
+                "Consider converting it to Parquet first (e.g., using `paper-data convert`).\n"
+                "Don't forget to update the path in your configuration file afterward."
             )
-        chunks: list[pd.DataFrame] = []
+
+        # 2) Lazy scan & streaming collect
+        lazy = pl.scan_csv(str(csv_path))
+        df_streamed = lazy.collect(engine="streaming")
+        record_batches = df_streamed.to_arrow().to_batches()  # type: ignore[attr-defined]
+
+        # 3) Iterate batches, coerce to DataFrame, track progress
+        chunks: list[pl.DataFrame] = []
         with tqdm(
             total=size_bytes, unit="B", unit_scale=True, desc=f"Reading {csv_path.name}"
         ) as pbar:
-            for chunk in pd.read_csv(csv_path, chunksize=self.csv_chunk_size):
-                chunks.append(chunk)
+            for rb in record_batches:
+                # convert RecordBatch → Polars (might be Series if single column)
+                tmp = pl.from_arrow(rb)
+                # ensure DataFrame
+                if isinstance(tmp, pl.Series):
+                    df_chunk = tmp.to_frame()
+                else:
+                    df_chunk = tmp
+                chunks.append(df_chunk)
                 # approximate bytes processed
-                pbar.update(chunk.memory_usage(deep=True).sum())
-        return pd.concat(chunks, ignore_index=True)
+                pbar.update(df_chunk.estimated_size())
 
-    def _read_parquet_with_progress(self, pq_path: Path) -> pd.DataFrame:
+        # 4) concatenate all chunks
+        return pl.concat(chunks)
+
+    def _read_parquet_with_progress(self, pq_path: Path) -> pl.DataFrame:
         parquet_file = pq.ParquetFile(str(pq_path))
         n_groups = parquet_file.num_row_groups
-        dfs: list[pd.DataFrame] = []
-        with tqdm(total=n_groups, desc=f"Reading {pq_path.name} (row-groups)") as pbar:
+        tables: list[pa.Table] = []
+        with tqdm(total=n_groups, desc="Reading row-groups") as pbar:
             for rg in range(n_groups):
-                table = parquet_file.read_row_group(rg)
-                dfs.append(table.to_pandas())
+                tables.append(parquet_file.read_row_group(rg))
                 pbar.update(1)
-        return pd.concat(dfs, ignore_index=True)
 
-    def _read_from_zip(self) -> pd.DataFrame:
+        print("Merging tables…")
+        return pa.concat_tables(tables)  # TODO
+
+    def _read_from_zip(self) -> pl.DataFrame:
         with tempfile.TemporaryDirectory() as tmpdir:
             with zipfile.ZipFile(self.path, "r") as zf:
                 all_files = [n for n in zf.namelist() if not n.endswith("/")]

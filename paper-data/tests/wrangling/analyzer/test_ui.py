@@ -1,4 +1,4 @@
-import pandas as pd
+import polars as pl
 import pytest
 import tempfile
 from pathlib import Path
@@ -6,7 +6,7 @@ from paper_data.wrangling.analyzer.ui import display_report  # type: ignore[impo
 
 
 def test_display_report_from_dataframe(monkeypatch):
-    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    df = pl.DataFrame({"x": [1, 2], "y": [3, 4]})
 
     # Prevent browser from opening
     monkeypatch.setattr(
@@ -21,9 +21,9 @@ def test_display_report_from_dataframe(monkeypatch):
 
 
 def test_display_report_from_csv_path(monkeypatch, tmp_path):
-    df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    df = pl.DataFrame({"x": [1, 2], "y": [3, 4]})
     csv_path = tmp_path / "test.csv"
-    df.to_csv(csv_path, index=False)
+    df.write_csv(csv_path)
 
     monkeypatch.setattr(
         "paper_data.wrangling.analyzer.ui.webbrowser.open", lambda url: True
@@ -37,9 +37,9 @@ def test_display_report_from_csv_path(monkeypatch, tmp_path):
 
 
 def test_display_report_from_parquet_path(monkeypatch, tmp_path):
-    df = pd.DataFrame({"a": [10, 20], "b": [30, 40]})
+    df = pl.DataFrame({"a": [10, 20], "b": [30, 40]})
     parquet_path = tmp_path / "data.parquet"
-    df.to_parquet(parquet_path)
+    df.write_parquet(parquet_path)
 
     monkeypatch.setattr(
         "paper_data.wrangling.analyzer.ui.webbrowser.open", lambda url: True
@@ -66,7 +66,7 @@ def test_display_report_invalid_path(monkeypatch, tmp_path):
 
 
 def test_display_report_explorative_too_many_rows(monkeypatch, tmp_path):
-    df = pd.DataFrame({"x": list(range(1500))})
+    df = pl.DataFrame({"x": list(range(1500))})
     monkeypatch.setattr(
         "paper_data.wrangling.analyzer.ui.webbrowser.open", lambda url: True
     )
@@ -78,7 +78,7 @@ def test_display_report_explorative_too_many_rows(monkeypatch, tmp_path):
 
 
 def test_display_report_explorative_with_max_rows_allows(monkeypatch, tmp_path):
-    df = pd.DataFrame({"x": list(range(1500))})
+    df = pl.DataFrame({"x": list(range(1500))})
     monkeypatch.setattr(
         "paper_data.wrangling.analyzer.ui.webbrowser.open", lambda url: True
     )

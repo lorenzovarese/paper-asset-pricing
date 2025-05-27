@@ -1,10 +1,11 @@
-import pandera.pandas as pa
+import pandera.polars as pa
 from pandera import Column
+from pandera.engines.polars_engine import DateTime
 
 firm_schema = pa.DataFrameSchema(
     columns={
         # required: parse/validate as Timestamp
-        "date": Column(pa.DateTime, required=True),
+        "date": Column(DateTime, required=True),
         # required: integer identifier
         "company_id": Column(int, required=True),
         # required: float return (nullable ok)

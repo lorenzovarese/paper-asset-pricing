@@ -6,7 +6,7 @@ every concrete connector must implement.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-import pandas as pd
+import polars as pl
 
 
 class BaseConnector(ABC):
@@ -17,12 +17,12 @@ class BaseConnector(ABC):
     """
 
     @abstractmethod
-    def get_data(self) -> pd.DataFrame:  # pragma: no cover
+    def get_data(self) -> pl.DataFrame:  # pragma: no cover
         """Fetch data and return it as a pandas DataFrame."""
         raise NotImplementedError
 
     # Optional common helpers
-    def __call__(self) -> pd.DataFrame:
+    def __call__(self) -> pl.DataFrame:
         return self.get_data()
 
     def __repr__(self) -> str:

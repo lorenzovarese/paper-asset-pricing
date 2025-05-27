@@ -6,7 +6,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 import requests  # type: ignore[import-untyped]
-import pandas as pd
+import polars as pl
 from tqdm import tqdm  # type: ignore[import-untyped]
 from urllib.parse import urlparse, parse_qs
 
@@ -54,7 +54,7 @@ class HTTPConnector(BaseConnector):
         tmp.flush()
         return Path(tmp.name)
 
-    def get_data(self) -> pd.DataFrame:
+    def get_data(self) -> pl.DataFrame:
         """
         Download the remote file and return it as a DataFrame.
         Supports CSV and Parquet based on file extension.
@@ -68,12 +68,12 @@ class HTTPConnector(BaseConnector):
 
             # 1) If query says format=csv, or URL ends with .csv → CSV
             if qs.get("format", [""])[0] == "csv" or suffix == ".csv":
-                return pd.read_csv(local_path)
+                return pl.read_csv(local_path)
             # 2) Parquet extensions
             if suffix in {".parquet", ".pq"}:
-                return pd.read_parquet(local_path)
+                return pl.read_parquet(local_path)
             # 3) Fallback → CSV
-            return pd.read_csv(local_path)
+            return pl.read_csv(local_path)
         finally:
             # Clean up temporary file
             local_path.unlink(missing_ok=True)

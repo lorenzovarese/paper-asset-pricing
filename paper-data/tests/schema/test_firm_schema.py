@@ -7,7 +7,7 @@ from paper_data.schema.firm import firm_schema  # type: ignore[import-untyped]
 def test_valid_firm_schema():
     df = pl.DataFrame(
         {
-            "date": pl.to_datetime(["2020-01-01", "2020-01-02"]),
+            "date": (pl.Series(["2020-01-01", "2020-01-02"]).str.to_date("%Y-%m-%d")),
             "company_id": [1, 2],
             "ret": [0.1, -0.1],
             "extra": [3.5, 4.0],

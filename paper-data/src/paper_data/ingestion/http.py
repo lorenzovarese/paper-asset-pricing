@@ -68,12 +68,12 @@ class HTTPConnector(BaseConnector):
 
             # 1) If query says format=csv, or URL ends with .csv → CSV
             if qs.get("format", [""])[0] == "csv" or suffix == ".csv":
-                return pl.read_csv(local_path)
+                return pl.read_csv(local_path, infer_schema_length=10_000)
             # 2) Parquet extensions
             if suffix in {".parquet", ".pq"}:
                 return pl.read_parquet(local_path)
             # 3) Fallback → CSV
-            return pl.read_csv(local_path)
+            return pl.read_csv(local_path, infer_schema_length=10_000)
         finally:
             # Clean up temporary file
             local_path.unlink(missing_ok=True)

@@ -36,6 +36,7 @@ include = ["src/paper_data/**", "README.md", "LICENSE"] # optional sdist config
 
 [dependency-groups]
 dev = [
+    "pandas-stubs>=2.2.3.250308",
     "types-pyyaml>=6.0.12.20250516",
     "types-requests>=2.32.0.20250515",
 ]

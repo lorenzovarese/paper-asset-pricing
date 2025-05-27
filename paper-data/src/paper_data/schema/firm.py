@@ -5,13 +5,13 @@ from pandera.engines.polars_engine import DateTime
 firm_schema = pa.DataFrameSchema(
     columns={
         # required: parse/validate as Timestamp
-        "date": Column(DateTime, required=True),
+        "date": pa.Column(DateTime, required=True),
         # required: integer identifier
-        "company_id": Column(int, required=True),
+        "company_id": pa.Column(int, required=True),
         # required: float return (nullable ok)
-        "ret": Column(float, required=True),
+        "ret": pa.Column(float, required=True),
         # catch-all for any other columns → float features
-        r"^(?!date$|company_id$).*": Column(
+        r"^(?!date$|company_id$).*": pa.Column(
             float,
             required=False,
             regex=True,

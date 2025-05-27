@@ -1,9 +1,9 @@
 import pandas as pd
 import pytest
-import requests
+import requests  # type: ignore[import-untyped]
 
-from paper_data.ingestion.http import HTTPConnector
-from paper_data.ingestion.local import LocalConnector
+from paper_data.ingestion.http import HTTPConnector  # type: ignore[import-untyped]
+from paper_data.ingestion.local import LocalConnector  # type: ignore[import-untyped]
 
 
 class DummyResponse:
@@ -31,13 +31,13 @@ def test_get_data_csv(monkeypatch, tmp_path):
 
     # Monkey-patch requests.get to return our dummy CSV bytes
     monkeypatch.setattr(
-        'paper_data.ingestion.http.requests.get',
+        "paper_data.ingestion.http.requests.get",
         lambda url, stream, timeout: DummyResponse(sample_csv.read_bytes()),
     )
     # Monkey-patch LocalConnector to read from our sample file
     monkeypatch.setattr(
         LocalConnector,
-        'get_data',
+        "get_data",
         lambda self: pd.read_csv(sample_csv),
     )
 
@@ -55,13 +55,13 @@ def test_get_data_parquet(monkeypatch, tmp_path):
 
     # Monkey-patch requests.get to return our dummy Parquet bytes
     monkeypatch.setattr(
-        'paper_data.ingestion.http.requests.get',
+        "paper_data.ingestion.http.requests.get",
         lambda url, stream, timeout: DummyResponse(sample_pq.read_bytes()),
     )
     # Monkey-patch LocalConnector to read from our sample file
     monkeypatch.setattr(
         LocalConnector,
-        'get_data',
+        "get_data",
         lambda self: pd.read_parquet(sample_pq),
     )
 
@@ -73,7 +73,7 @@ def test_get_data_parquet(monkeypatch, tmp_path):
 def test_download_http_error(monkeypatch):
     # Simulate an HTTP error response
     monkeypatch.setattr(
-        'paper_data.ingestion.http.requests.get',
+        "paper_data.ingestion.http.requests.get",
         lambda url, stream, timeout: ErrResponse(b""),
     )
     conn = HTTPConnector("https://fail.example/file.csv")

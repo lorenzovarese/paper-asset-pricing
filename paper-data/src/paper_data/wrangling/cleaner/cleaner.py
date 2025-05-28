@@ -77,7 +77,7 @@ class BaseCleaner:
 
         self.df = self.df.with_columns(expr.alias(date_col))
 
-        # 2) Truncate to month start/end if requested :contentReference[oaicite:2]{index=2} :contentReference[oaicite:3]{index=3}
+        # 2) Truncate to month start/end if requested
         if monthly_option == "start":
             self.df = self.df.with_columns(
                 pl.col(date_col).dt.month_start().alias(date_col)
@@ -137,11 +137,11 @@ class FirmCleaner(BaseCleaner):
         Fill missing by monthly cross-sectional median.
         """
         self._ensure_datetime()
-        # 1) Add a month-period column via truncate to month start :contentReference[oaicite:7]{index=7}
+        # 1) Add a month-period column via truncate to month start
         self.df = self.df.with_columns(
             pl.col(self.date_col).dt.truncate("1mo").alias("__month")
         )
-        # 2) Compute per-month median with a window over `__month` :contentReference[oaicite:8]{index=8}
+        # 2) Compute per-month median with a window over `__month`
         for c in cols:
             self.df = self.df.with_columns(
                 pl.col(c).fill_null(pl.col(c).median().over("__month")).alias(c)

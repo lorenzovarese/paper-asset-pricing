@@ -182,7 +182,7 @@ class FirmCleaner(BaseCleaner):
                 .filter(pl.col(c).is_not_null())
                 # count occurrences per month
                 .group_by(["__month", c])
-                .agg(pl.count().alias("count"))
+                .agg(pl.len().alias("count"))
                 # sort by __month ASC, count DESC
                 .sort(["__month", "count"], descending=[False, True])
                 # pick the highest‐count row per month

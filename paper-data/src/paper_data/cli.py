@@ -119,7 +119,7 @@ def clean(
 
     # 2) Build cleaner pipeline
     pipeline = yaml.safe_load(config.read_text()).get("cleaning", {}).get(objective, [])
-    raw = RawDataset(df, objective=objective)  # type: ignore[call-arg]
+    raw = RawDataset(df, objective=objective)  # type: ignore[arg-type]
     cleaner = CleanerFactory.get_cleaner(raw)
 
     for step in pipeline:

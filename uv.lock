@@ -1116,6 +1116,32 @@ name = "paper-tools"
 version = "0.1.0"
 source = { editable = "paper-tools" }
 
+[package.optional-dependencies]
+all = [
+    { name = "paper-data" },
+    { name = "paper-model" },
+    { name = "paper-portfolio" },
+]
+data = [
+    { name = "paper-data" },
+]
+models = [
+    { name = "paper-model" },
+]
+portfolio = [
+    { name = "paper-portfolio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "paper-data", marker = "extra == 'data'", editable = "paper-data" },
+    { name = "paper-model", marker = "extra == 'models'", editable = "paper-model" },
+    { name = "paper-portfolio", marker = "extra == 'portfolio'", editable = "paper-portfolio" },
+    { name = "paper-tools", extras = ["data"], marker = "extra == 'all'", editable = "paper-tools" },
+    { name = "paper-tools", extras = ["models"], marker = "extra == 'all'", editable = "paper-tools" },
+    { name = "paper-tools", extras = ["portfolio"], marker = "extra == 'all'", editable = "paper-tools" },
+]
+
 [[package]]
 name = "patsy"
 version = "1.0.1"

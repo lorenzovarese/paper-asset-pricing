@@ -1,10 +1,10 @@
 [project]
 name = "paper-model"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tools for running machine learning experiments and managing model checkpoints."
 readme = "README.md"
 authors = [
-    { name = "Lorenzo Varese", email = "55581163+lorenzovarese@users.noreply.github.com" }
+    { name = "Lorenzo Varese", email = "55581163+lorenzovarese@users.noreply.github.com" },
 ]
 requires-python = ">=3.11"
 dependencies = []
@@ -15,3 +15,9 @@ paper-model = "paper_model:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/paper_model"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/paper_model/**", "README.md", "LICENSE"]

@@ -1,0 +1,81 @@
+# {{project_name}}
+
+A P.AP.E.R (Platform for Asset Pricing Experimentation and Research) project.
+
+Initialized on: {{creation_date}}
+P.AP.E.R Tools Version: {{paper_tools_version}}
+
+## Project Structure
+
+- `{{CONFIGS_DIR_NAME}}/{{DEFAULT_PROJECT_CONFIG_NAME}}`: Main project configuration.
+- `{{CONFIGS_DIR_NAME}}/`: Directory for component-specific YAML configurations:
+    - `{{DATA_COMPONENT_CONFIG_FILENAME}}`: For `paper-data` processing.
+    - `{{MODELS_COMPONENT_CONFIG_FILENAME}}`: For `paper-model` tasks.
+    - `{{PORTFOLIO_COMPONENT_CONFIG_FILENAME}}`: For `paper-portfolio` strategies.
+- `{{DATA_DIR_NAME}}/`: Data storage.
+    - `raw/`: Place for raw input data.
+    - `processed/`: Output for processed data from `paper-data`.
+- `{{MODELS_DIR_NAME}}/`: Model-related files.
+    - `saved/`: Output for trained models from `paper-model`.
+- `{{PORTFOLIOS_DIR_NAME}}/`: Portfolio-related files.
+    - `results/`: Output for portfolio backtests/results from `paper-portfolio`.
+- `{{LOG_FILE_NAME}}`: Project-level log file.
+- `.gitignore`: Specifies files for Git to ignore.
+- `README.md`: This file.
+
+## Getting Started
+
+1.  **Navigate to the project directory:**
+    ```bash
+    cd "{{project_name}}"
+    ```
+
+2.  **Set up your Python environment** and install P.AP.E.R components:
+    ```bash
+    # Example:
+    # uv venv
+    # source .venv/bin/activate
+    pip install paper-data paper-model paper-portfolio # Or use paper-tools[all]
+    ```
+
+3.  **Create Component Configurations:**
+    - In the `{{CONFIGS_DIR_NAME}}/` directory, create and populate:
+        - `{{DATA_COMPONENT_CONFIG_FILENAME}}` (for `paper-data`)
+        - `{{MODELS_COMPONENT_CONFIG_FILENAME}}` (for `paper-model`)
+        - `{{PORTFOLIO_COMPONENT_CONFIG_FILENAME}}` (for `paper-portfolio`)
+    - Refer to the documentation of each P.AP.E.R component for its specific YAML structure.
+    - **Example for `{{DATA_COMPONENT_CONFIG_FILENAME}}`:**
+      ```yaml
+      # {{CONFIGS_DIR_NAME}}/{{DATA_COMPONENT_CONFIG_FILENAME}}
+      sources:
+        - name: my_firm_data
+          connector: local
+          path: "{{DATA_DIR_NAME}}/raw/your_firm_data.csv" # Relative to project root
+          # ... other source parameters
+        # - name: my_macro_data ...
+      transformations:
+        # - type: clean_numeric ...
+        # - type: one_hot ...
+      output:
+        format: parquet
+        # directory: "{{DATA_DIR_NAME}}/processed" # Often inferred by paper-data
+        filename_prefix: "master_dataset"
+      ```
+
+
+4.  **Place Raw Data:**
+    - Put your raw data files into the `{{DATA_DIR_NAME}}/raw/` directory.
+
+5.  **Execute Project Phases:**
+    Use `paper-tools execute` from the project root:
+    ```bash
+    paper-tools execute data      # Runs the data processing phase
+    paper-tools execute models    # Runs the modeling phase
+    paper-tools execute portfolio # Runs the portfolio phase
+    ```
+    You can also run them sequentially:
+    ```bash
+    paper-tools execute data && paper-tools execute models && paper-tools execute portfolio
+    ```
+
+Refer to `{{CONFIGS_DIR_NAME}}/{{DEFAULT_PROJECT_CONFIG_NAME}}` to see how `paper-tools` locates component configurations and CLI tools.

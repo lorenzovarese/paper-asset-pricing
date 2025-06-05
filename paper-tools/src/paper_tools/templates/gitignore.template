@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+include/
+pip-selfcheck.json
+
+# IDE specific
+.vscode/
+.idea/
+*.project
+*.pydevproject
+.project
+.settings/
+*.DS_Store
+Thumbs.db
+
+# Data (typically not versioned, but .gitkeep files are for structure)
+/{{DATA_DIR_NAME}}/raw/*
+!/{{DATA_DIR_NAME}}/raw/.gitkeep
+/{{DATA_DIR_NAME}}/processed/*
+!/{{DATA_DIR_NAME}}/processed/.gitkeep
+
+# Models (saved models typically not versioned)
+/{{MODELS_DIR_NAME}}/saved/*
+!/{{MODELS_DIR_NAME}}/saved/.gitkeep
+
+# Portfolios (results typically not versioned)
+/{{PORTFOLIOS_DIR_NAME}}/results/*
+!/{{PORTFOLIOS_DIR_NAME}}/results/.gitkeep
+
+# Logs
+/{{LOG_FILE_NAME}}
+*.log
+logs/

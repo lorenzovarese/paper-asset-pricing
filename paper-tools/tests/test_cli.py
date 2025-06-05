@@ -44,14 +44,12 @@ def mock_subprocess_run(monkeypatch):
     mock_results = []
 
     def mock_run(*args, **kwargs):
-        # Log calls for inspection
         mock_run.calls.append({"args": args, "kwargs": kwargs})
         if mock_results:
             res = mock_results.pop(0)
-            if isinstance(res, subprocess.CalledProcessError):
+            if isinstance(res, Exception):  # If it's any exception, raise it
                 raise res
-            return res
-        # Default success
+            return res  # Otherwise, it's a CompletedProcess object
         return subprocess.CompletedProcess(
             args=args, returncode=0, stdout="Mock success", stderr=""
         )
@@ -208,6 +206,111 @@ def test_init_gitkeep_logic_after_populating_configs(temp_project_dir):
     assert (data_raw_dir / ".gitkeep").exists()
     items_in_data_raw = [item.name for item in data_raw_dir.iterdir()]
     assert items_in_data_raw == [".gitkeep"]
+
+
+def test_init_existing_empty_dir_with_force(temp_project_dir):  # Covers line 218
+    project_name = "EmptyForceProject"
+    project_path = temp_project_dir / project_name
+    project_path.mkdir()  # Exists but empty
+
+    result = runner.invoke(app, ["init", project_name, "--force"])  # Add --force
+    assert result.exit_code == 0
+    assert (
+        f"Info: Project directory '{project_name}' exists but is empty. Proceeding."
+        in result.stdout
+    )
+    assert (project_path / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME).is_file()
+
+
+def test_init_force_rmtree_fails(temp_project_dir, monkeypatch):  # Covers lines 202-208
+    project_name = "RmtreeFailProject"
+    project_path = temp_project_dir / project_name
+    project_path.mkdir()
+    (project_path / "a_file.txt").write_text("content")
+
+    def mock_rmtree_error(path):
+        raise OSError("Simulated rmtree failure")
+
+    monkeypatch.setattr(shutil, "rmtree", mock_rmtree_error)
+
+    result = runner.invoke(app, ["init", project_name, "--force"])
+    assert result.exit_code != 0
+    assert "Error: Could not remove existing directory" in result.stderr
+    assert "Simulated rmtree failure" in result.stderr
+
+
+def test_init_general_exception_handling(
+    temp_project_dir, monkeypatch
+):  # Covers 384-393
+    project_name = "InitGeneralException"
+
+    # Mock the 'open' builtin, which is used to write placeholder configs
+    original_open = open
+
+    def mock_open_error(file, mode="r", *args, **kwargs):
+        if "w" in mode and Path(file).name == PORTFOLIO_COMPONENT_CONFIG_FILENAME:
+            # Let other files be written, fail on the last placeholder
+            raise IOError("Simulated I/O error during placeholder creation")
+        return original_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", mock_open_error)  # Mock builtins.open
+
+    result = runner.invoke(app, ["init", project_name])
+
+    assert result.exit_code != 0
+    assert "An error occurred during project initialization" in result.stderr
+    assert "Simulated I/O error during placeholder creation" in result.stderr
+
+
+# --- Tests for helper functions (can be tested more directly if needed, or via CLI) ---
+
+
+def test_load_project_config_malformed_yaml(temp_project_dir):  # Covers 90-96
+    project_name = "MalformedConfig"
+    project_path = temp_project_dir / project_name
+    configs_dir = project_path / CONFIGS_DIR_NAME
+    configs_dir.mkdir(parents=True)
+    malformed_config_path = configs_dir / DEFAULT_PROJECT_CONFIG_NAME
+    malformed_config_path.write_text(
+        "project_name: Test\n  bad_indent: here"
+    )  # Invalid YAML
+
+    # To test _load_project_config directly, we'd call it.
+    # To test via CLI, we need an execute command to trigger it.
+    # Let's test via execute command.
+    original_cwd = Path.cwd()
+    os.chdir(project_path)  # _get_project_root uses cwd()
+    result = runner.invoke(app, ["execute", "data"])  # This will try to load config
+    os.chdir(original_cwd)
+
+    assert result.exit_code != 0
+    assert (
+        f"Error loading project configuration '{malformed_config_path}'"
+        in result.stderr
+    )
+
+
+def test_render_template_not_found(temp_project_dir, monkeypatch):  # Covers 130-136
+    project_name = "MissingTemplateProject"
+
+    # Temporarily make a template appear missing by renaming TEMPLATE_DIR for this test
+    # This is a bit intrusive; a better way might be to mock FileSystemLoader or env.get_template
+    original_template_dir = TEMPLATE_DIR
+
+    # Create a dummy TEMPLATE_DIR that doesn't have the expected template
+    dummy_template_dir = temp_project_dir / "dummy_templates"
+    dummy_template_dir.mkdir()
+
+    monkeypatch.setattr("paper_tools.cli.TEMPLATE_DIR", dummy_template_dir)
+
+    result = runner.invoke(app, ["init", project_name])
+
+    monkeypatch.setattr(
+        "paper_tools.cli.TEMPLATE_DIR", original_template_dir
+    )  # Restore
+
+    assert result.exit_code != 0
+    assert "Error: Template 'paper_project.yaml.template' not found" in result.stderr
 
 
 # --- Tests for `execute` commands ---
@@ -386,20 +489,26 @@ def test_execute_data_subprocess_failure(
     os.chdir(actual_project_path)
 
     mock_run, mock_results = mock_subprocess_run
-    mock_results.append(
-        subprocess.CalledProcessError(
-            returncode=1, cmd="paper-data ...", stderr="Component error!"
-        )
+
+    cpe = subprocess.CalledProcessError(
+        returncode=1,
+        cmd="paper-data ...",  # You can make this more specific if needed
     )
+    cpe.stdout = "Component stdout during failure"  # Simulate stdout content
+    cpe.stderr = "Component detailed error message"  # Simulate stderr content
+    mock_results.append(cpe)
 
     result = runner.invoke(app, ["execute", "data"])
     os.chdir(original_cwd)
 
     assert result.exit_code != 0
     assert "Error executing 'paper-data process'" in result.stderr
-    assert (
-        "Component error!" in result.stderr
-    )  # Check if stderr from component is printed
+
+    # Now check for the stdout and stderr content you set on the exception
+    assert "Stdout:" in result.stderr
+    assert "Component stdout during failure" in result.stderr
+    assert "Stderr:" in result.stderr
+    assert "Component detailed error message" in result.stderr
 
 
 def test_execute_missing_project_config(temp_project_dir):
@@ -490,6 +599,197 @@ def test_execute_portfolio_successful(
     call_args = mock_run.calls[0]["args"][0]
     assert call_args[0] == "paper-portfolio"
     assert str(portfolio_config_path.resolve()) in call_args
+
+
+# Test execute_models error paths (analogous to execute_data)
+def test_execute_models_missing_project_config(temp_project_dir):  # Covers 478
+    project_name = "NoMainConfigModels"
+    project_path = temp_project_dir / project_name
+    project_path.mkdir()
+    original_cwd = Path.cwd()
+    os.chdir(project_path)
+    result = runner.invoke(app, ["execute", "models"])
+    os.chdir(original_cwd)
+    assert result.exit_code != 0
+    assert "Project configuration file not found" in result.stderr
+
+
+def test_execute_models_missing_component_section(temp_project_dir):  # Covers 481-488
+    project_name = "NoModelsSection"
+    actual_project_path = _setup_basic_project(temp_project_dir, project_name)
+    main_config_path = (
+        actual_project_path / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
+    )
+    with open(main_config_path, "r") as f:
+        config = yaml.safe_load(f)
+    del config["components"]["models"]
+    with open(main_config_path, "w") as f:
+        yaml.dump(config, f)
+    original_cwd = Path.cwd()
+    os.chdir(actual_project_path)
+    result = runner.invoke(app, ["execute", "models"])
+    os.chdir(original_cwd)
+    assert result.exit_code != 0
+    assert "'components.models' configuration missing" in result.stderr
+
+
+def test_execute_models_missing_config_file_path(temp_project_dir):  # Covers 494-500
+    project_name = "NoModelsFilePath"
+    actual_project_path = _setup_basic_project(temp_project_dir, project_name)
+    main_config_path = (
+        actual_project_path / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
+    )
+    with open(main_config_path, "r") as f:
+        config = yaml.safe_load(f)
+    del config["components"]["models"]["config_file"]
+    with open(main_config_path, "w") as f:
+        yaml.dump(config, f)
+    original_cwd = Path.cwd()
+    os.chdir(actual_project_path)
+    result = runner.invoke(app, ["execute", "models"])
+    os.chdir(original_cwd)
+    assert result.exit_code != 0
+    assert "'components.models.config_file' path missing" in result.stderr
+
+
+# Test execute_portfolio error paths
+def test_execute_portfolio_missing_project_config(temp_project_dir):  # Covers 528
+    project_name = "NoMainConfigPortfolio"
+    project_path = temp_project_dir / project_name
+    project_path.mkdir()
+    original_cwd = Path.cwd()
+    os.chdir(project_path)
+    result = runner.invoke(app, ["execute", "portfolio"])
+    os.chdir(original_cwd)
+    assert result.exit_code != 0
+    assert "Project configuration file not found" in result.stderr
+
+
+def test_execute_portfolio_missing_component_section(
+    temp_project_dir,
+):  # Covers 531-538
+    project_name = "NoPortfolioSection"
+    actual_project_path = _setup_basic_project(temp_project_dir, project_name)
+    main_config_path = (
+        actual_project_path / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
+    )
+    with open(main_config_path, "r") as f:
+        config = yaml.safe_load(f)
+    del config["components"]["portfolio"]
+    with open(main_config_path, "w") as f:
+        yaml.dump(config, f)
+    original_cwd = Path.cwd()
+    os.chdir(actual_project_path)
+    result = runner.invoke(app, ["execute", "portfolio"])
+    os.chdir(original_cwd)
+    assert result.exit_code != 0
+    assert "'components.portfolio' configuration missing" in result.stderr
+
+
+def test_execute_portfolio_missing_config_file_path(temp_project_dir):  # Covers 544-550
+    project_name = "NoPortfolioFilePath"
+    actual_project_path = _setup_basic_project(temp_project_dir, project_name)
+    main_config_path = (
+        actual_project_path / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
+    )
+    with open(main_config_path, "r") as f:
+        config = yaml.safe_load(f)
+    del config["components"]["portfolio"]["config_file"]
+    with open(main_config_path, "w") as f:
+        yaml.dump(config, f)
+    original_cwd = Path.cwd()
+    os.chdir(actual_project_path)
+    result = runner.invoke(app, ["execute", "portfolio"])
+    os.chdir(original_cwd)
+    assert result.exit_code != 0
+    assert "'components.portfolio.config_file' path missing" in result.stderr
+
+
+# Tests for _run_component_cli specific error paths
+def test_run_component_cli_subprocess_stderr_output(
+    temp_project_dir, mock_subprocess_run, mock_shutil_which
+):  # Covers 624-625
+    project_name = "SubprocessStderr"
+    actual_project_path = _setup_basic_project(temp_project_dir, project_name)
+    mock_shutil_which.add("paper-data")
+    (actual_project_path / CONFIGS_DIR_NAME / DATA_COMPONENT_CONFIG_FILENAME).touch()
+
+    original_cwd = Path.cwd()
+    os.chdir(actual_project_path)
+    mock_run, mock_results = mock_subprocess_run
+    # Simulate subprocess having output on stderr but still succeeding
+    mock_results.append(
+        subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="OK", stderr="Subprocess warning"
+        )
+    )
+    result = runner.invoke(app, ["execute", "data"])
+    os.chdir(original_cwd)
+
+    assert result.exit_code == 0
+    assert "OK" in result.stdout
+    assert "Component output (stderr):" in result.stderr
+    assert "Subprocess warning" in result.stderr
+
+
+def test_run_component_cli_called_process_error_with_stdout_stderr(
+    temp_project_dir, mock_subprocess_run, mock_shutil_which
+):  # Covers lines for handling e.stdout and e.stderr in CalledProcessError
+    project_name = "CalledProcessErrorFull"
+    actual_project_path = _setup_basic_project(temp_project_dir, project_name)
+    mock_shutil_which.add("paper-data")
+    (actual_project_path / CONFIGS_DIR_NAME / DATA_COMPONENT_CONFIG_FILENAME).touch()
+
+    original_cwd = Path.cwd()
+    os.chdir(actual_project_path)
+    mock_run, mock_results = mock_subprocess_run
+
+    # Create the CalledProcessError instance
+    cpe = subprocess.CalledProcessError(
+        returncode=1,
+        cmd="paper-data ...",  # The command that "failed"
+    )
+    # Manually set the stdout and stderr attributes on the instance
+    cpe.stdout = "Component stdout output during error"
+    cpe.stderr = "Component stderr detail of error"
+    mock_results.append(cpe)
+
+    result = runner.invoke(app, ["execute", "data"])
+    os.chdir(original_cwd)
+
+    assert result.exit_code != 0
+    assert "Error executing 'paper-data process'" in result.stderr  # Main error message
+
+    # Assert that the "Stdout:" prefix and the content of cpe.stdout are present
+    assert "Stdout:" in result.stderr
+    assert "Component stdout output during error" in result.stderr
+
+    # Assert that the "Stderr:" prefix and the content of cpe.stderr are present
+    assert "Stderr:" in result.stderr
+    assert "Component stderr detail of error" in result.stderr
+
+
+def test_run_component_cli_general_exception(
+    temp_project_dir, mock_subprocess_run, mock_shutil_which
+):  # Covers 644-650
+    project_name = "RunCliGeneralException"
+    actual_project_path = _setup_basic_project(temp_project_dir, project_name)
+    mock_shutil_which.add("paper-data")
+    (actual_project_path / CONFIGS_DIR_NAME / DATA_COMPONENT_CONFIG_FILENAME).touch()
+
+    original_cwd = Path.cwd()
+    os.chdir(actual_project_path)
+    mock_run, mock_results = mock_subprocess_run
+    # This RuntimeError will now be raised by the mock_run
+    mock_results.append(RuntimeError("Simulated unexpected subprocess.run error"))
+    result = runner.invoke(app, ["execute", "data"])
+    os.chdir(original_cwd)
+
+    assert result.exit_code != 0
+    assert (
+        "An unexpected error occurred while running 'paper-data process': Simulated unexpected subprocess.run error"
+        in result.stderr  # The {e} part will be the string of the RuntimeError
+    )
 
 
 # Test the main app help and execute help

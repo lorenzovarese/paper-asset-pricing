@@ -1115,6 +1115,10 @@ source = { editable = "paper-portfolio" }
 name = "paper-tools"
 version = "0.1.0"
 source = { editable = "paper-tools" }
+dependencies = [
+    { name = "pyyaml" },
+    { name = "typer" },
+]
 
 [package.optional-dependencies]
 all = [
@@ -1140,6 +1144,8 @@ requires-dist = [
     { name = "paper-tools", extras = ["data"], marker = "extra == 'all'", editable = "paper-tools" },
     { name = "paper-tools", extras = ["models"], marker = "extra == 'all'", editable = "paper-tools" },
     { name = "paper-tools", extras = ["portfolio"], marker = "extra == 'all'", editable = "paper-tools" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "typer", specifier = ">=0.16.0" },
 ]
 
 [[package]]

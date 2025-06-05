@@ -7,8 +7,12 @@ authors = [
     { name = "Lorenzo Varese", email = "55581163+lorenzovarese@users.noreply.github.com" },
 ]
 requires-python = ">=3.11"
+dependencies = ["pyyaml>=6.0.2", "typer>=0.16.0"]
 # Core paper-tools might have no dependencies itself, or very few.
 # dependencies = []
+
+[project.scripts]
+paper = "paper_tools.cli:app"
 
 [project.optional-dependencies]
 data = ["paper-data~=0.1.0"]

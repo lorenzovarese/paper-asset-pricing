@@ -3,7 +3,7 @@ project_name: "{{project_name}}"
 version: "0.1.0"
 paper_tools_version: "{{paper_tools_version}}"
 creation_date: "{{creation_date}}"
-description: "P.AP.E.R project: {{project_name}}"
+description: "P.A.P.E.R project: {{project_name}}"
 
 components:
   data:

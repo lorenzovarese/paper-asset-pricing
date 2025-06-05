@@ -174,7 +174,7 @@ def init(
             directory creation or template rendering.
 
     Side Effects:
-        - Creates directories and .gitkeep files in each subdirectory.
+        - Creates directories and .gitkeep files in each empty subdirectory.
         - Renders and writes 'paper-project.yaml', '.gitignore', and 'README.md'
           from templates.
         - Creates placeholder component YAML files in the 'configs' directory.
@@ -229,21 +229,25 @@ def init(
         # 1. Create project root directory
         project_path.mkdir(parents=True, exist_ok=True)
 
-        # 2. Create standard directories and add .gitkeep files
-        dirs_to_create = {
+        # 2. Define directory structure (paths only, creation happens next)
+        # These are relative to project_path
+        dir_structure_map = {
             CONFIGS_DIR_NAME: [],
             DATA_DIR_NAME: ["raw", "processed"],
             MODELS_DIR_NAME: ["saved"],
             PORTFOLIOS_DIR_NAME: ["results"],
         }
-        for main_dir, sub_dirs in dirs_to_create.items():
-            base_path = project_path / main_dir
-            base_path.mkdir(exist_ok=True)
-            (base_path / ".gitkeep").touch()
-            for sub_dir in sub_dirs:
-                sub_path = base_path / sub_dir
-                sub_path.mkdir(exist_ok=True)
-                (sub_path / ".gitkeep").touch()
+
+        # Create all directories first
+        all_dirs_to_create_paths: list[Path] = []
+        for main_dir_name, sub_dir_names in dir_structure_map.items():
+            base_path = project_path / main_dir_name
+            all_dirs_to_create_paths.append(base_path)
+            for sub_dir_name in sub_dir_names:
+                all_dirs_to_create_paths.append(base_path / sub_dir_name)
+
+        for dir_p in all_dirs_to_create_paths:
+            dir_p.mkdir(parents=True, exist_ok=True)  # parents=True is good for subdirs
         typer.secho("✓ Created project directories.", fg=typer.colors.GREEN)
 
         # 3. Prepare context for template rendering
@@ -334,6 +338,22 @@ def init(
                 f"{placeholder_conf_path.relative_to(Path.cwd())}",
                 fg=typer.colors.BLUE,
             )
+
+        # 9. Add .gitkeep files to empty directories *AFTER* all other files are created
+        # Iterate through the same list of directories that were created.
+        # all_dirs_to_create_paths was defined in step 2.
+        for dir_p in all_dirs_to_create_paths:
+            # Check if the directory is empty (no files or subdirectories other than potentially .gitkeep itself)
+            is_empty = True
+            for item in dir_p.iterdir():
+                if item.name != ".gitkeep":
+                    is_empty = False
+                    break
+            if is_empty:
+                (dir_p / ".gitkeep").touch()
+        typer.secho(
+            "✓ Ensured .gitkeep in empty project subdirectories.", fg=typer.colors.GREEN
+        )
 
         typer.secho(
             f"\n🎉 P.A.P.E.R project '{project_path.name}' initialized successfully!",

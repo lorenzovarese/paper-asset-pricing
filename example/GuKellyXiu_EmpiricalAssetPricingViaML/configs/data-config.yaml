@@ -417,7 +417,7 @@ wrangling_pipeline:
 
 export:
 # Export the final, model-ready dataset to Parquet format, partitioned by year.
-- dataset_name: "final_dataset_model"
+- dataset_name: "data_with_interactions"
   output_filename_base: "final_dataset_model" # This name is used by paper-model
   format: "parquet"
   partition_by: "year"

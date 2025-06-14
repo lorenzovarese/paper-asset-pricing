@@ -245,12 +245,16 @@ def create_macro_firm_interactions_lazy(
     new_interaction_cols = []
 
     # Validate that all specified columns exist in the LazyFrame's schema
-    missing_macro_cols = [c for c in macro_columns if c not in ldf.columns]
+    missing_macro_cols = [
+        c for c in macro_columns if c not in ldf.collect_schema().names()
+    ]
     if missing_macro_cols:
         raise ValueError(
             f"Macro columns specified for interaction not found in LazyFrame: {missing_macro_cols}"
         )
-    missing_firm_cols = [c for c in firm_columns if c not in ldf.columns]
+    missing_firm_cols = [
+        c for c in firm_columns if c not in ldf.collect_schema().names()
+    ]
     if missing_firm_cols:
         raise ValueError(
             f"Firm columns specified for interaction not found in LazyFrame: {missing_firm_cols}"

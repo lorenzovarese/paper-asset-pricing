@@ -505,7 +505,10 @@ class DataManager:
         date_col_for_export = self._ingestion_metadata.get(dataset_name, {}).get(
             "date_column"
         )
-        if not date_col_for_export or date_col_for_export not in ldf_to_export.columns:
+        if (
+            not date_col_for_export
+            or date_col_for_export not in ldf_to_export.collect_schema().names()
+        ):
             raise ValueError(
                 f"Cannot partition by 'year'. Lazy dataset '{dataset_name}' is missing date column '{date_col_for_export}'."
             )

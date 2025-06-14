@@ -254,11 +254,39 @@ wrangling_pipeline:
   how: "inner"
   output_name: "firm_level_data"
 
+# Lag all macroeconomic predictors by one month.
+# The firm characteristics are already lagged in the firm_ret dataset, (see README.txt from datashare.csv in the Xiu website)
+# this means that if we want to predict returns at time t,
+# we need firm characteristics at time t.
+# So we only need to lag the macroeconomic data for consistency.
+- operation: "lag"
+  dataset: "macro"
+  periods: 1
+  columns_to_lag:
+  - method: "all_except"
+  - columns: [ "date" ] # Lag everything except the date column
+  drop_original_cols_after_lag: true
+  restore_names: true # Rename lagged columns (e.g., 'bm_lag_1') back to original names ('bm')
+  drop_generated_nans: true # Remove rows where lagging created missing values
+  output_name: "macro_lagged"
+
+# Lag the risk-free rate by one month for the same reason.
+- operation: "lag"
+  dataset: "risk_free"
+  periods: 1
+  columns_to_lag:
+  - method: "all_except"
+  - columns: [ "date" ]
+  drop_original_cols_after_lag: true
+  restore_names: true
+  drop_generated_nans: true
+  output_name: "risk_free_lagged"
+
 # Merge the combined firm data with macroeconomic data.
 # An inner join ensures that we can compute the interaction terms only for dates where both firm and macro data are available.
 - operation: "merge"
   left_dataset: "firm_level_data"
-  right_dataset: "macro"
+  right_dataset: "macro_lagged"
   "on": [ "date" ]
   how: "inner"
   output_name: "firm_macro_data"
@@ -266,7 +294,7 @@ wrangling_pipeline:
 # Merge with risk-free rate data.
 - operation: "merge"
   left_dataset: "firm_macro_data"
-  right_dataset: "risk_free"
+  right_dataset: "risk_free_lagged"
   "on": [ "date" ]
   how: "inner"
   output_name: "merged_all"
@@ -385,24 +413,7 @@ wrangling_pipeline:
   # if you wish to create interactions with them.
   drop_macro_columns: true # Keep original macro columns for the baseline model
   output_name: "data_with_interactions"
-
-# Note: High Risk of Lookahead Bias: This pipeline structure makes it dangerously easy to introduce lookahead bias. 
-# A common mistake would be to interact a lagged variable with a non-lagged one (e.g., firm_char(t-1) * macro_char(t)).
-# For this reason, we ensure that all interactions are computed using the same time period data.
-
-
-# Lag all predictors by one period for forecasting.
-# This ensures we use information at t-1 to predict returns at t.
-- operation: "lag"
-  dataset: "data_with_interactions"
-  periods: 1
-  columns_to_lag:
-  - method: "all_except"
-  - columns: [ "date", "permno", "ret" ] # Lag everything except identifiers and the target
-  drop_original_cols_after_lag: true
-  restore_names: true # Rename lagged columns (e.g., 'bm_lag_1') back to original names ('bm')
-  drop_generated_nans: true # Remove rows where lagging created missing values
-  output_name: "final_dataset_model"
+  use_lazy_engine: true
 
 export:
 # Export the final, model-ready dataset to Parquet format, partitioned by year.

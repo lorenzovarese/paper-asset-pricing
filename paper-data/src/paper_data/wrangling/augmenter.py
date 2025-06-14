@@ -1,5 +1,6 @@
 """Data augmentation library for paper data."""
 
+from __future__ import annotations
 from typing import Literal
 import polars as pl
 import logging
@@ -244,6 +245,71 @@ def create_macro_firm_interactions(
 
     logger.info(f"Interaction creation complete. Resulting shape: {out_df.shape}")
     return out_df
+
+
+def create_macro_firm_interactions_lazy(
+    ldf: pl.LazyFrame,
+    macro_columns: list[str],
+    firm_columns: list[str],
+    drop_macro_columns: bool,
+) -> pl.LazyFrame:
+    """
+    Lazily creates interaction columns between macro and firm characteristics.
+    This function defines the operations but does not execute them immediately.
+
+    Args:
+        ldf: The input Polars LazyFrame.
+        macro_columns: A list of column names for macro characteristics.
+        firm_columns: A list of column names for firm characteristics.
+        drop_macro_columns: If True, defines an operation to drop the original
+                            macro columns from the final output.
+
+    Returns:
+        A new Polars LazyFrame with the interaction operations defined.
+    """
+    interaction_expressions = []
+    new_interaction_cols = []
+
+    # Validate that all specified columns exist in the LazyFrame's schema
+    missing_macro_cols = [c for c in macro_columns if c not in ldf.columns]
+    if missing_macro_cols:
+        raise ValueError(
+            f"Macro columns specified for interaction not found in LazyFrame: {missing_macro_cols}"
+        )
+    missing_firm_cols = [c for c in firm_columns if c not in ldf.columns]
+    if missing_firm_cols:
+        raise ValueError(
+            f"Firm columns specified for interaction not found in LazyFrame: {missing_firm_cols}"
+        )
+
+    logger.info(
+        f"Defining lazy interaction columns between macro: {macro_columns} and firm: {firm_columns}..."
+    )
+
+    for firm_col in firm_columns:
+        for macro_col in macro_columns:
+            interaction_col_name = f"{firm_col}_x_{macro_col}"
+            new_interaction_cols.append(interaction_col_name)
+            interaction_expressions.append(
+                (pl.col(firm_col) * pl.col(macro_col)).alias(interaction_col_name)
+            )
+
+    if interaction_expressions:
+        ldf = ldf.with_columns(interaction_expressions)
+        logger.info(
+            f"Defined {len(new_interaction_cols)} new lazy interaction columns."
+        )
+    else:
+        logger.info("No lazy interaction columns were defined.")
+
+    if drop_macro_columns:
+        logger.info(
+            f"Defining operation to drop original macro columns: {macro_columns}"
+        )
+        ldf = ldf.drop(macro_columns)
+
+    logger.info("Lazy interaction definition complete.")
+    return ldf
 
 
 def create_dummies(

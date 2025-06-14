@@ -10,6 +10,7 @@ from paper_data.wrangling.augmenter import (
     merge_datasets,
     lag_columns,
     create_macro_firm_interactions,
+    create_macro_firm_interactions_lazy,
     create_dummies,
 )
 from paper_data.wrangling.cleaner import (
@@ -34,6 +35,7 @@ class DataManager:
         """
         self.config = load_config(config_path)
         self.datasets: dict[str, pl.DataFrame] = {}
+        self.lazy_datasets: dict[str, pl.LazyFrame] = {}
         self._project_root: Path | None = None  # To be set by the run method
         self._ingestion_metadata: dict[
             str, dict
@@ -374,6 +376,7 @@ class DataManager:
                 firm_columns = operation_config.get("firm_columns", [])
                 drop_macro_columns = operation_config.get("drop_macro_columns", False)
                 output_name = operation_config["output_name"]
+                use_lazy_engine = operation_config.get("use_lazy_engine", False)
 
                 if dataset_name not in self.datasets:
                     raise ValueError(
@@ -395,19 +398,38 @@ class DataManager:
                 logger.info(f"  Firm Columns: {firm_columns}")
                 logger.info(f"  Drop Macro Columns: {drop_macro_columns}")
                 logger.info(f"  Output Dataset: '{output_name}'")
+                logger.info(f"  Use Lazy Engine: {use_lazy_engine}")
 
-                interactions_df = create_macro_firm_interactions(
-                    df_to_interact, macro_columns, firm_columns, drop_macro_columns
-                )
-                self.datasets[output_name] = interactions_df
-                # Inherit metadata from the input dataset
+                # Inherit metadata for the new dataset, regardless of engine
                 if dataset_name in self._ingestion_metadata:
                     self._ingestion_metadata[output_name] = self._ingestion_metadata[
                         dataset_name
                     ]
-                logger.info(
-                    f"  -> Macro-firm interaction creation complete. New dataset '{output_name}' shape: {interactions_df.shape}"
-                )
+
+                if use_lazy_engine:
+                    logger.info(
+                        "Using lazy engine. Computation will be deferred until export."
+                    )
+                    ldf = df_to_interact.lazy()
+                    interactions_ldf = create_macro_firm_interactions_lazy(
+                        ldf, macro_columns, firm_columns, drop_macro_columns
+                    )
+                    self.lazy_datasets[output_name] = interactions_ldf
+                    logger.info(
+                        f"  -> Lazy macro-firm interaction plan created for '{output_name}'."
+                    )
+                else:
+                    logger.info("Using eager engine. Processing data in memory.")
+                    interactions_df = create_macro_firm_interactions(
+                        df_to_interact,
+                        macro_columns,
+                        firm_columns,
+                        drop_macro_columns,
+                    )
+                    self.datasets[output_name] = interactions_df
+                    logger.info(
+                        f"  -> Eager macro-firm interaction creation complete. New dataset '{output_name}' shape: {interactions_df.shape}"
+                    )
 
             else:
                 raise NotImplementedError(
@@ -422,11 +444,9 @@ class DataManager:
         dataset_name: str,
     ):
         """
-        Exports a Polars DataFrame to Parquet, partitioned by year.
+        Exports an eager Polars DataFrame to Parquet, partitioned by year.
         Creates files named 'output_filename_base_YYYY.parquet'.
         """
-        # Ensure 'date' column exists and is of Date type for year extraction
-        # Use the date column identified during ingestion
         date_col_for_export = self._ingestion_metadata.get(dataset_name, {}).get(
             "date_column"
         )
@@ -441,7 +461,6 @@ class DataManager:
                 f"Cannot partition by 'year'. Dataset '{dataset_name}' does not have a recognized date column of type Date or Datetime."
             )
 
-        # Use a temporary, uniquely named column for partitioning to avoid conflicts
         temp_year_col = "__temp_year__"
         df_for_partitioning = df_to_export.with_columns(
             pl.col(date_col_for_export).dt.year().alias(temp_year_col)
@@ -458,10 +477,49 @@ class DataManager:
             df_year.drop(temp_year_col).write_parquet(file_path)
             logger.info(f"  Exported data for year {year} to '{file_path}'.")
 
+    def _export_lazy_parquet_partitioned_by_year(
+        self,
+        ldf_to_export: pl.LazyFrame,
+        output_dir: Path,
+        output_filename_base: str,
+        dataset_name: str,
+    ):
+        """
+        Exports a lazy Polars DataFrame to Parquet, partitioned by year,
+        by streaming the output year by year to avoid high memory usage.
+        """
+        date_col_for_export = self._ingestion_metadata.get(dataset_name, {}).get(
+            "date_column"
+        )
+        if not date_col_for_export or date_col_for_export not in ldf_to_export.columns:
+            raise ValueError(
+                f"Cannot partition by 'year'. Lazy dataset '{dataset_name}' is missing date column '{date_col_for_export}'."
+            )
+
+        # Get unique years without collecting the full dataset
+        unique_years_df = ldf_to_export.select(
+            pl.col(date_col_for_export).dt.year().alias("year")
+        ).unique()
+        unique_years = unique_years_df.collect()["year"].sort().to_list()
+
+        logger.info(
+            f"Streaming lazy export of '{dataset_name}' by year: {unique_years}"
+        )
+
+        for year in unique_years:
+            file_path = output_dir / f"{output_filename_base}_{year}.parquet"
+            ldf_year = ldf_to_export.filter(
+                pl.col(date_col_for_export).dt.year() == year
+            )
+
+            logger.info(f"  Executing query and writing data for year {year}...")
+            ldf_year.sink_parquet(file_path)
+            logger.info(f"  -> Exported data for year {year} to '{file_path}'.")
+
     def _export_data(self):
         """
         Exports processed dataframes based on the 'export' section of the config.
-        Currently supports 'parquet' format with 'year' or 'none' partitioning.
+        Supports both eager (in-memory) and lazy (streaming) datasets.
         """
         if self._project_root is None:
             raise ValueError("Project root must be set before exporting data.")
@@ -475,10 +533,42 @@ class DataManager:
             data_format = export_config["format"]
             partition_by = export_config.get("partition_by")
 
+            if dataset_name in self.lazy_datasets:
+                ldf_to_export = self.lazy_datasets[dataset_name]
+                logger.info(f"Found lazy dataset '{dataset_name}' for export.")
+
+                if data_format == "parquet":
+                    if partition_by == "year":
+                        self._export_lazy_parquet_partitioned_by_year(
+                            ldf_to_export,
+                            output_dir,
+                            output_filename_base,
+                            dataset_name,
+                        )
+                    elif partition_by is None or partition_by == "none":
+                        output_path = output_dir / f"{output_filename_base}.parquet"
+                        logger.info(
+                            f"Executing query and streaming lazy export of '{dataset_name}' to '{output_path}'."
+                        )
+                        ldf_to_export.sink_parquet(output_path)
+                        logger.info("  -> Streaming export complete.")
+                    else:
+                        raise NotImplementedError(
+                            f"Partitioning by '{partition_by}' not supported for lazy export yet."
+                        )
+                else:
+                    raise NotImplementedError(
+                        f"Export format '{data_format}' not supported for lazy datasets yet."
+                    )
+                continue
+
             if dataset_name not in self.datasets:
-                raise ValueError(f"Dataset '{dataset_name}' not found for export.")
+                raise ValueError(
+                    f"Dataset '{dataset_name}' not found for export (and not a pending lazy dataset)."
+                )
 
             df_to_export = self.datasets[dataset_name]
+            logger.info(f"Found eager dataset '{dataset_name}' for export.")
 
             if data_format == "parquet":
                 if partition_by == "year":
@@ -507,6 +597,7 @@ class DataManager:
 
         Returns:
             A dictionary of the final processed Polars DataFrames.
+            Note: Lazily processed datasets are not returned as they are streamed to disk, not held in memory.
         """
         self._project_root = Path(project_root).expanduser()
         logger.info(f"Running data pipeline for project: {self._project_root}")
@@ -520,6 +611,8 @@ class DataManager:
         self._wrangle_data()
         for name, df in self.datasets.items():
             logger.info(f"Dataset '{name}' after wrangling. Shape: {df.shape}")
+        for name in self.lazy_datasets:
+            logger.info(f"Lazy dataset '{name}' plan has been defined.")
 
         logger.info("--- Exporting Data ---")
         self._export_data()

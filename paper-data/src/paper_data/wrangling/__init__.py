@@ -8,6 +8,7 @@ from .augmenter import (
     merge_datasets,
     lag_columns,
     create_macro_firm_interactions,
+    create_macro_firm_interactions_lazy,
     create_dummies,
 )
 
@@ -18,5 +19,6 @@ __all__ = [
     "merge_datasets",
     "lag_columns",
     "create_macro_firm_interactions",
+    "create_macro_firm_interactions_lazy",
     "create_dummies",
 ]

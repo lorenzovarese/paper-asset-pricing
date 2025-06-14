@@ -40,11 +40,14 @@ def impute_monthly(
     date_col: str,
     numeric_cols: list[str],
     categorical_cols: list[str],
+    fallback_to_zero: bool = False,
 ) -> pl.DataFrame:
     """
     Monthly imputation for Polars DataFrame:
       • numeric columns  → cross-sectional median
       • categorical cols → cross-sectional mode (first mode if ties)
+    If `fallback_to_zero` is True, any remaining NaNs after the primary
+    imputation (due to all-NaN months) are filled with 0.
 
     Parameters
     ----------
@@ -52,6 +55,8 @@ def impute_monthly(
     date_col  : Name of the date column in the DataFrame.
     numeric_cols  : list of numeric columns to fill with medians.
     categorical_cols : list of categorical / discrete columns to fill with modes.
+    fallback_to_zero : bool, default False
+                       If True, fills remaining nulls with 0.
 
     Returns
     -------
@@ -75,40 +80,49 @@ def impute_monthly(
             f"Columns specified for imputation not found in DataFrame: {missing_cols}"
         )
 
-    # Check for all-NaN groups before imputation
-    for col in numeric_cols + categorical_cols:
-        # Use a lazy frame for efficient group-by and aggregation
-        null_check_df = (
-            out.lazy()
-            .group_by(month_key_expr)
-            .agg(pl.col(col).drop_nulls().count().alias("non_null_count"))
-            .filter(pl.col("non_null_count") == 0)
-            .collect()
-        )  # Collect to check if empty
-
-        if not null_check_df.is_empty():
-            problematic_months = null_check_df["month_key"].to_list()
-            raise ValueError(
-                f"Column '{col}' has all NaNs/nulls in month(s): {list(problematic_months)}. Cannot impute."
+    # Check for all-NaN groups before imputation, but only if not using the fallback.
+    if not fallback_to_zero:
+        for col in all_impute_cols:
+            null_check_df = (
+                out.lazy()
+                .group_by(month_key_expr)
+                .agg(pl.col(col).drop_nulls().count().alias("non_null_count"))
+                .filter(pl.col("non_null_count") == 0)
+                .collect()
             )
+
+            if not null_check_df.is_empty():
+                problematic_months = null_check_df["month_key"].to_list()
+                raise ValueError(
+                    f"Column '{col}' has all NaNs/nulls in month(s): {list(problematic_months)}. "
+                    "Cannot impute. Consider using the 'fallback_to_zero: true' option in your config."
+                )
 
     # Apply numeric imputation (median)
     if numeric_cols:
         logger.info(f"Imputing numeric columns by monthly median: {numeric_cols}")
         for col in numeric_cols:
             _log_null_count(out, col)
-            out = out.with_columns(
-                pl.col(col).fill_null(pl.col(col).median().over(month_key_expr))
+            impute_expr = pl.col(col).fill_null(
+                pl.col(col).median().over(month_key_expr)
             )
+            if fallback_to_zero:
+                impute_expr = impute_expr.fill_null(0)
+            out = out.with_columns(impute_expr)
 
     # Apply categorical imputation (mode)
     if categorical_cols:
-        logger.info(f"Imputing categorical columns by monthly mode: {categorical_cols}")
+        logger.info(
+            f"Imputing categorical columns by monthly mode: {categorical_cols}"
+        )
         for col in categorical_cols:
             _log_null_count(out, col)
-            out = out.with_columns(
-                pl.col(col).fill_null(pl.col(col).mode().first().over(month_key_expr))
+            impute_expr = pl.col(col).fill_null(
+                pl.col(col).mode().first().over(month_key_expr)
             )
+            if fallback_to_zero:
+                impute_expr = impute_expr.fill_null(0)
+            out = out.with_columns(impute_expr)
 
     return out
 

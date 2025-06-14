@@ -140,6 +140,7 @@ class DataManager:
                 numeric_columns = operation_config.get("numeric_columns", [])
                 categorical_columns = operation_config.get("categorical_columns", [])
                 output_name = operation_config["output_name"]
+                fallback_to_zero = operation_config.get("fallback_to_zero", False)
 
                 if dataset_name not in self.datasets:
                     raise ValueError(
@@ -155,10 +156,15 @@ class DataManager:
                 logger.info(f"  Input Dataset: '{dataset_name}'")
                 logger.info(f"  Numeric Columns: {numeric_columns}")
                 logger.info(f"  Categorical Columns: {categorical_columns}")
+                logger.info(f"  Fallback to Zero: {fallback_to_zero}")
                 logger.info(f"  Output Dataset: '{output_name}'")
 
                 imputed_df = impute_monthly(
-                    df_to_impute, date_col, numeric_columns, categorical_columns
+                    df_to_impute,
+                    date_col,
+                    numeric_columns,
+                    categorical_columns,
+                    fallback_to_zero=fallback_to_zero,
                 )
                 self.datasets[output_name] = imputed_df
                 # Update metadata for the new dataset

@@ -36,6 +36,7 @@ wrangling_pipeline:
 # Impute missing values in firm characteristics.
 - operation: "monthly_imputation"
   dataset: "firm_chars"
+  fallback_to_zero: true
   numeric_columns:
   - "mvel1"
   - "beta"

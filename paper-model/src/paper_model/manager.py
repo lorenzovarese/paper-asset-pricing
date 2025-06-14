@@ -1,8 +1,9 @@
 import polars as pl
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Tuple, Union
 import joblib  # type: ignore
+from datetime import datetime
 
 from paper_model.config_parser import ModelsConfig, FeatureSelectionConfig
 from paper_model.models.base import BaseModel
@@ -42,28 +43,66 @@ class ModelManager:
         self.all_evaluation_results: Dict[str, List[Dict[str, Any]]] = {}
         self.all_prediction_results: Dict[str, List[pl.DataFrame]] = {}
         self._project_root: Path | None = None
+        self._all_data_columns: List[str] = []
 
-    def _load_processed_data(self) -> pl.DataFrame:
+    def _get_data_for_window(
+        self, start_date: datetime, end_date: datetime
+    ) -> pl.DataFrame:
+        """
+        Lazily loads only the necessary yearly Parquet files for a given date window.
+        """
         if self._project_root is None:
             raise ValueError("Project root must be set before loading data.")
 
         input_conf = self.config.input_data
         processed_dir = self._project_root / "data" / "processed"
 
-        if input_conf.splitted == "year":
-            files = sorted(
-                list(processed_dir.glob(f"{input_conf.dataset_name}_*.parquet"))
+        if input_conf.splitted != "year":
+            # For non-split data, load it once and cache it.
+            if not hasattr(self, "_cached_full_data"):
+                file_path = processed_dir / f"{input_conf.dataset_name}.parquet"
+                if not file_path.is_file():
+                    raise FileNotFoundError(f"Data file {file_path} not found.")
+                df = pl.read_parquet(file_path)
+                float64_cols = [col.name for col in df if col.dtype == pl.Float64]
+                if float64_cols:
+                    df = df.with_columns(
+                        [pl.col(c).cast(pl.Float32) for c in float64_cols]
+                    )
+                self._cached_full_data = df
+            return self._cached_full_data
+
+        # --- Logic for year-splitted data ---
+        start_year = start_date.year
+        end_year = end_date.year
+        files_to_load = []
+        for year in range(start_year, end_year + 1):
+            file_path = processed_dir / f"{input_conf.dataset_name}_{year}.parquet"
+            if file_path.is_file():
+                files_to_load.append(file_path)
+
+        if not files_to_load:
+            logger.warning(
+                f"No data files found for window {start_date.strftime('%Y-%m')} to {end_date.strftime('%Y-%m')}."
             )
-            if not files:
-                raise FileNotFoundError(
-                    f"No data files found for {input_conf.dataset_name} in {processed_dir}"
+            # Return an empty dataframe with the correct schema
+            # Assuming schema is already populated
+            date_col = self.config.input_data.date_column
+            id_col = self.config.input_data.id_column
+            schema = {
+                col: (
+                    pl.Date
+                    if col == date_col
+                    else pl.Int64
+                    if col == id_col
+                    else pl.Float32
                 )
-            df = pl.concat([pl.read_parquet(f) for f in files])
-        else:
-            file_path = processed_dir / f"{input_conf.dataset_name}.parquet"
-            if not file_path.is_file():
-                raise FileNotFoundError(f"Data file {file_path} not found.")
-            df = pl.read_parquet(file_path)
+                for col in self._all_data_columns
+            }
+            return pl.DataFrame(schema=schema)
+
+        logger.info(f"Loading data for years {start_year}-{end_year}...")
+        df = pl.concat([pl.read_parquet(f) for f in files_to_load], rechunk=True)
 
         # Cast all 64-bit float columns to 32-bit floats to reduce memory usage.
         # This is safe as monthly financial data rarely requires double precision.
@@ -78,6 +117,58 @@ class ModelManager:
             df = df.with_columns(pl.col(input_conf.date_column).cast(pl.Date))
 
         return df.sort(input_conf.date_column, input_conf.id_column)
+
+    def _get_all_data_columns_and_months(self) -> Tuple[List[str], List[datetime]]:
+        """
+        Scans all data files to get the full column schema and the universe of unique months
+        without loading all data into memory.
+        """
+        if self._project_root is None:
+            raise ValueError("Project root must be set.")
+
+        input_conf = self.config.input_data
+        processed_dir = self._project_root / "data" / "processed"
+        all_months = set()
+
+        if input_conf.splitted == "year":
+            files = sorted(
+                list(processed_dir.glob(f"{input_conf.dataset_name}_*.parquet"))
+            )
+            if not files:
+                raise FileNotFoundError(
+                    f"No data files found for dataset '{input_conf.dataset_name}' in {processed_dir}"
+                )
+            # Get schema from the first file
+            schema = pl.read_parquet_schema(files[0])
+            all_columns = list(schema.keys())
+
+            # Scan all files for unique months
+            for f in files:
+                months_in_file = (
+                    pl.scan_parquet(f)
+                    .select(pl.col(input_conf.date_column).dt.truncate("1mo"))
+                    .unique()
+                    .collect()
+                    .get_column(input_conf.date_column)
+                    .to_list()
+                )
+                all_months.update(months_in_file)
+        else:
+            file_path = processed_dir / f"{input_conf.dataset_name}.parquet"
+            if not file_path.is_file():
+                raise FileNotFoundError(f"Data file {file_path} not found.")
+
+            scan = pl.scan_parquet(file_path)
+            all_columns = scan.columns
+            all_months.update(
+                scan.select(pl.col(input_conf.date_column).dt.truncate("1mo"))
+                .unique()
+                .collect()
+                .get_column(input_conf.date_column)
+                .to_list()
+            )
+
+        return all_columns, sorted(list(all_months))
 
     def _resolve_feature_columns(
         self,
@@ -116,7 +207,7 @@ class ModelManager:
                 f"Invalid type for 'features' configuration: {type(features_config)}"
             )
 
-    def _initialize_models(self, all_data_columns: List[str]) -> None:
+    def _initialize_models(self) -> None:
         """
         Initializes models and resolves their feature columns.
         """
@@ -129,7 +220,7 @@ class ModelManager:
 
             model_class = self.MODEL_REGISTRY[model_type]
             resolved_features = self._resolve_feature_columns(
-                model_config.features, all_data_columns
+                model_config.features, self._all_data_columns
             )
             final_model_config_dict = model_config.model_dump()
             final_model_config_dict["feature_columns"] = resolved_features
@@ -143,14 +234,10 @@ class ModelManager:
                 f"Initialized model: '{model_name}' with {len(resolved_features)} features."
             )
 
-    def _run_rolling_window_evaluation(self, data: pl.DataFrame) -> None:
+    def _run_rolling_window_evaluation(self, unique_months: List[datetime]) -> None:
         eval_config = self.config.evaluation
         date_col = self.config.input_data.date_column
         id_col = self.config.input_data.id_column
-
-        unique_months = (
-            data.get_column(date_col).dt.truncate("1mo").unique().sort().to_list()
-        )
 
         total_window_months = (
             eval_config.train_month
@@ -178,6 +265,20 @@ class ModelManager:
                 logger.info("Reached the end of the dataset. Stopping evaluation.")
                 break
 
+            # Define the full date range for the current window
+            window_start_date = unique_months[window_start_idx]
+            window_end_date = unique_months[test_end_idx - 1]
+
+            # Load data just for this window
+            window_data = self._get_data_for_window(window_start_date, window_end_date)
+            if window_data.is_empty():
+                logger.warning(
+                    f"Skipping window starting {window_start_date.strftime('%Y-%m')} due to no data."
+                )
+                window_start_idx += eval_config.step_month
+                continue
+
+            # Define specific dates for train/val/test sets
             train_start_date = unique_months[window_start_idx]
             train_end_date = unique_months[train_end_idx - 1]
             validation_start_date = unique_months[train_end_idx]
@@ -199,13 +300,14 @@ class ModelManager:
                 f"{test_end_date.strftime('%Y-%m')}"
             )
 
-            train_data = data.filter(
+            # Filter the window_data to get the specific sets
+            train_data = window_data.filter(
                 pl.col(date_col).is_between(train_start_date, train_end_date)
             )
 
             validation_data = None
             if eval_config.validation_month > 0:
-                validation_data = data.filter(
+                validation_data = window_data.filter(
                     pl.col(date_col).is_between(
                         validation_start_date, validation_end_date
                     )
@@ -223,7 +325,7 @@ class ModelManager:
 
                     for test_month_idx in range(validation_end_idx, test_end_idx):
                         current_month = unique_months[test_month_idx]
-                        monthly_test_data = data.filter(
+                        monthly_test_data = window_data.filter(
                             pl.col(date_col).dt.truncate("1mo") == current_month
                         )
                         if monthly_test_data.is_empty():
@@ -331,16 +433,17 @@ class ModelManager:
         self._project_root = Path(project_root).expanduser()
         logger.info(f"Running model pipeline for project: {self._project_root}")
 
-        logger.info("--- Loading Processed Data ---")
-        full_data = self._load_processed_data()
-        all_data_columns = full_data.columns
-        logger.info(f"Data loaded successfully. Shape: {full_data.shape}")
+        logger.info("--- Scanning Data Files for Schema and Date Range ---")
+        self._all_data_columns, unique_months = self._get_all_data_columns_and_months()
+        logger.info(
+            f"Data scan complete. Found {len(self._all_data_columns)} columns and {len(unique_months)} unique months."
+        )
 
         logger.info("--- Initializing Models ---")
-        self._initialize_models(all_data_columns)
+        self._initialize_models()
 
         logger.info("--- Running Rolling Window Evaluation ---")
-        self._run_rolling_window_evaluation(full_data)
+        self._run_rolling_window_evaluation(unique_months)
 
         logger.info("--- Exporting Results ---")
         self._export_results()

@@ -485,8 +485,11 @@ class DataManager:
         for year in unique_years:
             df_year = df_for_partitioning.filter(pl.col(temp_year_col) == year)
             file_path = output_dir / f"{output_filename_base}_{year}.parquet"
-            df_year.drop(temp_year_col).write_parquet(file_path)
-            logger.info(f"  Exported data for year {year} to '{file_path}'.")
+            df_year_to_write = df_year.drop(temp_year_col)
+            df_year_to_write.write_parquet(file_path)
+            logger.info(
+                f"  Exported data for year {year} to '{file_path}'. Final shape for year: {df_year_to_write.shape}"
+            )
 
     def _export_lazy_parquet_partitioned_by_year(
         self,
@@ -525,7 +528,10 @@ class DataManager:
 
             logger.info(f"  Executing query and writing data for year {year}...")
             ldf_year.sink_parquet(file_path)
-            logger.info(f"  -> Exported data for year {year} to '{file_path}'.")
+            written_df = pl.read_parquet(file_path)
+            logger.info(
+                f"  -> Exported data for year {year} to '{file_path}'. Final shape for year: {written_df.shape}"
+            )
 
     def _export_data(self):
         """
@@ -562,7 +568,10 @@ class DataManager:
                             f"Executing query and streaming lazy export of '{dataset_name}' to '{output_path}'."
                         )
                         ldf_to_export.sink_parquet(output_path)
-                        logger.info("  -> Streaming export complete.")
+                        written_df = pl.read_parquet(output_path)
+                        logger.info(
+                            f"  -> Streaming export complete. Final shape: {written_df.shape}"
+                        )
                     else:
                         raise NotImplementedError(
                             f"Partitioning by '{partition_by}' not supported for lazy export yet."
@@ -589,7 +598,9 @@ class DataManager:
                 elif partition_by is None or partition_by == "none":
                     output_path = output_dir / f"{output_filename_base}.parquet"
                     df_to_export.write_parquet(output_path)
-                    logger.info(f"Exported '{dataset_name}' to '{output_path}'.")
+                    logger.info(
+                        f"Exported '{dataset_name}' to '{output_path}'. Final shape: {df_to_export.shape}"
+                    )
                 else:
                     raise NotImplementedError(
                         f"Partitioning by '{partition_by}' not supported yet."

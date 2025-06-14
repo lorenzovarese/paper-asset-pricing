@@ -315,10 +315,21 @@ class DataManager:
                 logger.info(f"  Drop Generated NaNs: {drop_generated_nans}")
                 logger.info(f"  Output Dataset: '{output_name}'")
 
+                # For time-series data (like macro factors), the id_col might be the same as date_col.
+                # In this case, we must treat it as a simple time-series lag (id_col=None),
+                # not a panel lag grouped by each unique date.
+                id_col_for_lag = id_col
+                if id_col == date_col:
+                    logger.info(
+                        f"Identifier column ('{id_col}') is the same as the date column ('{date_col}'). "
+                        "Treating as a time-series lag (no panel grouping)."
+                    )
+                    id_col_for_lag = None
+
                 lagged_df = lag_columns(
                     df_to_lag,
                     date_col,
-                    id_col,
+                    id_col_for_lag,  # Use the corrected id_col
                     cols_to_lag,
                     periods,
                     drop_original_cols_after_lag,

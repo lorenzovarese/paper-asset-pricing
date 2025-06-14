@@ -187,9 +187,13 @@ def scale_to_range(
 
     expressions = []
     for col in cols:
-        # Calculate min and max within each month group
-        min_val = pl.col(col).min().over(month_key_expr)
-        max_val = pl.col(col).max().over(month_key_expr)
+        # Explicitly cast to Float64 to prevent arithmetic errors on string types.
+        # `strict=False` will turn uncastable values (e.g., non-numeric strings) into nulls.
+        col_expr = pl.col(col).cast(pl.Float64, strict=False)
+
+        # Calculate min and max within each month group using the numeric expression
+        min_val = col_expr.min().over(month_key_expr)
+        max_val = col_expr.max().over(month_key_expr)
 
         # Calculate the actual range for the current month and column
         actual_range = max_val - min_val
@@ -197,9 +201,11 @@ def scale_to_range(
         # Define the scaling expression
         scaled_expression = (
             pl.when(actual_range == 0)  # If min == max within the group
-            .then(pl.lit(target_midpoint))  # Set to midpoint of target range
+            .then(
+                pl.lit(target_midpoint, dtype=pl.Float64)
+            )  # Set to midpoint of target range
             .otherwise(
-                target_min + (pl.col(col) - min_val) * target_range_span / actual_range
+                target_min + (col_expr - min_val) * target_range_span / actual_range
             )
             .clip(
                 target_min, target_max

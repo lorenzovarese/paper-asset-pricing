@@ -15,7 +15,7 @@ ingestion:
   path: "crsp_returns_dec1956_dec2021_EOM.csv"
   format: "csv"
   to_lowercase_cols: true
-  date_column: { "date": "%Y-%m-%d" }
+  date_column: { "date": "%Y%m%d" }
   firm_id_column: "permno"
 
 # Ingest macroeconomic predictors.

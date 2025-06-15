@@ -3,9 +3,14 @@
 from pathlib import Path
 import polars as pl
 import logging
+import hashlib
 
 from paper_data.config_parser import load_config
-from paper_data.ingestion.local import CSVLoader
+from paper_data.ingestion import (
+    CSVLoader,
+    GoogleSheetConnector,
+    WRDSConnector,
+)
 from paper_data.wrangling.augmenter import (
     merge_datasets,
     lag_columns,
@@ -19,6 +24,11 @@ from paper_data.wrangling.cleaner import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_cache_hash(text: str) -> str:
+    """Generates a truncated SHA256 hash for creating unique, short filenames."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 class DataManager:
@@ -36,26 +46,28 @@ class DataManager:
         self.config = load_config(config_path)
         self.datasets: dict[str, pl.DataFrame] = {}
         self.lazy_datasets: dict[str, pl.LazyFrame] = {}
-        self._project_root: Path | None = None  # To be set by the run method
-        self._ingestion_metadata: dict[
-            str, dict
-        ] = {}  # Stores metadata like date_column, id_column
+        self._project_root: Path | None = None
+        self._ingestion_metadata: dict[str, dict] = {}
 
     def _resolve_data_path(self, relative_path: str) -> Path:
         """Resolves a relative data path against the project's raw data directory."""
         if self._project_root is None:
             raise ValueError("Project root must be set before resolving data paths.")
-        # Assumes raw data is in 'data/raw' relative to project root
         return self._project_root / "data" / "raw" / relative_path
 
     def _ingest_data(self):
         """
         Ingests data into Polars DataFrames based on the 'ingestion' section of the config.
-        Applies transformations like column lowercasing and date parsing.
+        Delegates to the appropriate connector (CSV, Google Sheets, WRDS) which handles caching.
         """
+        if self._project_root is None:
+            raise ValueError("Project root must be set before ingesting data.")
+
+        raw_data_dir = self._project_root / "data" / "raw"
+        raw_data_dir.mkdir(parents=True, exist_ok=True)
+
         for dataset_config in self.config.get("ingestion", []):
             name = dataset_config["name"]
-            path = dataset_config["path"]
             data_format = dataset_config["format"]
             date_column_config = dataset_config.get("date_column", {})
             to_lowercase_cols = dataset_config.get("to_lowercase_cols", False)
@@ -68,47 +80,127 @@ class DataManager:
             date_col_name = list(date_column_config.keys())[0]
             date_col_format = date_column_config[date_col_name]
 
-            # Prioritize 'firm_id_column', then 'id_column', then fall back to heuristics.
+            # Try to get an explicit ID column from the config
             id_col = dataset_config.get("firm_id_column") or dataset_config.get(
                 "id_column"
             )
 
+            # If no ID column is specified, default to the date column.
+            # This treats the data as a pure time-series by default.
             if not id_col:
-                if "firm" in name:
-                    id_col = "permno"
-                    logger.info(
-                        f"For dataset '{name}', 'id_col' was inferred as 'permno'. Consider adding 'firm_id_column' to the config for clarity."
-                    )
-                else:
-                    # For non-firm datasets like macro, the date is the identifier.
-                    id_col = date_col_name
-                    logger.info(
-                        f"Dataset '{name}' does not have a specific ID column defined. Using date column '{date_col_name}' as a fallback."
-                    )
+                id_col = date_col_name
+                logger.info(
+                    f"Dataset '{name}' has no 'id_column' or 'firm_id_column' specified. "
+                    f"Defaulting ID column to the date column ('{date_col_name}'). "
+                    "This is standard for time-series data. For panel data, please specify an ID column in the config."
+                )
+
+            df: pl.DataFrame | None = None
 
             if data_format == "csv":
-                full_path = self._resolve_data_path(path)
-                # Pass date_col and id_col to CSVLoader constructor
+                full_path = self._resolve_data_path(dataset_config["path"])
+                # CSVLoader handles its own loading and date parsing
                 loader = CSVLoader(
                     path=full_path, date_col=date_col_name, id_col=id_col
                 )
-                # Pass date_format to get_data method
                 df = loader.get_data(date_format=date_col_format)
 
-                # Apply transformations
+            elif data_format == "google_sheet":
+                url = dataset_config["url"]
+                cache_hash = _generate_cache_hash(url)
+                cache_path = raw_data_dir / f"{name}_{cache_hash}.csv"
+
+                connector = GoogleSheetConnector(url=url, cache_path=cache_path)
+                df_raw = connector.get_data()
+                # Perform standard validation and date parsing after loading
+                df = self._post_process_loaded_df(
+                    df_raw, date_col_name, id_col, date_col_format, name
+                )
+
+            elif data_format == "wrds":
+                query = dataset_config["query"]
+                cache_hash = _generate_cache_hash(query)
+                cache_path = raw_data_dir / f"{name}_{cache_hash}.csv"
+
+                wrds_user = self.config.get("wrds_credentials", {}).get("user")
+                wrds_password = self.config.get("wrds_credentials", {}).get("password")
+
+                connector = WRDSConnector(
+                    query=query,
+                    cache_path=cache_path,
+                    user=wrds_user,
+                    password=wrds_password,
+                )
+                df_raw = connector.get_data()
+                # Perform standard validation and date parsing after loading
+                df = self._post_process_loaded_df(
+                    df_raw, date_col_name, id_col, date_col_format, name
+                )
+
+            else:
+                raise NotImplementedError(
+                    f"Ingestion format '{data_format}' not supported yet."
+                )
+
+            if df is not None:
                 if to_lowercase_cols:
                     df = df.rename({col: col.lower() for col in df.columns})
 
                 self.datasets[name] = df
-                # Store date column name and id column name for later wrangling steps
                 self._ingestion_metadata[name] = {
                     "date_column": date_col_name,
                     "id_column": id_col,
                 }
             else:
-                raise NotImplementedError(
-                    f"Ingestion format '{data_format}' not supported yet."
+                raise ValueError(f"DataFrame for '{name}' was not loaded.")
+
+    def _post_process_loaded_df(
+        self,
+        df: pl.DataFrame,
+        date_col: str,
+        id_col: str,
+        date_format: str | None,
+        dataset_name: str,
+    ) -> pl.DataFrame:
+        """
+        Applies common validation and transformations after a DataFrame is loaded.
+        This logic is centralized here to support any data source that results in a raw DataFrame.
+        """
+        # Ensure required columns exist before processing
+        missing = {col for col in [date_col, id_col] if col not in df.columns}
+        if missing:
+            error_msg = (
+                f"Missing required columns: {', '.join(missing)} for dataset '{dataset_name}'.\n"
+                f"  - Expected columns based on config: ['{date_col}', '{id_col}']\n"
+                f"  - Columns found in data: {df.columns}\n"
+                "  - Please check your 'data-config.yaml' and the data source."
+            )
+            raise ValueError(error_msg)
+
+        if date_format is not None:
+            current_dtype = df[date_col].dtype
+            # Cast numeric date columns to string before parsing
+            if current_dtype.is_numeric():
+                df = df.with_columns(pl.col(date_col).cast(pl.Utf8))
+                logger.info(
+                    f"Info: Date column '{date_col}' was numeric, cast to string for parsing."
                 )
+
+            # Parse the date string
+            df = df.with_columns(
+                pl.col(date_col).str.strptime(pl.Date, format=date_format, strict=False)
+            )
+
+            # Check for nulls after parsing to ensure the format was correct
+            if df[date_col].is_null().any():
+                null_count = df[date_col].is_null().sum()
+                total_rows = df.shape[0]
+                raise ValueError(
+                    f"Failed to parse {null_count}/{total_rows} date values in column '{date_col}' "
+                    f"using format '{date_format}' for dataset '{dataset_name}'. "
+                    "Please check the date format in the source data or configuration."
+                )
+        return df
 
     def _wrangle_data(self):
         """

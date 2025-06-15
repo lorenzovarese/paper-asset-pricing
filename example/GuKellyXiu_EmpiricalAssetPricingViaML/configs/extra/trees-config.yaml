@@ -11,10 +11,10 @@ input_data:
 
 evaluation:
   implementation: "rolling window"
-  train_month: 120
-  validation_month: 24
-  testing_month: 12
-  step_month: 12
+  train_month: 84 # 7 years
+  validation_month: 24 # 2 years
+  testing_month: 24 # 2 years
+  step_month: 24 # The step size for the rolling window evaluation. (Usually equal to testing_month)
   metrics: [ "mse", "r2_oos" ]
 
 models:
@@ -23,7 +23,7 @@ models:
   target_column: "ret"
   features:
     method: "all_except"
-    columns: [ "date", "permno", "ret", "rf", "sic2" ]
+    columns: [ "date", "permno", "ret", "rf" ]
   n_estimators: 300
   max_depth: [ 1, 3, 5 ]
   max_features: [ 3, 10, 30 ]
@@ -35,7 +35,7 @@ models:
 #   target_column: "ret"
 #   features:
 #     method: "all_except"
-#     columns: [ "date", "permno", "ret", "rf", "sic2" ]
+#     columns: [ "date", "permno", "ret", "rf" ]
 #   objective_function: "huber"
 #   use_hist_implementation: true
 #   n_estimators: [ 50, 100, 200 ]

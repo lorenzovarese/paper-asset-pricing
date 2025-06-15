@@ -1,6 +1,6 @@
-# --- OLS Models Configuration ---
-# Contains simple Ordinary Least Squares models with explicit feature lists.
-# Ideal for establishing a baseline performance (e.g., Fama-French 3-factor).
+# --- Tree-Based Models Configuration ---
+# Contains Random Forest (RF) and Gradient Boosted Regression Trees (GBRT).
+# These non-linear models are powerful and use all available features.
 
 input_data:
   dataset_name: "final_dataset_model"
@@ -18,22 +18,28 @@ evaluation:
   metrics: [ "mse", "r2_oos" ]
 
 models:
-- name: "ols_baseline"
-  type: "ols"
+- name: "rf_full_tuned"
+  type: "rf"
   target_column: "ret"
   features:
-  - "mvel1"
-  - "bm"
-  - "mom12m"
+    method: "all_except"
+    columns: [ "date", "permno", "ret", "rf" ]
+  n_estimators: 300
+  max_depth: [ 1, 3, 5 ]
+  max_features: [ 3, 10, 30 ]
+  random_state: 306
   save_prediction_results: true
 
-- name: "ols_huber_adaptive"
-  type: "ols"
-  target_column: "ret"
-  features:
-  - "mvel1"
-  - "bm"
-  - "mom12m"
-  objective_function: "huber"
-  huber_epsilon_quantile: 0.999 # Adaptively set epsilon based on residuals
-  save_prediction_results: true
+# - name: "gbrt_full_tuned"
+#   type: "gbrt"
+#   target_column: "ret"
+#   features:
+#     method: "all_except"
+#     columns: [ "date", "permno", "ret", "rf" ]
+#   objective_function: "huber"
+#   use_hist_implementation: true
+#   n_estimators: [ 50, 100 ]
+#   max_depth: [ 1, 2 ]
+#   learning_rate: [ 0.01, 0.1 ]
+#   random_state: 306
+#   save_prediction_results: true

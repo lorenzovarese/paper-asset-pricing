@@ -11,10 +11,10 @@ input_data:
 
 evaluation:
   implementation: "rolling window"
-  train_month: 120
-  validation_month: 24
-  testing_month: 12
-  step_month: 12
+  train_month: 84 # 7 years
+  validation_month: 24 # 2 years
+  testing_month: 24 # 2 years
+  step_month: 24 # The step size for the rolling window evaluation. (Usually equal to testing_month)
   metrics: [ "mse", "r2_oos" ]
 
 models:
@@ -23,7 +23,7 @@ models:
   target_column: "ret"
   features:
     method: "all_except"
-    columns: [ "date", "permno", "ret", "rf", "sic2" ]
+    columns: [ "date", "permno", "ret", "rf" ]
   hidden_layer_sizes: [ 32 ]
   alpha: 0.0001 # [ 0.00001, 0.0001 ]
   learning_rate: 0.01 # [ 0.001, 0.01 ]
@@ -32,7 +32,7 @@ models:
   patience: 5
   n_ensembles: 5
   random_state: 306
-  device: "cuda"
+  device: "cpu"
   num_workers: 4
   save_prediction_results: true
 
@@ -41,7 +41,7 @@ models:
 #   target_column: "ret"
 #   features:
 #     method: "all_except"
-#     columns: [ "date", "permno", "ret", "rf", "sic2" ]
+#     columns: [ "date", "permno", "ret", "rf" ]
 #   hidden_layer_sizes: [ 32, 16, 8 ]
 #   alpha: [ 0.00001, 0.0001 ]
 #   learning_rate: [ 0.001, 0.01 ]

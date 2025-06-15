@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: [3.11]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python }}
+          cache: "pip"
+
+      - name: Install pip-tools and test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+
+      - name: Install workspace packages
+        run: |
+          pip install -e paper-data
+          pip install -e paper-model
+          pip install -e paper-portfolio
+          pip install -e paper-tools
+
+      - name: Run tests with coverage
+        run: |
+          pytest \
+            --cov=paper-data \
+            --cov=paper-model \
+            --cov=paper-portfolio \
+            --cov=paper-tools \
+            --cov-report=term-missing

@@ -1,79 +1,80 @@
 """
-Connector for downloading files from arbitrary HTTP/HTTPS URLs.
+Connector for downloading files from Google Sheets.
 """
 
 from __future__ import annotations
-import tempfile
+import re
+import requests
 from pathlib import Path
-import requests  # type: ignore[import-untyped]
+import logging
 import polars as pl
-from tqdm import tqdm  # type: ignore[import-untyped]
-from urllib.parse import urlparse, parse_qs
 
 from .base import DataConnector
 
+logger = logging.getLogger(__name__)
 
-class HTTPConnector(DataConnector):
+
+class GoogleSheetConnector(DataConnector):
     """
-    Connector that downloads a file from any HTTP/HTTPS URL and loads it
-    as a pandas DataFrame (CSV or Parquet) using LocalConnector.
+    Connector that downloads a specific sheet from a Google Sheet URL.
+    It handles caching the file as a CSV and then loads it into a Polars DataFrame.
     """
 
-    def __init__(self, url: str, timeout: int = 30) -> None:
+    def __init__(self, url: str, cache_path: Path, **read_csv_kwargs):
+        """
+        Args:
+            url: The full URL to the Google Sheet.
+            cache_path: The local path to save/load the cached CSV file.
+            **read_csv_kwargs: Extra keyword arguments for :func:`polars.read_csv`.
+        """
         self.url = url
-        self.timeout = timeout
+        self.cache_path = cache_path
+        self._read_csv_kwargs = read_csv_kwargs
+        self._download_url = self._prepare_download_url()
 
-    def _download(self) -> Path:
-        # Stream download to a temporary file with a progress bar
-        resp = requests.get(self.url, stream=True, timeout=self.timeout)
-        resp.raise_for_status()
+    def _prepare_download_url(self) -> str:
+        """Parses the Google Sheet URL to create a direct CSV download link."""
+        file_id_match = re.search(r"/d/([a-zA-Z0-9_-]+)", self.url)
+        if not file_id_match:
+            raise ValueError("Could not parse Google Sheet file ID from URL.")
+        file_id = file_id_match.group(1)
 
-        # Try to read content-length, default to 0 if unavailable
-        headers = getattr(resp, "headers", None)
-        if headers is None:
-            total = 0
-        else:
-            total = int(headers.get("content-length", 0) or 0)
+        gid_match = re.search(r"gid=(\d+)", self.url)
+        gid = gid_match.group(1) if gid_match else "0"
 
-        tmp = tempfile.NamedTemporaryFile(delete=False)
+        return f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv&gid={gid}"
 
-        # tqdm progress bar in bytes
-        with tqdm(
-            total=total,
-            unit="B",
-            unit_scale=True,
-            desc=f"Downloading {Path(self.url).name}",
-            leave=True,
-        ) as pbar:
-            for chunk in resp.iter_content(chunk_size=8192):
-                if not chunk:
-                    continue
-                tmp.write(chunk)
-                pbar.update(len(chunk))
+    def _download_if_needed(self):
+        """Downloads the file from Google Sheets if it's not already cached."""
+        if self.cache_path.is_file():
+            logger.info(
+                f"Cache hit for Google Sheet. Using existing file: '{self.cache_path}'"
+            )
+            return
 
-        tmp.flush()
-        return Path(tmp.name)
+        logger.info(
+            f"Cache miss. Downloading from Google Sheets to '{self.cache_path}'."
+        )
+        try:
+            resp = requests.get(self._download_url, stream=True, timeout=120)
+            resp.raise_for_status()
+            with open(self.cache_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            logger.info("Successfully downloaded and cached Google Sheet.")
+        except requests.RequestException as e:
+            if self.cache_path.exists():
+                self.cache_path.unlink(missing_ok=True)
+            raise IOError(
+                f"Failed to download from Google Sheets URL '{self.url}': {e}"
+            ) from e
 
     def get_data(self) -> pl.DataFrame:
         """
-        Download the remote file and return it as a DataFrame.
-        Supports CSV and Parquet based on file extension.
-        """
-        local_path = self._download()
-        try:
-            # Determine file format from URL
-            parsed = urlparse(self.url)
-            qs = parse_qs(parsed.query)
-            suffix = Path(parsed.path).suffix.lower()
+        Ensures the Google Sheet is downloaded and returns it as a Polars DataFrame.
 
-            # 1) If query says format=csv, or URL ends with .csv → CSV
-            if qs.get("format", [""])[0] == "csv" or suffix == ".csv":
-                return pl.read_csv(local_path, infer_schema_length=10_000)
-            # 2) Parquet extensions
-            if suffix in {".parquet", ".pq"}:
-                return pl.read_parquet(local_path)
-            # 3) Fallback → CSV
-            return pl.read_csv(local_path, infer_schema_length=10_000)
-        finally:
-            # Clean up temporary file
-            local_path.unlink(missing_ok=True)
+        Returns:
+            A Polars DataFrame containing the data from the sheet.
+        """
+        self._download_if_needed()
+        return pl.read_csv(self.cache_path, **self._read_csv_kwargs)

@@ -4,7 +4,7 @@
 ingestion:
 # Ingest firm-level characteristics from the main datashare file.
 - name: "firm_chars"
-  path: "datashare.csv"
+  path: "datashare_EOM.csv"
   format: "csv"
   to_lowercase_cols: true
   date_column: { "date": "%Y%m%d" }
@@ -12,7 +12,7 @@ ingestion:
 
 # Ingest firm-level returns.
 - name: "firm_ret"
-  path: "crsp_returns_dec1956_dec2021.csv"
+  path: "crsp_returns_dec1956_dec2021_EOM.csv"
   format: "csv"
   to_lowercase_cols: true
   date_column: { "date": "%Y-%m-%d" }

@@ -1,0 +1,10 @@
+--- Model Evaluation Report: ols_huber_adaptive ---
+Generated on: 2025-06-15 02:01:26,277
+
+Metrics:
+  avg_mse: 0.0314
+  std_mse: 0.0263
+  avg_r2_oos: -0.0025
+  std_r2_oos: 0.0422
+
+--- End of Report ---

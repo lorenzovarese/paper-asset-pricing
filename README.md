@@ -27,13 +27,13 @@ This repository is organized as a monorepo, housing several interconnected Pytho
     *   **Key Features:** Project scaffolding with a standardized structure, execution of data, modeling, and portfolio pipelines, centralized logging.
     *   **Learn More:** See [`paper-tools/README.md`](./paper-tools/README.md)
 *   **`paper-data`**: Dedicated to data ingestion, cleaning, and preprocessing. It provides a flexible, configuration-driven pipeline to transform raw financial and economic data into clean, analysis-ready datasets.
-    *   **Key Features:** Connectors for local files (CSV), with stubs for HTTP, Google Drive, and WRDS. A powerful wrangling toolkit including monthly imputation, cross-sectional scaling, dataset merging, feature lagging, and interaction term creation.
+    *   **Key Features:** Connectors for local files (CSV), Google Sheets, and WRDS. A powerful wrangling toolkit including monthly imputation, cross-sectional scaling, dataset merging, feature lagging, and interaction term creation.
     *   **Learn More:** See [`paper-data/README.md`](./paper-data/README.md)
 *   **`paper-model`**: Implements a robust framework for training and evaluating asset pricing models. It uses a rolling-window backtesting methodology to generate out-of-sample predictions and performance metrics.
-    *   **Key Features:** Support for various scikit-learn models (OLS, ElasticNet, PCR, PLS), Pydantic-validated configuration, rolling-window evaluation, generation of prediction files and evaluation reports (R², MSE), and model checkpointing.
+    *   **Key Features:** Support for various scikit-learn (OLS, ElasticNet, PCR, PLS, RandomForest, etc.) and PyTorch (Neural Network) models. Pydantic-validated configuration, rolling-window evaluation, hyperparameter tuning, and generation of prediction files.
     *   **Learn More:** See [`paper-model/README.md`](./paper-model/README.md)
 *   **`paper-portfolio`**: Constructs and analyzes long-short portfolios based on model predictions. It calculates various performance metrics and generates reports and visualizations to assess strategy viability.
-    *   **Key Features:** Config-driven portfolio construction (long/short quantiles), equal and value weighting schemes, performance evaluation (Sharpe Ratio, Expected Shortfall, Cumulative Return), and generation of reports and plots.
+    *   **Key Features:** Config-driven portfolio construction (long/short quantiles), equal and value weighting schemes, performance evaluation (Sharpe Ratio, Expected Shortfall), and generation of reports and plots.
     *   **Learn More:** See [`paper-portfolio/README.md`](./paper-portfolio/README.md)
 
 ---
@@ -44,19 +44,22 @@ The P.A.P.E.R workflow is designed to be sequential and intuitive. You start by 
 
 ### 1. Initial Setup
 
-First, clone the repository and set up the development environment using `uv`.
+First, clone the repository and set up the development environment using `uv` or `venv`.
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/your-username/paper-asset-pricing.git
 cd paper-asset-pricing
 
-# 2. Install uv if you haven't already
-# pip install uv
+# 2. Create and activate a virtual environment (e.g., with venv)
+# uv sync (creates .venv in root)
+python -m venv .venv
+source .venv/bin/activate
 
-# 3. Install all packages in the workspace in editable mode
+# 3. Install all packages in editable mode
 # The [all] extra installs optional dependencies for all components.
-uv pip install -e .[all]
+# uv -> The packages are already visible in the workspace
+pip install -e .[all]
 ```
 
 ### 2. Initialize Your Research Project
@@ -86,7 +89,7 @@ This phase transforms your raw source data into a clean, analysis-ready dataset.
     paper execute data
     ```
 
-**Output**: The console will show a simple success message. All detailed steps are logged in `logs.log`. The final, processed dataset(s) will be saved in the `data/processed/` directory (e.g., as `processed_data.parquet`).
+**Output**: The console will show a simple success message. All detailed steps are logged in `logs.log`. The final, processed dataset(s) will be saved in the `data/processed/` directory (e.g., as `processed_panel_data.parquet`).
 
 ### 4. Phase II: Model Training & Prediction
 

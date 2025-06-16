@@ -44,8 +44,7 @@ Thumbs.db
 # Data (typically not versioned, but .gitkeep files are for structure)
 /data/raw/*
 !/data/raw/.gitkeep
-/data/processed/*
-!/data/processed/.gitkeep
+# /data/processed/* # Skip the data/processed this time since we have anonymized data
 
 # Models (saved models typically not versioned)
 /models/saved/*

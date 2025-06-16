@@ -209,8 +209,8 @@ def init(
         dir_structure_map = {
             CONFIGS_DIR_NAME: [],
             DATA_DIR_NAME: ["raw", "processed"],
-            MODELS_DIR_NAME: ["saved"],
-            PORTFOLIOS_DIR_NAME: ["results", "indexes"],
+            MODELS_DIR_NAME: ["evaluations", "predictions", "saved"],
+            PORTFOLIOS_DIR_NAME: ["results", "additional_datasets"],
         }
         all_dirs_to_create_paths: list[Path] = []
         for main_dir_name, sub_dir_names in dir_structure_map.items():

@@ -1,81 +1,161 @@
 # DataExampleProject
 
-A P.A.P.E.R (Platform for Asset Pricing Experimentation and Research) project.
+This project demonstrates the end-to-end data processing pipeline of the `paper-data` component within the **P.A.P.E.R** (Platform for Asset Pricing Experimentation and Research) framework.
 
-Initialized on: 2025-06-01
-P.A.P.E.R Tools Version: 0.1.0
+The goal of this example is to showcase how to ingest multiple raw data sources (synthetic firm and macro data), apply a sequence of cleaning and feature engineering steps, and export a final, analysis-ready dataset, all orchestrated through a single configuration file.
 
-## Project Structure
+- **Initialized on:** 2025-06-01
+- **P.A.P.E.R Tools Version:** 0.1.0
 
-- `configs/paper-project.yaml`: Main project configuration.
-- `configs/`: Directory for component-specific YAML configurations:
-    - `data-config.yaml`: For `paper-data` processing.
-    - `models-config.yaml`: For `paper-model` tasks.
-    - `portfolio-config.yaml`: For `paper-portfolio` strategies.
-- `data/`: Data storage.
-    - `raw/`: Place for raw input data.
-    - `processed/`: Output for processed data from `paper-data`.
-- `models/`: Model-related files.
-    - `saved/`: Output for trained models from `paper-model`.
-- `portfolios/`: Portfolio-related files.
-    - `results/`: Output for portfolio backtests/results from `paper-portfolio`.
-- `logs.log`: Project-level log file.
-- `.gitignore`: Specifies files for Git to ignore.
-- `README.md`: This file.
+---
 
-## Getting Started
+## 📖 Workflow Overview
 
-1.  **Navigate to the project directory:**
-    ```bash
-    cd "DataExampleProject"
-    ```
+This example follows a simple, three-step process:
 
-2.  **Set up your Python environment** and install P.A.P.E.R components:
-    ```bash
-    # Example:
-    # uv venv
-    # source .venv/bin/activate
-    pip install paper-data paper-model paper-portfolio # Or use paper-tools[all]
-    ```
+1.  **Generate Raw Data:** Run Python scripts to create synthetic firm-level and macro-level CSV files.
+2.  **Configure the Pipeline:** Review the `data-config.yaml` file, which defines every step of the data transformation process.
+3.  **Execute the Pipeline:** Run a single `paper execute data` command to process the data and generate the final output.
 
-3.  **Create Component Configurations:**
-    - In the `configs/` directory, create and populate:
-        - `data-config.yaml` (for `paper-data`)
-        - `models-config.yaml` (for `paper-model`)
-        - `portfolio-config.yaml` (for `paper-portfolio`)
-    - Refer to the documentation of each P.A.P.E.R component for its specific YAML structure.
-    - **Example for `data-config.yaml`:**
-      ```yaml
-      # configs/data-config.yaml
-      sources:
-        - name: my_firm_data
-          connector: local
-          path: "data/raw/your_firm_data.csv" # Relative to project root
-          # ... other source parameters
-        # - name: my_macro_data ...
-      transformations:
-        # - type: clean_numeric ...
-        # - type: one_hot ...
-      output:
-        format: parquet
-        # directory: "data/processed" # Often inferred by paper-data
-        filename_prefix: "master_dataset"
-      ```
+---
 
+## 🚀 Getting Started
 
-4.  **Place Raw Data:**
-    - Put your raw data files into the `data/raw/` directory.
+This guide assumes you have cloned the `paper-asset-pricing` monorepo and have set up the Python environment as described in the main `README.md`.
 
-5.  **Execute Project Phases:**
-    Use `paper-tools execute` from the project root:
-    ```bash
-    paper-tools execute data      # Runs the data processing phase
-    paper-tools execute models    # Runs the modeling phase
-    paper-tools execute portfolio # Runs the portfolio phase
-    ```
-    You can also run them sequentially:
-    ```bash
-    paper-tools execute data && paper-tools execute models && paper-tools execute portfolio
-    ```
+### 1. Generate Raw Data
 
-Refer to `configs/paper-project.yaml` to see how `paper-tools` locates component configurations and CLI tools.
+The raw data for this example is generated synthetically. The scripts are located in the `scripts/` directory of this project.
+
+Navigate to the `scripts` directory and run the generation scripts:
+
+```bash
+# From the root of this project (DataExampleProject/)
+cd scripts/
+
+python firm_synthetic.py
+# Expected output: Dataset saved to 'firm_synthetic.csv'
+
+python macro_synthetic.py
+# Expected output: Dataset saved to 'macro_synthetic.csv'
+```
+
+### 2. Place Raw Data Files
+
+The `paper-data` pipeline expects raw data files to be in the `data/raw/` directory. Move the newly generated files there.
+
+```bash
+# From the scripts/ directory
+mv *.csv ../data/raw/
+
+# Navigate back to the project root
+cd ..
+```
+
+Your `data/raw/` directory should now contain `firm_synthetic.csv` and `macro_synthetic.csv`.
+
+### 3. Review the Configuration
+
+The entire logic for the data pipeline is defined in `configs/data-config.yaml`. This file instructs the tool on what data to load, how to transform it, and what to export.
+
+```yaml
+# configs/data-config.yaml
+
+# Ingestion section: defines the input datasets
+ingestion:
+- name: "firm" # Logical name for the dataset
+  path: "firm_synthetic.csv" # Path to the CSV file relative to the data/raw directory
+  format: "csv"
+  date_column: { "date": "%Y%m%d" }
+  firm_id_column: "permco"
+
+- name: "macro" # Second dataset: macroeconomic data
+  path: "macro_synthetic.csv"
+  format: "csv"
+  date_column: { "date": "%Y%m%d" }
+
+# Wrangling pipeline: series of transformations applied to the ingested datasets
+wrangling_pipeline:
+- operation: "monthly_imputation"
+  dataset: "firm"
+  numeric_columns: [ "volume", "marketcap" ]
+  output_name: "imputed_firm"
+
+- operation: "scale_to_range"
+  dataset: "imputed_firm"
+  range: { min: -1, max: 1 }
+  cols_to_scale: [ "volume", "marketcap" ]
+  output_name: "scaled_firm"
+
+- operation: "merge"
+  left_dataset: "scaled_firm"
+  right_dataset: "macro"
+  on: [ "date" ]
+  how: "left"
+  output_name: "firm_and_macro"
+
+- operation: "lag"
+  dataset: "firm_and_macro"
+  periods: 1
+  columns_to_lag:
+    - method: "all_except"
+      columns: [ "date", "permco", "return" ]
+  drop_original_cols_after_lag: true
+  restore_names: true
+  drop_generated_nans: true
+  output_name: "lagged_final"
+
+- operation: "create_macro_interactions"
+  dataset: "lagged_final"
+  macro_columns: [ "gdp_growth", "cpi", "unemployment" ]
+  firm_columns: [ "volume", "marketcap" ]
+  drop_macro_columns: true
+  output_name: "interactions_dataset"
+
+# Export section: defines what processed data to save and how
+export:
+- dataset_name: "interactions_dataset"
+  output_filename_base: "final_dataset"
+  format: "parquet"
+  partition_by: "year"
+```
+
+### 4. Execute the Data Pipeline
+
+From the root of the `DataExampleProject` directory, run the data execution command:
+
+```bash
+paper execute data
+```
+
+---
+
+## ✅ Expected Output
+
+After the command finishes, you can verify the results.
+
+**Console Output:**
+
+The console will show a simple success message, directing you to the log file for details.
+
+```
+>>> Executing Data Phase <<<
+Auto-detected project root: /path/to/DataExampleProject
+Data phase completed successfully. Additional information in '/path/to/DataExampleProject/logs.log'
+```
+
+**Log File (`logs.log`):**
+
+The `logs.log` file will contain a detailed, step-by-step record of the entire process, including the shape of the dataframe after each wrangling operation, confirming that all steps were executed as configured.
+
+**Processed Data:**
+
+The `data/processed/` directory will be populated with the final output files. Because `partition_by: "year"` was specified, the tool creates a separate Parquet file for each year in the dataset.
+
+```
+data/processed/
+├── final_dataset_2024.parquet
+└── final_dataset_2025.parquet
+```
+
+These Parquet files contain the fully processed data, including the generated interaction terms, and are ready to be used as input for the `paper-model` pipeline.

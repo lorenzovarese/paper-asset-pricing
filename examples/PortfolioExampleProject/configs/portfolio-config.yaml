@@ -1,0 +1,57 @@
+input_data:
+  prediction_model_names:
+  - "pls_full_tuned" # Partial Least Squares Regression with Huber loss
+  - "pcr_full_tuned" # Principal Component Regression: PCA + OLS with Huber loss
+  - "rf_full_tuned" # Random Forest with Huber loss
+  prediction_extraction_method: "precomputed_prediction_files" # or "models_checkpoints", but not implemented yet
+  precomputed_prediction_files:
+    date_column: "date"
+    id_column: "permno"
+  # models_checkpoints:
+  #   # Left uniplemented for now, but can be used to extract predictions from model checkpoints.
+  risk_free_dataset:
+    file_name: "risk_free.csv"
+    date_column: "date"
+    return_column: "rf"
+    date_format: "%Y%m%d"
+  market_benchmark:
+    name: "S&P 500"
+    file_name: "benchmark_stock_dec1989_dec2021.csv"
+    date_column: "date"
+    return_column: "ret"
+    date_format: "%Y-%m-%d"
+  # Possible but not present in this example:
+  # company_value_weights:
+  #   file_name: "company_value_weights.csv"
+  #   date_column: "date"
+  #   id_column: "permno"
+  #   date_format: "%Y-%m-%d"
+
+cross_sectional_analysis: true # Understand each quantile performance in a cross-sectional manner. 
+
+metrics:
+- "sharpe_ratio"
+- "expected_shortfall"
+- "cumulative_return"
+
+portfolio_strategies:
+- name: "EQ90"
+  weighting_scheme: "equal"
+  long_quantiles: [ 0.9, 1.0 ]
+  short_quantiles: [ 0.0, 0.1 ]
+
+- name: "EQ95"
+  weighting_scheme: "equal"
+  long_quantiles: [ 0.90, 0.95 ]
+  short_quantiles: [ 0.05, 0.10 ]
+
+# Possible but not present in this example:
+# - name: "VAL90"
+#   weighting_scheme: "value"
+#   long_quantiles: [ 0.9, 1.0 ]
+#   short_quantiles: [ 0.0, 0.1 ]
+
+# - name: "VAL95"
+#   weighting_scheme: "value"
+#   long_quantiles: [ 0.90, 0.95 ]
+#   short_quantiles: [ 0.05, 0.10 ]

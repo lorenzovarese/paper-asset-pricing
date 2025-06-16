@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Union, Any, Optional, Tuple
 
-from .config_parser import PortfolioConfig, MarketBenchmarkConfig
+from .config_parser import PortfolioConfig
 from .evaluation import metrics, reporter
 
 logger = logging.getLogger(__name__)
@@ -14,23 +14,83 @@ class PortfolioManager:
         self.config = config
         self.reporter: reporter.PortfolioReporter | None = None
 
-    def _load_data(self, project_root: Path) -> Dict[str, pl.DataFrame]:
-        """Loads prediction files and merges them with processed data."""
-        input_conf = self.config.input_data
-        predictions_dir = project_root / "models" / "predictions"
-        processed_dir = project_root / "data" / "processed"
+    def _load_additional_dataset(
+        self, project_root: Path, config: Any
+    ) -> Optional[pl.DataFrame]:
+        """Helper function to load and parse an additional dataset (e.g., risk-free, benchmark)."""
+        if config is None:
+            return None
 
-        processed_files = list(
-            processed_dir.glob(f"{input_conf.processed_dataset_name}_*.parquet")
+        file_path = (
+            project_root / "portfolios" / "additional_datasets" / config.file_name
         )
-        if not processed_files:
-            raise FileNotFoundError(
-                f"No processed data found for pattern '{input_conf.processed_dataset_name}'"
+        if not file_path.is_file():
+            logger.error(f"Additional dataset file not found at: {file_path}")
+            return None
+
+        logger.info(f"Loading additional dataset from: {file_path}")
+        try:
+            df = pl.read_csv(file_path)
+
+            # Check if the date column was inferred as a number (e.g., 20220131)
+            # If so, cast it to a string before attempting to parse it as a date.
+            if df[config.date_column].dtype.is_numeric():
+                df = df.with_columns(pl.col(config.date_column).cast(pl.Utf8))
+
+            # Now, safely parse the date string
+            df = df.with_columns(
+                pl.col(config.date_column).str.to_date(format=config.date_format)
             )
 
-        main_df = pl.concat([pl.read_parquet(f) for f in processed_files])
+            return df
+        except Exception as e:
+            logger.error(f"Failed to load or parse additional dataset {file_path}: {e}")
+            return None
 
-        merged_data = {}
+    def _load_and_merge_data(self, project_root: Path) -> Dict[str, pl.DataFrame]:
+        """
+        Loads prediction files and merges them with all required additional datasets.
+        This is the core of the new decoupled data loading strategy.
+        """
+        input_conf = self.config.input_data
+        predictions_dir = project_root / "models" / "predictions"
+
+        # Load all necessary additional datasets once
+        risk_free_conf = input_conf.risk_free_dataset
+        risk_free_df = self._load_additional_dataset(project_root, risk_free_conf)
+        if risk_free_df is None:
+            raise FileNotFoundError("Risk-free rate dataset could not be loaded.")
+        risk_free_df = risk_free_df.rename(
+            {
+                risk_free_conf.date_column: "date",
+                risk_free_conf.return_column: "risk_free_rate",
+            }
+        ).select(["date", "risk_free_rate"])
+
+        value_weights_df = None
+        if input_conf.company_value_weights:
+            vw_conf = input_conf.company_value_weights
+            value_weights_df = self._load_additional_dataset(project_root, vw_conf)
+            if value_weights_df is not None:
+                value_weights_df = value_weights_df.rename(
+                    {
+                        vw_conf.date_column: "date",
+                        vw_conf.id_column: "permno",
+                        vw_conf.value_weight_col: "value_weight",
+                    }
+                ).select(["date", "permno", "value_weight"])
+
+        market_benchmark_df = None
+        if input_conf.market_benchmark:
+            bm_conf = input_conf.market_benchmark
+            market_benchmark_df = self._load_additional_dataset(project_root, bm_conf)
+            if market_benchmark_df is not None:
+                market_benchmark_df = market_benchmark_df.rename(
+                    {bm_conf.date_column: "date", bm_conf.return_column: "index_ret"}
+                ).select(["date", "index_ret"])
+
+        # --- Merge all data sources for each model's predictions ---
+        merged_data_for_models = {}
         for model_name in input_conf.prediction_model_names:
             pred_file = predictions_dir / f"{model_name}_predictions.parquet"
             if not pred_file.exists():
@@ -39,66 +99,36 @@ class PortfolioManager:
                 )
                 continue
 
+            # Start with the prediction data
             preds_df = pl.read_parquet(pred_file)
-            data_for_model = preds_df.join(
-                main_df.select(
-                    [
-                        input_conf.date_column,
-                        input_conf.id_column,
-                        input_conf.risk_free_rate_col,
-                        input_conf.value_weight_col,
-                    ]
-                ),
-                on=[input_conf.date_column, input_conf.id_column],
-                how="left",
-            )
-            merged_data[model_name] = data_for_model
 
-        return merged_data
+            # Join with risk-free data (time-series join)
+            final_df = preds_df.join(risk_free_df, on="date", how="left")
 
-    def _load_index_data(
-        self, project_root: Path, benchmark_config: MarketBenchmarkConfig
-    ) -> Optional[pl.DataFrame]:
-        """Loads a market index from a specified file."""
-        index_file_path = (
-            project_root / "portfolios" / "indexes" / benchmark_config.file_name
-        )
-        if not index_file_path.is_file():
-            logger.error(f"Market benchmark file not found at: {index_file_path}")
-            return None
-
-        logger.info(
-            f"Loading market index benchmark '{benchmark_config.name}' from: {index_file_path}"
-        )
-        try:
-            index_data = (
-                pl.read_csv(index_file_path)
-                .with_columns(
-                    pl.col(benchmark_config.date_column).str.to_date(
-                        format=benchmark_config.date_format
-                    )
+            # Join with value-weighting data if it exists (panel join)
+            if value_weights_df is not None:
+                final_df = final_df.join(
+                    value_weights_df, on=["date", "permno"], how="left"
                 )
-                .rename(
-                    {
-                        benchmark_config.date_column: "date",
-                        benchmark_config.return_column: "index_ret",
-                    }
-                )
-                .select(["date", "index_ret"])
+
+            # Join with market benchmark data if it exists (time-series join)
+            if market_benchmark_df is not None:
+                final_df = final_df.join(market_benchmark_df, on="date", how="left")
+
+            merged_data_for_models[model_name] = final_df
+            logger.info(
+                f"Successfully loaded and merged all data for model '{model_name}'."
             )
-            return index_data
-        except Exception as e:
-            logger.error(f"Failed to load or parse index file {index_file_path}: {e}")
-            return None
+
+        return merged_data_for_models
 
     def _calculate_cross_sectional_returns(
         self, data: pl.DataFrame
     ) -> Tuple[pl.DataFrame, bool]:
         """
         Calculates monthly returns for 10 deciles of assets based on predicted returns.
-        Returns the DataFrame and a boolean indicating if the sort was descending.
         """
-        date_col = self.config.input_data.date_column
+        date_col = self.config.input_data.precomputed_prediction_files.date_column
         is_descending = False
 
         monthly_decile_returns = (
@@ -135,14 +165,18 @@ class PortfolioManager:
         return cumulative_decile_returns, is_descending
 
     def _calculate_monthly_returns(self, data: pl.DataFrame) -> pl.DataFrame:
-        """Calculates portfolio returns for each month based on all strategies."""
+        """
+        Calculates portfolio returns for each month based on all strategies.
+        """
         all_monthly_returns = []
-        id_col = self.config.input_data.id_column
+        pred_conf = self.config.input_data.precomputed_prediction_files
+        date_col = pred_conf.date_column
+        id_col = pred_conf.id_column
 
-        for (date,), monthly_data in data.group_by(
-            self.config.input_data.date_column, maintain_order=True
-        ):
-            monthly_data = monthly_data.drop_nulls(subset=["predicted_ret"])
+        for (date,), monthly_data in data.group_by(date_col, maintain_order=True):
+            monthly_data = monthly_data.drop_nulls(
+                subset=["predicted_ret", "actual_ret"]
+            )
             if monthly_data.is_empty():
                 continue
 
@@ -153,11 +187,20 @@ class PortfolioManager:
                     "Portfolio construction for this month will be based on arbitrary rankings and may not be meaningful."
                 )
 
-            for strat in self.config.strategies:
+            for strat in self.config.portfolio_strategies:
                 monthly_data_for_strat = monthly_data
                 if strat.weighting_scheme == "value":
-                    value_col = self.config.input_data.value_weight_col
-                    monthly_data_for_strat = monthly_data.filter(pl.col(value_col) > 0)
+                    # Use the standardized internal column name 'value_weight' which was set during data loading
+                    value_weight_col_name = "value_weight"
+                    if value_weight_col_name not in monthly_data.columns:
+                        logger.error(
+                            f"Value weighting requested, but the column '{value_weight_col_name}' was not found in the merged data. "
+                            "Please check the 'company_values_weights' configuration. Skipping strategy."
+                        )
+                        continue
+                    monthly_data_for_strat = monthly_data.filter(
+                        pl.col(value_weight_col_name) > 0
+                    )
 
                 n = monthly_data_for_strat.height
                 if n == 0:
@@ -200,10 +243,9 @@ class PortfolioManager:
                     ):
                         long_return, short_return = mean_long, mean_short
                 elif strat.weighting_scheme == "value":
-                    value_col = self.config.input_data.value_weight_col
                     long_sum, short_sum = (
-                        long_portfolio[value_col].sum(),
-                        short_portfolio[value_col].sum(),
+                        long_portfolio[value_weight_col_name].sum(),
+                        short_portfolio[value_weight_col_name].sum(),
                     )
                     if (
                         isinstance(long_sum, (int, float))
@@ -211,8 +253,12 @@ class PortfolioManager:
                         and isinstance(short_sum, (int, float))
                         and short_sum > 0
                     ):
-                        value_long_weights = long_portfolio[value_col] / long_sum
-                        value_short_weights = short_portfolio[value_col] / short_sum
+                        value_long_weights = (
+                            long_portfolio[value_weight_col_name] / long_sum
+                        )
+                        value_short_weights = (
+                            short_portfolio[value_weight_col_name] / short_sum
+                        )
                         long_return = (
                             long_portfolio["actual_ret"] * value_long_weights
                         ).sum()
@@ -229,9 +275,7 @@ class PortfolioManager:
                     continue
 
                 portfolio_return = long_return - short_return
-                risk_free_rate = monthly_data[
-                    self.config.input_data.risk_free_rate_col
-                ].first()
+                risk_free_rate = monthly_data["risk_free_rate"].first()
                 if not isinstance(risk_free_rate, (float, int)):
                     logger.warning(
                         f"Could not find a valid risk-free rate for date {date}. Skipping."
@@ -262,18 +306,8 @@ class PortfolioManager:
             project_root / "portfolios" / "results"
         )
 
-        logger.info("--- Loading Portfolio Data ---")
-
-        index_data = None
-        index_name = None
-        if self.config.market_benchmark:
-            index_data = self._load_index_data(
-                project_root, self.config.market_benchmark
-            )
-            if index_data is not None:
-                index_name = self.config.market_benchmark.name
-
-        all_model_data = self._load_data(project_root)
+        logger.info("--- Loading and Merging Portfolio Data ---")
+        all_model_data = self._load_and_merge_data(project_root)
 
         for model_name, data in all_model_data.items():
             if self.config.cross_sectional_analysis:
@@ -304,10 +338,8 @@ class PortfolioManager:
                 logger.info(f"Evaluating strategy: {strat_name}")
                 strategy_returns = strategy_returns.sort("date")
 
-                if index_data is not None:
-                    strategy_returns = strategy_returns.join(
-                        index_data, on="date", how="left"
-                    )
+                # The join with benchmark data is now handled in _load_and_merge_data
+                # So we can directly use the 'index_ret' column if it exists
 
                 if self.reporter:
                     self.reporter.save_monthly_returns(
@@ -337,8 +369,12 @@ class PortfolioManager:
                         ),
                     )
 
-                    if "index_ret" in plot_df.columns:
-                        plot_df = plot_df.with_columns(
+                    if "index_ret" in data.columns:
+                        plot_df = plot_df.join(
+                            data.select(["date", "index_ret"]).unique(subset="date"),
+                            on="date",
+                            how="left",
+                        ).with_columns(
                             cumulative_index=((1 + pl.col("index_ret")).cum_prod() - 1)
                         )
 
@@ -348,6 +384,11 @@ class PortfolioManager:
                         ][-1]
 
                     if self.reporter:
+                        index_name = (
+                            self.config.input_data.market_benchmark.name
+                            if self.config.input_data.market_benchmark
+                            else None
+                        )
                         self.reporter.plot_cumulative_returns(
                             model_name, strat_name, plot_df, index_name=index_name
                         )

@@ -1,0 +1,18 @@
+# configs/paper-project.yaml
+project_name: "ModelExampleProject"
+version: "0.1.0"
+paper_tools_version: "0.1.0"
+creation_date: "2025-06-01"
+description: "P.A.P.E.R project: ModelExampleProject"
+
+components:
+  data:
+    config_file: "data-config.yaml" # Intentionally left empty
+  models:
+    config_file: "models-config.yaml" # Core configuration for this example project
+  portfolio:
+    config_file: "portfolio-config.yaml" # Intentionally left empty
+
+logging:
+  log_file: "logs.log"
+  level: "INFO"

@@ -1,0 +1,62 @@
+# Define the data ingestion and wrangling configuration for the P.A.P.E.R. pipeline
+
+# Ingestion section: defines the input datasets
+ingestion:
+- name: "firm" # Logical name for the dataset
+  path: "firm_synthetic.csv" # Path to the CSV file: note that this path is relative to the data/raw directory
+  format: "csv" # File format
+  date_column: { "date": "%Y%m%d" } # Column containing dates and its format
+  firm_id_column: "permco" # Identifier for firm-level data
+
+- name: "macro" # Second dataset: macroeconomic data
+  path: "macro_synthetic.csv"
+  format: "csv"
+  date_column: { "date": "%Y%m%d" } # Same date format as the firm data
+
+# Wrangling pipeline: series of transformations applied to the ingested datasets
+wrangling_pipeline:
+- operation: "monthly_imputation" # Fill missing values monthly
+  dataset: "firm" # Input dataset
+  numeric_columns: [ "volume", "marketcap" ] # Numeric columns to impute
+  categorical_columns: [] # No categorical columns in this example
+  output_name: "imputed_firm" # Name of the output dataset
+
+- operation: "scale_to_range" # Normalize values to a specific range
+  dataset: "imputed_firm"
+  range: { min: -1, max: 1 } # Desired output range
+  cols_to_scale: [ "volume", "marketcap" ] # Columns to normalize
+  output_name: "scaled_firm"
+
+- operation: "merge" # Join two datasets
+  left_dataset: "scaled_firm" # Main dataset
+  right_dataset: "macro" # Dataset to join with
+  "on": [ "date" ] # Merge on the date column
+  how: "left" # Keep all rows from the left dataset
+  output_name: "firm_and_macro"
+
+- operation: "lag" # Create lagged versions of columns (e.g., previous period's values)
+  dataset: "firm_and_macro"
+  periods: 1 # How many periods to lag (i.e. 1 month)
+  columns_to_lag:
+  - method: "all_except" # Lag all columns except the following
+  - columns: [ "date", "permco", "return" ] # These columns will not be lagged
+  drop_original_cols_after_lag: true # Drop the original columns after lagging
+  restore_names: true # Restore the original column names (i.e. feature1_lag1 becomes feature1)
+  drop_generated_nans: true # Drop rows with NaNs introduced by lagging (e.g., first month)
+  output_name: "lagged_final"
+
+- operation: "create_macro_interactions" # Create interaction terms between firm and macro variables
+  dataset: "lagged_final"
+  macro_columns: [ "gdp_growth", "cpi", "unemployment" ] # Macro variables
+  firm_columns: [ "volume", "marketcap" ] # Firm variables
+  drop_macro_columns: true # Drop the macro variables after interactions are created
+  output_name: "interactions_dataset"
+
+# Export section: defines what processed data to save and how
+export:
+- dataset_name: "interactions_dataset" # Dataset to export (before macro interactions)
+  output_filename_base: "final_dataset" # Base name for the output file
+  format: "parquet" # Output file format
+  partition_by: "year" # Partition output by year (or "none")
+
+# Now you can inspect the final_dataset_*.parquet files in the data/processed directory

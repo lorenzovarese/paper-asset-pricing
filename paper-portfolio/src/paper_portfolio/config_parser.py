@@ -1,23 +1,35 @@
 from pathlib import Path
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from typing import List, Literal, Union, Optional
 
-
-class PortfolioStrategyConfig(BaseModel):
-    name: str
-    weighting_scheme: Literal["equal", "value"]
-    long_quantiles: List[float] = Field(..., min_length=2, max_length=2)
-    short_quantiles: List[float] = Field(..., min_length=2, max_length=2)
+# --- Individual Data Source Configurations ---
 
 
-class InputDataConfig(BaseModel):
-    prediction_model_names: List[str]
-    processed_dataset_name: str
+class PredictionFilesConfig(BaseModel):
+    """Configuration for loading pre-computed prediction files."""
+
     date_column: str = "date"
     id_column: str = "permno"
-    risk_free_rate_col: str = "rf"
-    value_weight_col: str = "bm"
+
+
+class CompanyValuesConfig(BaseModel):
+    """Configuration for the value-weighting data."""
+
+    file_name: str
+    date_column: str = "date"
+    id_column: str = "permno"
+    date_format: str = "%Y-%m-%d"
+    value_weight_col: str = "market_value"
+
+
+class RiskFreeDatasetConfig(BaseModel):
+    """Configuration for the risk-free rate data."""
+
+    file_name: str
+    date_column: str = "date"
+    return_column: str = "rf"
+    date_format: str = "%Y-%m-%d"
 
 
 class MarketBenchmarkConfig(BaseModel):
@@ -26,30 +38,65 @@ class MarketBenchmarkConfig(BaseModel):
     name: str = Field(
         ..., description="Display name for the benchmark (e.g., 'S&P 500')."
     )
-    file_name: str = Field(
-        ...,
-        description="The name of the CSV file in the 'portfolios/indexes/' directory.",
-    )
-    date_column: str = Field(
-        "date", description="The name of the date column in the CSV file."
-    )
-    return_column: str = Field(
-        "ret", description="The name of the return column in the CSV file."
-    )
-    date_format: str = Field(
-        "%Y-%m-%d", description="The date format string for parsing the date column."
-    )
+    file_name: str
+    date_column: str = "date"
+    return_column: str = "ret"
+    date_format: str = "%Y-%m-%d"
+
+
+# --- Main Input Data Configuration ---
+
+
+class InputDataConfig(BaseModel):
+    """Defines all data inputs for the portfolio analysis."""
+
+    prediction_model_names: List[str]
+    prediction_extraction_method: Literal["precomputed_prediction_files"]
+    precomputed_prediction_files: PredictionFilesConfig
+    company_value_weights: Optional[CompanyValuesConfig] = None
+    risk_free_dataset: RiskFreeDatasetConfig
+    market_benchmark: Optional[MarketBenchmarkConfig] = None
+
+
+# --- Strategy and Top-Level Configuration ---
+
+
+class PortfolioStrategyConfig(BaseModel):
+    """Defines a single long-short portfolio strategy."""
+
+    name: str
+    weighting_scheme: Literal["equal", "value"]
+    long_quantiles: List[float] = Field(..., min_length=2, max_length=2)
+    short_quantiles: List[float] = Field(..., min_length=2, max_length=2)
 
 
 class PortfolioConfig(BaseModel):
+    """The root configuration model for the entire portfolio pipeline."""
+
     input_data: InputDataConfig
-    strategies: List[PortfolioStrategyConfig]
+    portfolio_strategies: List[PortfolioStrategyConfig]
     metrics: List[Literal["sharpe_ratio", "expected_shortfall", "cumulative_return"]]
-    market_benchmark: Optional[MarketBenchmarkConfig] = None
     cross_sectional_analysis: Optional[bool] = False
+
+    @model_validator(mode="after")
+    def check_value_weighting_dependencies(self) -> "PortfolioConfig":
+        """
+        Ensures that if any strategy uses value weighting, the corresponding
+        dataset is defined in the input_data section.
+        """
+        uses_value_weighting = any(
+            s.weighting_scheme == "value" for s in self.portfolio_strategies
+        )
+        if uses_value_weighting and self.input_data.company_value_weights is None:
+            raise ValueError(
+                "A strategy uses 'weighting_scheme: value', but 'company_value_weights' "
+                "is not defined in the 'input_data' section of the configuration."
+            )
+        return self
 
 
 def load_config(config_path: Union[str, Path]) -> PortfolioConfig:
+    """Loads and validates the portfolio configuration YAML file."""
     config_path = Path(config_path).expanduser()
     if not config_path.is_file():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")

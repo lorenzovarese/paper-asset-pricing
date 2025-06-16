@@ -2,8 +2,8 @@ import polars as pl
 import pytest
 from datetime import date
 
-from paper_portfolio.manager import PortfolioManager  # typo: ignore[import]
-from paper_portfolio.config_parser import load_config  # typo: ignore[import]
+from paper_portfolio.manager import PortfolioManager  # type: ignore[import]
+from paper_portfolio.config_parser import load_config  # type: ignore[import]
 
 # A minimal but complete YAML config string for tests
 MINIMAL_YAML_CONFIG = """

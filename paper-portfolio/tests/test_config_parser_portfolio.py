@@ -1,6 +1,6 @@
 import pytest
 import yaml
-from paper_portfolio.config_parser import (  # typo: ignore[import]
+from paper_portfolio.config_parser import (  # type: ignore[import]
     load_config,
     PortfolioConfig,
 )

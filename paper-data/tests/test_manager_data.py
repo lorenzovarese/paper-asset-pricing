@@ -1,8 +1,8 @@
-from pydantic import ValidationError
 import pytest
 from unittest.mock import patch
 import polars as pl
 from polars.testing import assert_frame_equal
+from pydantic import ValidationError
 
 from paper_data.manager import DataManager  # type: ignore
 from paper_data.config_parser import DataConfig  # type: ignore
@@ -20,9 +20,27 @@ def mock_project_root(tmp_path):
 
 
 @pytest.fixture
-def sample_config_dict():
-    """A sample config for testing the manager's logic."""
-    return {
+def sample_firm_df():
+    """A sample DataFrame for testing."""
+    return pl.DataFrame(
+        {
+            "date": ["2020-01-31", "2020-01-31", "2020-02-29"],
+            "permno": [1, 2, 1],
+            "volume": [100.0, None, 150.0],
+            "category": ["A", "B", "A"],
+        }
+    ).with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
+
+
+# --- Tests for DataManager ---
+
+
+@patch("paper_data.manager.CSVLoader")
+def test_manager_ingestion(mock_csv_loader, sample_firm_df, mock_project_root):
+    """Tests that the manager correctly calls the ingestion connector."""
+    mock_csv_loader.return_value.get_data.return_value = sample_firm_df
+
+    config_dict = {
         "ingestion": [
             {
                 "name": "firm_data",
@@ -32,47 +50,15 @@ def sample_config_dict():
                 "id_column": "permno",
             }
         ],
-        "wrangling_pipeline": [
-            {
-                "operation": "monthly_imputation",
-                "dataset": "firm_data",
-                "numeric_columns": ["volume"],
-                "output_name": "imputed_data",
-            }
-        ],
         "export": [
             {
-                "dataset_name": "imputed_data",
-                "output_filename_base": "final_panel",
+                "dataset_name": "firm_data",
+                "output_filename_base": "final",
                 "format": "parquet",
             }
         ],
     }
-
-
-@pytest.fixture
-def sample_firm_df():
-    """A sample DataFrame to be returned by the mocked CSVLoader."""
-    return pl.DataFrame(
-        {
-            "date": ["2020-01-31", "2020-01-31", "2020-02-29"],
-            "permno": [1, 2, 1],
-            "volume": [100.0, None, 150.0],
-        }
-    ).with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
-
-
-# --- Tests for DataManager ---
-
-
-@patch("paper_data.manager.CSVLoader")
-def test_manager_ingestion(
-    mock_csv_loader, sample_config_dict, sample_firm_df, mock_project_root
-):
-    """Tests that the manager correctly calls the ingestion connector."""
-    mock_csv_loader.return_value.get_data.return_value = sample_firm_df
-
-    config = DataConfig.model_validate(sample_config_dict)
+    config = DataConfig.model_validate(config_dict)
     manager = DataManager(config)
 
     manager._project_root = mock_project_root
@@ -84,13 +70,103 @@ def test_manager_ingestion(
     assert manager._ingestion_metadata["firm_data"]["date_column"] == "date"
 
 
-@patch("paper_data.manager.impute_monthly")
-def test_manager_wrangling(mock_impute, sample_config_dict, sample_firm_df):
-    """Tests that the manager correctly calls a wrangling function."""
-    imputed_df = sample_firm_df.with_columns(pl.col("volume").fill_null(100.0))
-    mock_impute.return_value = imputed_df
-
-    config = DataConfig.model_validate(sample_config_dict)
+@pytest.mark.parametrize(
+    "operation_config, mock_function_path",
+    [
+        # Test Case 1: ScaleConfig
+        (
+            {
+                "operation": "scale_to_range",
+                "dataset": "firm_data",
+                "cols_to_scale": ["volume"],
+                "range": {"min": -1, "max": 1},
+                "output_name": "scaled_data",
+            },
+            "paper_data.manager.scale_to_range",
+        ),
+        # Test Case 2: MergeConfig
+        (
+            {
+                "operation": "merge",
+                "left_dataset": "firm_data",
+                "right_dataset": "firm_data",
+                "on": ["permno"],
+                "how": "left",
+                "output_name": "merged_data",
+            },
+            "paper_data.manager.merge_datasets",
+        ),
+        # Test Case 3: LagConfig
+        (
+            {
+                "operation": "lag",
+                "dataset": "firm_data",
+                "periods": 1,
+                "columns_to_lag": {
+                    "method": "all_except",
+                    "columns": ["date", "permno"],
+                },
+                "output_name": "lagged_data",
+            },
+            "paper_data.manager.lag_columns",
+        ),
+        # Test Case 4: DummyConfig
+        (
+            {
+                "operation": "dummy_generation",
+                "dataset": "firm_data",
+                "column_to_dummy": "category",
+                "output_name": "dummied_data",
+            },
+            "paper_data.manager.create_dummies",
+        ),
+        # Test Case 5: InteractionConfig (eager)
+        (
+            {
+                "operation": "create_macro_interactions",
+                "dataset": "firm_data",
+                "macro_columns": ["volume"],
+                "firm_columns": ["permno"],
+                "output_name": "interacted_data",
+            },
+            "paper_data.manager.create_macro_firm_interactions",
+        ),
+        # Test Case 6: InteractionConfig (lazy)
+        (
+            {
+                "operation": "create_macro_interactions",
+                "dataset": "firm_data",
+                "macro_columns": ["volume"],
+                "firm_columns": ["permno"],
+                "use_lazy_engine": True,
+                "output_name": "lazy_interacted_data",
+            },
+            "paper_data.manager.create_macro_firm_interactions_lazy",
+        ),
+    ],
+)
+def test_wrangling_operations(operation_config, mock_function_path, sample_firm_df):
+    """Tests that the manager correctly calls each type of wrangling function."""
+    full_config_dict = {
+        "ingestion": [
+            {
+                "name": "firm_data",
+                "format": "csv",
+                "path": "f.csv",
+                "date_column": {"date": "d"},
+                "id_column": "permno",
+            }
+        ],
+        "wrangling_pipeline": [operation_config],
+        "export": [
+            {
+                "dataset_name": operation_config["output_name"],
+                "output_filename_base": "out",
+                "format": "parquet",
+            }
+        ],
+    }
+    config = DataConfig.model_validate(full_config_dict)
     manager = DataManager(config)
 
     manager.datasets["firm_data"] = sample_firm_df
@@ -99,22 +175,80 @@ def test_manager_wrangling(mock_impute, sample_config_dict, sample_firm_df):
         "id_column": "permno",
     }
 
-    manager._wrangle_data()
+    with patch(mock_function_path) as mock_func:
+        if operation_config.get("use_lazy_engine"):
+            mock_func.return_value = pl.LazyFrame()
+        else:
+            mock_func.return_value = pl.DataFrame()
 
-    mock_impute.assert_called_once()
-    assert "imputed_data" in manager.datasets
-    assert_frame_equal(manager.datasets["imputed_data"], imputed_df)
+        manager._wrangle_data()
+
+    mock_func.assert_called_once()
+
+    pos_args, _ = mock_func.call_args
+    op_type = operation_config["operation"]
+
+    # Assert based on the specific function that was called
+    if op_type == "scale_to_range":
+        assert pos_args[1] == ["volume"]  # cols_to_scale
+        assert pos_args[2] == "date"  # date_col
+        assert pos_args[3] == -1.0  # min
+        assert pos_args[4] == 1.0  # max
+    elif op_type == "merge":
+        # The first two args are DataFrames, we can check their type
+        assert isinstance(pos_args[0], pl.DataFrame)
+        assert isinstance(pos_args[1], pl.DataFrame)
+        assert pos_args[2] == ["permno"]  # on_cols
+        assert pos_args[3] == "left"  # how
+    elif op_type == "lag":
+        assert pos_args[1] == "date"
+        assert pos_args[2] == "permno"
+        assert pos_args[3] == ["volume", "category"]  # cols_to_lag
+        assert pos_args[4] == 1  # periods
+    elif op_type == "dummy_generation":
+        assert pos_args[1] == "category"
+        assert pos_args[2] is False  # drop_original_col
+    elif op_type == "create_macro_interactions":
+        if operation_config.get("use_lazy_engine"):
+            assert isinstance(pos_args[0], pl.LazyFrame)
+        else:
+            assert isinstance(pos_args[0], pl.DataFrame)
+        assert pos_args[1] == ["volume"]  # macro_columns
+        assert pos_args[2] == ["permno"]  # firm_columns
+        assert pos_args[3] is False  # drop_macro_columns
+
+    # Check that the output dataset was created
+    output_name = operation_config["output_name"]
+    if operation_config.get("use_lazy_engine"):
+        assert output_name in manager.lazy_datasets
+    else:
+        assert output_name in manager.datasets
 
 
 @patch("polars.DataFrame.write_parquet")
-def test_manager_export(
-    mock_write_parquet, sample_config_dict, sample_firm_df, mock_project_root
-):
+def test_manager_export(mock_write_parquet, mock_project_root):
     """Tests that the manager correctly calls the export function."""
-    config = DataConfig.model_validate(sample_config_dict)
+    config_dict = {
+        "ingestion": [
+            {
+                "name": "imputed_data",
+                "format": "csv",
+                "path": "f.csv",
+                "date_column": {"d": "f"},
+            }
+        ],
+        "export": [
+            {
+                "dataset_name": "imputed_data",
+                "output_filename_base": "final_panel",
+                "format": "parquet",
+            }
+        ],
+    }
+    config = DataConfig.model_validate(config_dict)
     manager = DataManager(config)
 
-    manager.datasets["imputed_data"] = sample_firm_df
+    manager.datasets["imputed_data"] = pl.DataFrame()
     manager._project_root = mock_project_root
 
     manager._export_data()
@@ -128,10 +262,11 @@ def test_manager_export(
 @patch("paper_data.manager.DataManager._wrangle_data")
 @patch("paper_data.manager.DataManager._export_data")
 def test_manager_run_orchestrates_calls(
-    mock_export, mock_wrangle, mock_ingest, sample_config_dict, mock_project_root
+    mock_export, mock_wrangle, mock_ingest, mock_project_root
 ):
     """Tests that the main `run` method calls all pipeline steps in order."""
-    config = DataConfig.model_validate(sample_config_dict)
+    config_dict = {"ingestion": [], "export": []}
+    config = DataConfig.model_validate(config_dict)
     manager = DataManager(config)
 
     manager.run(project_root=mock_project_root)
@@ -141,19 +276,17 @@ def test_manager_run_orchestrates_calls(
     mock_export.assert_called_once()
 
 
-def test_manager_fails_on_unsupported_operation(sample_config_dict):
-    """Tests that the manager raises an error for an unknown wrangling operation."""
-    sample_config_dict["wrangling_pipeline"].append(
-        {
-            "operation": "fly_to_the_moon",
-            "dataset": "firm_data",
-            "output_name": "moon_data",
-        }
-    )
-
-    # This now correctly tests that Pydantic's discriminator catches the error
+def test_manager_fails_on_unsupported_operation():
+    """Tests that Pydantic validation catches an unknown wrangling operation."""
+    invalid_config_dict = {
+        "ingestion": [
+            {"name": "d", "format": "csv", "path": "p", "date_column": {"d": "f"}}
+        ],
+        "wrangling_pipeline": [{"operation": "fly_to_the_moon", "output_name": "m"}],
+        "export": [],
+    }
     with pytest.raises(
         ValidationError,
         match="Input tag 'fly_to_the_moon' found using 'operation' does not match any of the expected tags",
     ):
-        DataConfig.model_validate(sample_config_dict)
+        DataConfig.model_validate(invalid_config_dict)

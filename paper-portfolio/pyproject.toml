@@ -1,7 +1,7 @@
 [project]
 name = "paper-portfolio"
 version = "0.1.0"
-description = "Tools for portfolio construction experiments using datasets and models."
+description = "A portfolio construction and analysis tool for asset pricing strategies. Build portfolios from model predictions and evaluate performance with key financial metrics."
 readme = "README.md"
 authors = [
     { name = "Lorenzo Varese", email = "55581163+lorenzovarese@users.noreply.github.com" },

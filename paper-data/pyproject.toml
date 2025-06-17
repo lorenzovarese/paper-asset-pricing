@@ -1,7 +1,7 @@
 [project]
 name = "paper-data"
 version = "0.1.0"
-description = "Data ingestion and preprocessing tools for asset pricing research."
+description = "A flexible, configuration-driven data pipeline for asset pricing research. Ingest from WRDS, CSVs, and Google Sheets, then clean and transform data for modeling."
 readme = "README.md"
 authors = [
     { name = "Lorenzo Varese", email = "55581163+lorenzovarese@users.noreply.github.com" },

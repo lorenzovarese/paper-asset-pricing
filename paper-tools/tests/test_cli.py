@@ -188,11 +188,16 @@ def test_execute_fails_if_component_config_is_missing(project):
 
 
 @patch("paper_tools.cli.DataManager")
+@patch("paper_tools.cli.load_data_config")
 def test_execute_happy_path_with_autodetect(
-    mock_data_manager_class, project, monkeypatch
+    mock_load_data_config, mock_data_manager_class, project, monkeypatch
 ):
     """Tests a successful run, including auto-detection of the project."""
-    # Mock the manager to confirm it's called correctly
+    # Mock the config loader to return a dummy config object
+    mock_config_object = MagicMock()
+    mock_load_data_config.return_value = mock_config_object
+
+    # Mock the manager instance to confirm it's called correctly
     mock_manager_instance = MagicMock()
     mock_data_manager_class.return_value = mock_manager_instance
 
@@ -206,11 +211,14 @@ def test_execute_happy_path_with_autodetect(
     assert "Auto-detected project root" in result.stdout
     assert "Data phase completed successfully" in result.stdout
 
-    # Verify the manager was instantiated and its run method was called
-    # The manager is initialized with the config path, not a loaded config object.
-    mock_data_manager_class.assert_called_once_with(
-        config_path=project / "configs" / cli.DATA_COMPONENT_CONFIG_FILENAME
-    )
+    # Verify the config loader was called with the correct path
+    component_config_path = project / "configs" / cli.DATA_COMPONENT_CONFIG_FILENAME
+    mock_load_data_config.assert_called_once_with(config_path=component_config_path)
+
+    # Verify the manager was instantiated with the loaded config object
+    mock_data_manager_class.assert_called_once_with(config=mock_config_object)
+
+    # Verify the manager's run method was called with the project root
     mock_manager_instance.run.assert_called_once_with(project_root=project)
 
 

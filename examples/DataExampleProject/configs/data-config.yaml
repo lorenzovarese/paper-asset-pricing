@@ -38,8 +38,8 @@ wrangling_pipeline:
   dataset: "firm_and_macro"
   periods: 1 # How many periods to lag (i.e. 1 month)
   columns_to_lag:
-  - method: "all_except" # Lag all columns except the following
-  - columns: [ "date", "permco", "return" ] # These columns will not be lagged
+    method: "all_except" # Lag all columns except the following
+    columns: [ "date", "permco", "return" ] # These columns will not be lagged
   drop_original_cols_after_lag: true # Drop the original columns after lagging
   restore_names: true # Restore the original column names (i.e. feature1_lag1 becomes feature1)
   drop_generated_nans: true # Drop rows with NaNs introduced by lagging (e.g., first month)

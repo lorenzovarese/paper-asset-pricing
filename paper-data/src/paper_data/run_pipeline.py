@@ -7,6 +7,7 @@ import argparse
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from paper_data.manager import DataManager
+from paper_data.config_parser import load_config
 
 # Define constants that do not depend on the project path
 LOG_LEVEL = "INFO"
@@ -76,7 +77,8 @@ def main():
         root_logger.info(f"Config path: {data_config_path}")
         root_logger.info(f"Project root: {paper_project_root}")
 
-        manager = DataManager(config_path=data_config_path)
+        data_config = load_config(config_path=data_config_path)
+        manager = DataManager(config=data_config)
         processed_datasets = manager.run(project_root=paper_project_root)
 
         print(

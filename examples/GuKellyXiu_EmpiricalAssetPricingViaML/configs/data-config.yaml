@@ -263,8 +263,8 @@ wrangling_pipeline:
   dataset: "macro"
   periods: 1
   columns_to_lag:
-  - method: "all_except"
-  - columns: [ "date" ] # Lag everything except the date column
+    method: "all_except"
+    columns: [ "date" ] # Lag everything except the date column
   drop_original_cols_after_lag: true
   restore_names: true # Rename lagged columns (e.g., 'bm_lag_1') back to original names ('bm')
   drop_generated_nans: true # Remove rows where lagging created missing values
@@ -275,8 +275,8 @@ wrangling_pipeline:
   dataset: "risk_free"
   periods: 1
   columns_to_lag:
-  - method: "all_except"
-  - columns: [ "date" ]
+    method: "all_except"
+    columns: [ "date" ]
   drop_original_cols_after_lag: true
   restore_names: true
   drop_generated_nans: true

@@ -28,15 +28,15 @@ logger = logging.getLogger(__name__)
 # This allows paper-tools to function (e.g., `init`) even if optional components aren't installed.
 try:
     from paper_data.manager import DataManager  # type: ignore
+    from paper_data.config_parser import load_config as load_data_config  # type: ignore
 
     PAPER_DATA_AVAILABLE = True
-    logger.debug("paper_data.manager.DataManager imported successfully.")
+    logger.debug("paper_data components imported successfully.")
 except ImportError:
     PAPER_DATA_AVAILABLE = False
     DataManager = None  # type: ignore
-    logger.debug(
-        "Failed to import paper_data.manager.DataManager. PAPER_DATA_AVAILABLE=False"
-    )
+    load_data_config = None  # type: ignore
+    logger.debug("Failed to import paper_data components. PAPER_DATA_AVAILABLE=False")
 
 try:
     from paper_model.manager import ModelManager  # type: ignore
@@ -495,6 +495,8 @@ def _execute_phase_runner(
             component_config = config_loader_fn(config_path=component_config_path)
             manager = manager_class(config=component_config)
         else:
+            # This branch is now deprecated but kept for potential future use
+            # where a manager might not have a separate config loader.
             manager = manager_class(config_path=component_config_path)
 
         # Run the main logic
@@ -550,7 +552,7 @@ def execute_data_phase(
         project_path_str=project_path,
         is_available=PAPER_DATA_AVAILABLE,
         manager_class=DataManager,
-        config_loader_fn=None,  # DataManager takes path directly
+        config_loader_fn=load_data_config,
         default_config_filename=DATA_COMPONENT_CONFIG_FILENAME,
         install_hint="`pip install paper-tools[data]` or `pip install paper-data`",
     )

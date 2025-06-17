@@ -11,6 +11,12 @@ repos:
   - id: check-toml # Checks TOML files for parseable syntax
   - id: check-merge-conflict # Prevents committing files with merge conflict strings
 
+# pyupgrade: A tool (and pre-commit hook) to automatically upgrade syntax for newer versions of the language.
+- repo: https://github.com/asottile/pyupgrade
+  rev: v3.20.0
+  hooks:
+  - id: pyupgrade
+
 # Ruff hooks for linting and formatting Python code
 - repo: https://github.com/astral-sh/ruff-pre-commit
   # Ruff version.
@@ -23,9 +29,3 @@ repos:
   # Run the formatter.
   - id: ruff-format
     types_or: [ python, pyi ]
-
-# pyupgrade: A tool (and pre-commit hook) to automatically upgrade syntax for newer versions of the language.
-- repo: https://github.com/asottile/pyupgrade
-  rev: v3.20.0
-  hooks:
-  - id: pyupgrade

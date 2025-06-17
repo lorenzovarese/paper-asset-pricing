@@ -8,7 +8,6 @@ The link was last checked on 2024-05-10 from Amit Goyal's website: https://sites
 
 from __future__ import annotations
 
-from typing import Dict
 import math
 import re
 
@@ -46,9 +45,9 @@ def _count_sig_digits_from_string(num_str: str) -> int:
 
 def _infer_sig_digits_per_column(
     df_raw: pd.DataFrame, numeric_cols: list[str]
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """Return the *maximum* number of significant digits found in each column."""
-    sig_map: Dict[str, int] = {col: 0 for col in numeric_cols}
+    sig_map: dict[str, int] = {col: 0 for col in numeric_cols}
     for col in numeric_cols:
         for val in df_raw[col].dropna().astype(str):
             sig_map[col] = max(sig_map[col], _count_sig_digits_from_string(val))
@@ -118,7 +117,7 @@ def construct_welch_goyal_predictors(
     raw: pd.DataFrame, sig_cap: int = 6
 ) -> pd.DataFrame:
     hp = raw.astype(np.longdouble, copy=False)
-    sig_map: Dict[str, int] = raw.attrs.get("sig_digits_per_col", {})
+    sig_map: dict[str, int] = raw.attrs.get("sig_digits_per_col", {})
 
     p = pd.DataFrame(index=hp.index, dtype="longdouble")
     p["dp"] = np.log(hp["D12"] / hp["Index"])
@@ -132,7 +131,7 @@ def construct_welch_goyal_predictors(
     p["dfy"] = hp["BAA"] - hp["AAA"]
     p["svar"] = hp["svar"]
 
-    target_sig: Dict[str, int] = {
+    target_sig: dict[str, int] = {
         "dp": min(sig_cap, sig_map.get("D12", sig_cap), sig_map.get("Index", sig_cap)),
         "ep": min(sig_cap, sig_map.get("E12", sig_cap), sig_map.get("Index", sig_cap)),
         "bm": min(sig_cap, sig_map.get("b/m", sig_cap)),

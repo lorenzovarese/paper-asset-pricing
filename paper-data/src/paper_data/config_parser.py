@@ -228,7 +228,7 @@ def load_config(config_path: Union[str, Path]) -> DataConfig:
     if not config_path.is_file():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
-    with open(config_path, "r") as file:
+    with open(config_path) as file:
         try:
             raw_config = yaml.safe_load(file)
         except yaml.YAMLError as exc:

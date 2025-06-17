@@ -382,7 +382,7 @@ def _get_project_root_and_load_main_config(
         raise typer.Exit(code=1)
 
     try:
-        with open(main_config_path, "r") as f:
+        with open(main_config_path) as f:
             project_config = yaml.safe_load(f)
         if project_config is None:  # Handle empty YAML file
             project_config = {}

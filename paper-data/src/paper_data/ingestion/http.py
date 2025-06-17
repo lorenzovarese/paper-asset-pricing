@@ -65,7 +65,7 @@ class GoogleSheetConnector(DataConnector):
         except requests.RequestException as e:
             if self.cache_path.exists():
                 self.cache_path.unlink(missing_ok=True)
-            raise IOError(
+            raise OSError(
                 f"Failed to download from Google Sheets URL '{self.url}': {e}"
             ) from e
 

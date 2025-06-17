@@ -1,5 +1,7 @@
 # P.A.P.E.R: Platform for Asset Pricing Experimentation and Research 📈🔬
 
+[![codecov](https://codecov.io/github/lorenzovarese/paper-asset-pricing/graph/badge.svg?token=ZUDEPEPJFK)](https://codecov.io/github/lorenzovarese/paper-asset-pricing)
+
 Welcome to **P.A.P.E.R** (Platform for Asset Pricing Experimentation and Research)! This monorepo is a comprehensive suite of tools designed to streamline the entire workflow of quantitative asset pricing research, from raw data ingestion to portfolio construction and performance analysis.
 
 Our goal is to provide a modular, reproducible, and efficient framework for academics and practitioners to conduct rigorous asset pricing studies.
@@ -133,6 +135,14 @@ To run tests for all packages in the monorepo, first ensure you have `pytest` in
 ```bash
 pytest
 ```
+
+---
+
+✅ Code Quality & Test Coverage
+
+We use continuous integration to ensure the quality and reliability of the codebase. The following graph shows the test coverage for each package in the monorepo. You can click on any part of the graph to explore the detailed coverage report on Codecov.
+
+![Codecov Grid](https://codecov.io/github/lorenzovarese/paper-asset-pricing/graphs/tree.svg?token=ZUDEPEPJFK)
 
 ---
 

@@ -1,5 +1,7 @@
 # paper-asset-pricing: The Orchestrator for P.A.P.E.R Research 🚀
 
+[![codecov](https://codecov.io/github/lorenzovarese/paper-asset-pricing/graph/badge.svg?token=ZUDEPEPJFK)](https://codecov.io/github/lorenzovarese/paper-asset-pricing)
+
 `paper-asset-pricing` is the central command-line interface (CLI) and orchestration engine for the P.A.P.E.R (Platform for Asset Pricing Experimentation and Research) monorepo. It provides a unified entry point for initializing new research projects and executing the entire end-to-end asset pricing workflow.
 
 Think of `paper-asset-pricing` as the conductor of your research symphony, ensuring each component (`paper-data`, `paper-model`, `paper-portfolio`) performs its role seamlessly and in the correct sequence.

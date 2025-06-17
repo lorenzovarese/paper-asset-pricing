@@ -68,45 +68,49 @@ def main():
             f"Error: The provided project path is not a valid directory: {paper_project_root}"
         )
         sys.exit(1)
+    else:
+        # Set up logging to the project's log file
+        setup_logging(paper_project_root)
 
-    # Set up logging to the project's log file
-    setup_logging(paper_project_root)
+        # Construct the full path to the config file
+        portfolio_config_path = paper_project_root / "configs" / DEFAULT_CONFIG_FILENAME
 
-    # Construct the full path to the config file
-    portfolio_config_path = paper_project_root / "configs" / DEFAULT_CONFIG_FILENAME
+        print(f"Using project root: {paper_project_root}")
+        print(f"Attempting to load config from: {portfolio_config_path}")
+        print(f"Detailed logs will be written to: {paper_project_root / LOG_FILE_NAME}")
 
-    print(f"Using project root: {paper_project_root}")
-    print(f"Attempting to load config from: {portfolio_config_path}")
-    print(f"Detailed logs will be written to: {paper_project_root / LOG_FILE_NAME}")
+        # --- 3. Run the Portfolio Pipeline ---
+        try:
+            root_logger.info("--- Starting Portfolio Pipeline Execution ---")
+            root_logger.info(f"Config path: {portfolio_config_path}")
+            root_logger.info(f"Project root: {paper_project_root}")
 
-    # --- 3. Run the Portfolio Pipeline ---
-    try:
-        root_logger.info("--- Starting Portfolio Pipeline Execution ---")
-        root_logger.info(f"Config path: {portfolio_config_path}")
-        root_logger.info(f"Project root: {paper_project_root}")
+            portfolio_config = load_config(config_path=portfolio_config_path)
+            manager = PortfolioManager(config=portfolio_config)
+            manager.run(project_root=paper_project_root)
 
-        portfolio_config = load_config(config_path=portfolio_config_path)
-        manager = PortfolioManager(config=portfolio_config)
-        manager.run(project_root=paper_project_root)
+            print(
+                "\n✅ Portfolio pipeline completed successfully. See logs for details."
+            )
+            root_logger.info("--- Portfolio Pipeline Completed Successfully ---")
 
-        print("\n✅ Portfolio pipeline completed successfully. See logs for details.")
-        root_logger.info("--- Portfolio Pipeline Completed Successfully ---")
-
-    except FileNotFoundError as e:
-        error_msg = f"A required file was not found: {e}"
-        root_logger.error(error_msg, exc_info=True)
-        print(f"\n❌ ERROR: {error_msg}. Check logs for the full traceback.")
-        sys.exit(1)
-    except ValueError as e:
-        error_msg = f"Configuration or data validation error: {e}"
-        root_logger.error(error_msg, exc_info=True)
-        print(f"\n❌ ERROR: {error_msg}. Check logs for the full traceback.")
-        sys.exit(1)
-    except Exception as e:
-        error_msg = f"An unexpected error occurred: {e}"
-        root_logger.exception(error_msg)
-        print("\n❌ An unexpected error occurred. Check logs for the full traceback.")
-        sys.exit(1)
+        except FileNotFoundError as e:
+            error_msg = f"A required file was not found: {e}"
+            root_logger.error(error_msg, exc_info=True)
+            print(f"\n❌ ERROR: {error_msg}. Check logs for the full traceback.")
+            sys.exit(1)
+        except ValueError as e:
+            error_msg = f"Configuration or data validation error: {e}"
+            root_logger.error(error_msg, exc_info=True)
+            print(f"\n❌ ERROR: {error_msg}. Check logs for the full traceback.")
+            sys.exit(1)
+        except Exception as e:
+            error_msg = f"An unexpected error occurred: {e}"
+            root_logger.exception(error_msg)
+            print(
+                "\n❌ An unexpected error occurred. Check logs for the full traceback."
+            )
+            sys.exit(1)
 
 
 if __name__ == "__main__":

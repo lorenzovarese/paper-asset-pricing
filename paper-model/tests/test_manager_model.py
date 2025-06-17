@@ -163,29 +163,45 @@ def test_run_rolling_window_evaluation(mock_get_data, sample_models_config_dict)
     mock_model_instance.config = {
         "target_column": "ret",
         "save_prediction_results": True,
-        "feature_columns": ["feature"],  # Add this for the n_predictors calculation
+        "feature_columns": ["feature"],
     }
-    mock_model_instance.predict.return_value = pl.Series("pred", [0.5, 0.5])
+    # The predict method will be called for each test month. Let's make it return a single value.
+    mock_model_instance.predict.return_value = pl.Series("pred", [0.5])
 
-    # This is the mock class that will be put into the registry
     mock_sklearn_model_class = MagicMock(return_value=mock_model_instance)
 
-    mock_get_data.return_value = pl.DataFrame(
+    # Create mock data that covers both the first training window (2020) and the first test window (2021)
+    train_window_data = pl.DataFrame(
         {
-            "date": [datetime(2020, 1, 31), datetime(2020, 2, 29)],
-            "id": [1, 1],
-            "feature": [1.0, 2.0],
-            "ret": [0.6, 0.7],
+            "date": pl.date_range(
+                datetime(2020, 1, 31), datetime(2020, 12, 31), "1mo", eager=True
+            ),
+            "id": range(12),
+            "feature": [float(i) for i in range(12)],
+            "ret": [float(i) * 0.1 for i in range(12)],
         }
     )
+    test_window_data = pl.DataFrame(
+        {
+            "date": pl.date_range(
+                datetime(2021, 1, 31), datetime(2021, 12, 31), "1mo", eager=True
+            ),
+            "id": range(12),
+            "feature": [float(i) for i in range(12, 24)],
+            "ret": [float(i) * 0.1 for i in range(12, 24)],
+        }
+    )
+    # The mock should return the combined data for the first window
+    mock_get_data.return_value = pl.concat([train_window_data, test_window_data])
 
     config = ModelsConfig.model_validate(sample_models_config_dict)
 
     with patch.dict(ModelManager.MODEL_REGISTRY, {"ols": mock_sklearn_model_class}):
         manager = ModelManager(config)
         manager._all_data_columns = ["date", "id", "feature", "ret"]
-        manager._initialize_models()  # This will now use the mock class
+        manager._initialize_models()
 
+        # The unique months should match the full range the manager will iterate over
         unique_months = pl.date_range(
             datetime(2020, 1, 1), datetime(2021, 12, 31), "1mo", eager=True
         ).to_list()
@@ -193,8 +209,9 @@ def test_run_rolling_window_evaluation(mock_get_data, sample_models_config_dict)
         manager._run_rolling_window_evaluation(unique_months)
 
     # Assertions
-    assert mock_get_data.call_count > 0
-    # Now we assert that the train method on the INSTANCE was called
-    mock_model_instance.train.assert_called()
-    mock_model_instance.predict.assert_called()
-    assert len(manager.all_evaluation_results["ols_model"]) > 0
+    # It's called once for the first (and only) window in this test
+    mock_get_data.assert_called_once()
+    mock_model_instance.train.assert_called_once()
+    # It should be called 12 times, once for each month in the test period (2021)
+    assert mock_model_instance.predict.call_count == 12
+    assert len(manager.all_evaluation_results["ols_model"]) == 12

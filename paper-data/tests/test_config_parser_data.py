@@ -115,7 +115,6 @@ def test_config_validation_fails_on_missing_ingestion(valid_config_dict):
 def test_config_validation_fails_on_unknown_dataset(valid_config_dict):
     """Tests that validation fails if a wrangling step uses an undefined dataset."""
     valid_config_dict["wrangling_pipeline"][0]["left_dataset"] = "unknown_dataset"
-    # MODIFIED: Call model_validate directly, not load_config
     with pytest.raises(
         ValueError, match="left_dataset 'unknown_dataset' is not defined"
     ):
@@ -125,7 +124,6 @@ def test_config_validation_fails_on_unknown_dataset(valid_config_dict):
 def test_config_validation_fails_on_exporting_unknown_dataset(valid_config_dict):
     """Tests that validation fails if an export step uses an undefined dataset."""
     valid_config_dict["export"][0]["dataset_name"] = "unknown_final_data"
-    # MODIFIED: Call model_validate directly, not load_config
     with pytest.raises(ValueError, match="dataset 'unknown_final_data' is not defined"):
         DataConfig.model_validate(valid_config_dict)
 
@@ -135,7 +133,6 @@ def test_lag_config_validation_fails_on_restore_names(valid_config_dict):
     lag_op = valid_config_dict["wrangling_pipeline"][1]
     lag_op["restore_names"] = True
     lag_op["drop_original_cols_after_lag"] = False
-    # MODIFIED: Call model_validate directly, not load_config
     with pytest.raises(
         ValueError,
         match="If 'restore_names' is true, 'drop_original_cols_after_lag' must also be true",

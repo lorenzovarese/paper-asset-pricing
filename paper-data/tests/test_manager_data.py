@@ -72,7 +72,6 @@ def test_manager_ingestion(
     """Tests that the manager correctly calls the ingestion connector."""
     mock_csv_loader.return_value.get_data.return_value = sample_firm_df
 
-    # MODIFIED: Use model_validate for dicts
     config = DataConfig.model_validate(sample_config_dict)
     manager = DataManager(config)
 
@@ -91,7 +90,6 @@ def test_manager_wrangling(mock_impute, sample_config_dict, sample_firm_df):
     imputed_df = sample_firm_df.with_columns(pl.col("volume").fill_null(100.0))
     mock_impute.return_value = imputed_df
 
-    # MODIFIED: Use model_validate for dicts
     config = DataConfig.model_validate(sample_config_dict)
     manager = DataManager(config)
 
@@ -113,7 +111,6 @@ def test_manager_export(
     mock_write_parquet, sample_config_dict, sample_firm_df, mock_project_root
 ):
     """Tests that the manager correctly calls the export function."""
-    # MODIFIED: Use model_validate for dicts
     config = DataConfig.model_validate(sample_config_dict)
     manager = DataManager(config)
 
@@ -134,7 +131,6 @@ def test_manager_run_orchestrates_calls(
     mock_export, mock_wrangle, mock_ingest, sample_config_dict, mock_project_root
 ):
     """Tests that the main `run` method calls all pipeline steps in order."""
-    # MODIFIED: Use model_validate for dicts
     config = DataConfig.model_validate(sample_config_dict)
     manager = DataManager(config)
 

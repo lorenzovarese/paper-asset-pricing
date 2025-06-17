@@ -179,7 +179,6 @@ class WRDSCredentials(BaseModel):
 
 class DataConfig(BaseModel):
     ingestion: List[AnyIngestionConfig]
-    # MODIFIED: Added the discriminator field
     wrangling_pipeline: List[
         Annotated[AnyWranglingOperation, Field(discriminator="operation")]
     ] = Field(default_factory=list)

@@ -10,6 +10,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import StandardScaler  # type: ignore[import-untyped]
 
 from .base import BaseModel
+from ..evaluation.metrics import r2_out_of_sample
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,17 @@ class EarlyStopper:
         self.min_validation_loss = float("inf")
 
     def early_stop(self, validation_loss: float) -> bool:
-        if validation_loss < self.min_validation_loss - self.min_delta:
+        # If the new loss is better than the best loss we've seen, reset the counter.
+        if validation_loss < self.min_validation_loss:
             self.min_validation_loss = validation_loss
             self.counter = 0
-        else:
+        # If the new loss is NOT an improvement, check if it's worse by more than min_delta.
+        # If it is, increment the counter.
+        elif validation_loss > self.min_validation_loss + self.min_delta:
             self.counter += 1
             if self.counter >= self.patience:
                 return True
+        # If the loss is the same or slightly worse (within min_delta), do nothing.
         return False
 
 
@@ -317,14 +322,3 @@ class TorchModel(BaseModel[List[FeedForwardNN]]):
 
     def evaluate(self, y_true: pl.Series, y_pred: pl.Series) -> Dict[str, Any]:
         raise NotImplementedError("Evaluation logic is handled by the ModelManager.")
-
-
-def r2_out_of_sample(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    assert len(y_true) == len(y_pred), (
-        f"Shape mismatch: y_true {y_true.shape}, y_pred {y_pred.shape}"
-    )
-    ss_res = np.sum((y_true - y_pred) ** 2)
-    ss_tot = np.sum(y_true**2)
-    if ss_tot == 0:
-        return 1.0 if ss_res == 0 else -np.inf
-    return float(1 - ss_res / ss_tot)

@@ -1,7 +1,7 @@
 [project]
 name = "paper-asset-pricing"
 version = "0.1.0"
-description = "A comprehensive suite of tools for asset pricing research, data, modeling, and portfolio analysis"
+description = "A comprehensive suite of tools for research in asset pricing."
 readme = "README.md"
 authors = [
     { name = "Lorenzo Varese", email = "55581163+lorenzovarese@users.noreply.github.com" },

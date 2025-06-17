@@ -438,6 +438,10 @@ def execute_data_phase(
     log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
     log_level = project_config.get("logging", {}).get("level", "INFO")
     _configure_project_logging(project_root, log_file_name, log_level)
+
+    log_file_path = project_root / log_file_name
+    typer.secho(f"Logging details to: {log_file_path.resolve()}", fg=typer.colors.BLUE)
+
     logger.info(f"Starting Data Phase for project: {project_root.name}")
     logger.info(f"Project root: {project_root}")
     data_config_filename = (
@@ -537,6 +541,10 @@ def execute_models_phase(
     log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
     log_level = project_config.get("logging", {}).get("level", "INFO")
     _configure_project_logging(project_root, log_file_name, log_level)
+
+    log_file_path = project_root / log_file_name
+    typer.secho(f"Logging details to: {log_file_path.resolve()}", fg=typer.colors.BLUE)
+
     logger.info(f"Starting Models Phase for project: {project_root.name}")
     logger.info(f"Project root: {project_root}")
     models_config_filename = (
@@ -645,6 +653,9 @@ def execute_portfolio_phase(
     log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
     log_level = project_config.get("logging", {}).get("level", "INFO")
     _configure_project_logging(project_root, log_file_name, log_level)
+
+    log_file_path = project_root / log_file_name
+    typer.secho(f"Logging details to: {log_file_path.resolve()}", fg=typer.colors.BLUE)
 
     logger.info(f"Starting Portfolio Phase for project: {project_root.name}")
     logger.info(f"Project root: {project_root}")

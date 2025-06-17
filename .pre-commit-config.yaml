@@ -23,3 +23,9 @@ repos:
   # Run the formatter.
   - id: ruff-format
     types_or: [ python, pyi ]
+
+# pyupgrade: A tool (and pre-commit hook) to automatically upgrade syntax for newer versions of the language.
+- repo: https://github.com/asottile/pyupgrade
+  rev: v3.20.0
+  hooks:
+  - id: pyupgrade

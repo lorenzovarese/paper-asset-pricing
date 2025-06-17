@@ -19,7 +19,7 @@ input_data:
   # Dataset containing the risk-free rate for calculating excess returns.
   risk_free_dataset:
   # Obtained from tbl column in Welch & Goyal (2024) dataset https://docs.google.com/spreadsheets/d/1OIZg6htTK60wtnCVXvxAujvG1aKEOVYv/edit?gid=1660564386#gid=1660564386
-    file_name: "monthly_risk_free_rates.csv" 
+    file_name: "monthly_risk_free_rates.csv"
     date_column: "date"
     return_column: "monthly_rf" # Corresponds to 'risk_free_rate_col' in model config
     date_format: "%Y%m%d"

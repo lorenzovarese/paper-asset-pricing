@@ -107,10 +107,10 @@ input_data:
   prediction_model_names:
     - "OLS_model"
     - "GBRT_tuned"
-  
+
   # The base name of the processed dataset used by the models.
   processed_dataset_name: "processed_panel_data"
-  
+
   # Column names required for calculations.
   date_column: "date"
   id_column: "permno"

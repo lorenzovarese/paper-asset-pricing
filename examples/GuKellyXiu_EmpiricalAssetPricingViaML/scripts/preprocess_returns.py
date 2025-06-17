@@ -3,15 +3,16 @@ import os
 
 # --- Configuration ---
 # Set the path to your input CSV file
-input_csv_path = 'data/raw/crsp_returns_dec1956_dec2021_EOM.csv' 
+input_csv_path = "data/raw/crsp_returns_dec1956_dec2021_EOM.csv"
 
 # Set the path for the new, corrected output file
-output_csv_path = 'data/raw/crsp_returns_dec1956_dec2021_EOM_decimal.csv'
+output_csv_path = "data/raw/crsp_returns_dec1956_dec2021_EOM_decimal.csv"
 # -------------------
+
 
 def convert_returns_to_decimal(input_path, output_path):
     """
-    Reads a CSV, converts the 'ret' column from percentage to decimal by 
+    Reads a CSV, converts the 'ret' column from percentage to decimal by
     dividing by 100, and saves it to a new CSV file.
     """
     # Check if the input file exists
@@ -23,7 +24,7 @@ def convert_returns_to_decimal(input_path, output_path):
     df = pd.read_csv(input_path)
 
     # Check if 'ret' column exists
-    if 'ret' not in df.columns:
+    if "ret" not in df.columns:
         print("Error: 'ret' column not found in the CSV file.")
         return
 
@@ -33,7 +34,7 @@ def convert_returns_to_decimal(input_path, output_path):
 
     # --- The core conversion step ---
     print("\nConverting 'ret' column from percentage to decimal (dividing by 100)...")
-    df['ret'] = df['ret'] / 100.0
+    df["ret"] = df["ret"] / 100.0
     # --------------------------------
 
     print("\nConverted data (first 5 rows):")

@@ -31,7 +31,7 @@ build-backend = "hatchling.build"
 packages = ["src/paper_data"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/paper_data/**", "README.md", "LICENSE"] # optional sdist config 
+include = ["src/paper_data/**", "README.md", "LICENSE"] # optional sdist config
 
 [dependency-groups]
 dev = [

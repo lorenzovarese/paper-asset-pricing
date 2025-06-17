@@ -122,7 +122,9 @@ def construct_welch_goyal_predictors(
 
     p = pd.DataFrame(index=hp.index, dtype="longdouble")
     p["dp"] = np.log(hp["D12"] / hp["Index"])
-    p["ep_macro"] = np.log(hp["E12"] / hp["Index"]) # Add _macro suffix to avoid confusion with ep in firm characteristics
+    p["ep_macro"] = np.log(
+        hp["E12"] / hp["Index"]
+    )  # Add _macro suffix to avoid confusion with ep in firm characteristics
     p["bm_macro"] = hp["b/m"]
     p["ntis"] = hp["ntis"]
     p["tbl"] = hp["tbl"]

@@ -112,9 +112,7 @@ def impute_monthly(
 
     # Apply categorical imputation (mode)
     if categorical_cols:
-        logger.info(
-            f"Imputing categorical columns by monthly mode: {categorical_cols}"
-        )
+        logger.info(f"Imputing categorical columns by monthly mode: {categorical_cols}")
         for col in categorical_cols:
             _log_null_count(out, col)
             impute_expr = pl.col(col).fill_null(

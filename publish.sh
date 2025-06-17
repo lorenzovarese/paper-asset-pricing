@@ -81,19 +81,19 @@ mkdir dist
 # Loop through each selected package
 for PKG in "${PACKAGES_TO_PUBLISH[@]}"; do
   echo "--- Processing package: $PKG ---"
-  
+
   # Check if the directory exists before trying to enter it
   if [ ! -d "$PKG" ]; then
     echo "Error: Directory $PKG not found! Skipping."
     continue
   fi
-  
+
   cd "$PKG"
-  
+
   # Build the package. The output will go to the root dist/ directory.
   echo "Building $PKG..."
   uv build --out-dir ../dist
-  
+
   cd ..
   echo "--- Finished package: $PKG ---"
   echo ""

@@ -1,4 +1,4 @@
-# Configuration file for the empirical asset pricing via Machine Learning models, inspired by Gu, Kelly, and Xiu (2020). 
+# Configuration file for the empirical asset pricing via Machine Learning models, inspired by Gu, Kelly, and Xiu (2020).
 
 input_data:
   dataset_name: "final_dataset_model"

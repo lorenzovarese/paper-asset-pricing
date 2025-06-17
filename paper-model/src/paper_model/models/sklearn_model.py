@@ -258,9 +258,10 @@ class SklearnModel(BaseModel[Pipeline]):
 
             elif model_type == "gbrt":
                 if model_config.get("use_hist_implementation"):
-                    param_grid["max_iter"] = model_config["n_estimators"]
-                    param_grid["max_depth"] = model_config["max_depth"]
-                    param_grid["learning_rate"] = model_config["learning_rate"]
+                    # This part is fine, it uses .get() which is safe
+                    param_grid["max_iter"] = model_config.get("n_estimators")
+                    param_grid["max_depth"] = model_config.get("max_depth")
+                    param_grid["learning_rate"] = model_config.get("learning_rate")
                     loss = "squared_error"
                     if objective == "huber":
                         loss = "absolute_error"
@@ -271,13 +272,30 @@ class SklearnModel(BaseModel[Pipeline]):
                         loss=loss, random_state=random_state
                     )
                 else:
-                    param_grid["n_estimators"] = model_config["n_estimators"]
-                    param_grid["max_depth"] = model_config["max_depth"]
-                    param_grid["learning_rate"] = model_config["learning_rate"]
+                    # Only add parameters to the grid if they are lists (i.e., meant for tuning)
+                    if isinstance(model_config.get("n_estimators"), list):
+                        param_grid["n_estimators"] = model_config["n_estimators"]
+                    if isinstance(model_config.get("max_depth"), list):
+                        param_grid["max_depth"] = model_config["max_depth"]
+                    if isinstance(model_config.get("learning_rate"), list):
+                        param_grid["learning_rate"] = model_config["learning_rate"]
+
                     loss = "huber" if objective == "huber" else "squared_error"
+
+                    # Set the non-tuning parameters directly on the base model
                     base_model = GradientBoostingRegressor(
                         loss=loss, random_state=random_state
                     )
+                    if not isinstance(model_config.get("n_estimators"), list):
+                        base_model.set_params(
+                            n_estimators=model_config.get("n_estimators")
+                        )
+                    if not isinstance(model_config.get("max_depth"), list):
+                        base_model.set_params(max_depth=model_config.get("max_depth"))
+                    if not isinstance(model_config.get("learning_rate"), list):
+                        base_model.set_params(
+                            learning_rate=model_config.get("learning_rate")
+                        )
 
             pipeline = self._create_pipeline(base_model)
             grid_search = GridSearchCV(

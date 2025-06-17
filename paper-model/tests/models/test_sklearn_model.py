@@ -1,12 +1,17 @@
 import pytest
 import polars as pl
 import numpy as np
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from paper_model.models.sklearn_model import SklearnModel  # type: ignore
-from sklearn.linear_model import LinearRegression, ElasticNet  # type: ignore
-from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor  # type: ignore
+from sklearn.linear_model import LinearRegression, ElasticNet, HuberRegressor  # type: ignore
+from sklearn.ensemble import (  # type: ignore
+    RandomForestRegressor,
+    HistGradientBoostingRegressor,
+    GradientBoostingRegressor,
+)
 from sklearn.pipeline import Pipeline  # type: ignore
+from sklearn.cross_decomposition import PLSRegression  # type: ignore
 
 # --- Fixtures ---
 
@@ -58,27 +63,34 @@ def base_config():
         ("ols", LinearRegression),
         ("enet", ElasticNet),
         ("rf", RandomForestRegressor),
-        (
-            "gbrt",
-            HistGradientBoostingRegressor,
-        ),  # Testing the faster hist implementation
+        ("gbrt", HistGradientBoostingRegressor),
+        ("gbrt_no_hist", GradientBoostingRegressor),
+        ("pcr", HuberRegressor),  # PCR with huber objective
+        ("pls", PLSRegression),
     ],
 )
 def test_model_creation_no_tuning(model_type, expected_class, base_config, sample_data):
     """Tests that the correct sklearn model is created for non-tuning scenarios."""
     train_df, _ = sample_data
     config = base_config.copy()
+
+    # Special handling for gbrt without hist
+    use_hist = True
+    if model_type == "gbrt_no_hist":
+        model_type = "gbrt"
+        use_hist = False
+
     config.update(
         {
             "type": model_type,
-            # Add required params for non-tuning cases
+            "objective_function": "huber" if model_type == "pcr" else "l2",
             "alpha": 0.1,
             "l1_ratio": 0.5,
             "n_components": 2,
             "n_estimators": 10,
             "max_depth": 3,
             "learning_rate": 0.1,
-            "use_hist_implementation": True,
+            "use_hist_implementation": use_hist,
             "max_features": "sqrt",
         }
     )
@@ -88,39 +100,56 @@ def test_model_creation_no_tuning(model_type, expected_class, base_config, sampl
 
     assert model.model is not None
 
-    # For models wrapped in a pipeline, find the actual model step
     if model_type in ["ols", "enet", "pls"]:
         final_estimator = model.model.named_steps["model"]
     elif model_type == "pcr":
         final_estimator = model.model.named_steps["pcr_pipeline"].named_steps[
             "regressor"
         ]
-    else:  # rf, gbrt, glm are not wrapped in the same way
+    else:
         final_estimator = model.model
 
     assert isinstance(final_estimator, expected_class)
 
 
+@pytest.mark.parametrize(
+    "model_type, tuning_params",
+    [
+        ("enet", {"alpha": [0.1, 1.0]}),
+        ("pcr", {"n_components": [1, 2]}),
+        ("pls", {"n_components": [1, 2]}),
+        ("glm", {"alpha": [0.1, 0.2], "n_knots": 2}),
+        ("rf", {"max_depth": [2, 3]}),
+        ("gbrt", {"learning_rate": [0.05, 0.1]}),
+    ],
+)
 @patch("paper_model.models.sklearn_model.GridSearchCV")
-def test_model_creation_with_tuning(mock_grid_search_fit, base_config, sample_data):
-    """Tests that GridSearchCV is used when tuning is required."""
+def test_model_tuning_scenarios(
+    mock_grid_search_class, model_type, tuning_params, base_config, sample_data
+):
+    """Tests that GridSearchCV is used for all tuning-enabled models."""
     train_df, val_df = sample_data
 
-    config = base_config.copy()
-    config.update(
-        {
-            "type": "enet",
-            "alpha": [0.1, 1.0],  # This triggers tuning
-            "l1_ratio": 0.5,
-        }
-    )
+    mock_instance = MagicMock()
+    mock_instance.best_params_ = {"mock_param": 1}
+    mock_instance.best_estimator_ = MagicMock()
+    mock_grid_search_class.return_value = mock_instance
 
-    model = SklearnModel(name="test_tuning", config=config)
-    # We don't need to mock the return value of the model, just check that fit is called
+    config = base_config.copy()
+    config.update({"type": model_type, **tuning_params})
+
+    # MODIFIED: Add all required default params for GBRT
+    config.setdefault("n_estimators", 10)
+    config.setdefault("max_depth", 3)
+    config.setdefault("learning_rate", 0.1)
+    config.setdefault("max_features", "sqrt")
+
+    model = SklearnModel(name=f"test_{model_type}_tuning", config=config)
     model.train(train_df, val_df)
 
-    # The assertion is now on the patched fit method
-    mock_grid_search_fit.assert_called_once()
+    mock_grid_search_class.assert_called_once()
+    mock_instance.fit.assert_called_once()
+    assert model.model is not None
 
 
 def test_predict_logic(base_config, sample_data):
@@ -130,9 +159,8 @@ def test_predict_logic(base_config, sample_data):
     config["type"] = "ols"
 
     model = SklearnModel(name="test_ols", config=config)
-    model.train(train_df)  # Train a real, simple model
+    model.train(train_df)
 
-    # Create prediction data
     pred_df = pl.DataFrame(
         {
             "date": ["2020-03-31"] * 3,
@@ -162,7 +190,7 @@ def test_predict_with_missing_features_in_data(base_config, sample_data):
         {
             "date": ["2020-03-31"] * 2,
             "permno": [1, 2],
-            "feat1": [0.1, None],  # One row has a null
+            "feat1": [0.1, None],
             "feat2": [0.4, 0.5],
         }
     )
@@ -170,9 +198,8 @@ def test_predict_with_missing_features_in_data(base_config, sample_data):
     predictions = model.predict(pred_df_with_nulls)
 
     assert len(predictions) == 2
-    assert predictions.to_list() == [predictions[0], None]
-    assert not predictions.is_null()[0]  # Check the boolean mask at index 0
-    assert predictions.is_null()[1]  # Check the boolean mask at index 1
+    assert predictions[0] is not None
+    assert predictions[1] is None
 
 
 def test_train_handles_empty_clean_data(base_config, caplog):
@@ -180,7 +207,6 @@ def test_train_handles_empty_clean_data(base_config, caplog):
     config = base_config.copy()
     config["type"] = "ols"
 
-    # Create a dataframe that will be empty after dropping nulls
     train_df_with_nulls = pl.DataFrame(
         {"feat1": [1.0, None], "feat2": [None, 2.0], "ret": [0.1, 0.2]}
     )
@@ -202,11 +228,9 @@ def test_ols_with_market_cap_weighting(base_config, sample_data):
 
     model = SklearnModel(name="test_ols_weighted", config=config)
 
-    # Mock the fit method to check the `sample_weight` argument
     with patch.object(Pipeline, "fit") as mock_fit:
         model.train(train_df)
         mock_fit.assert_called_once()
-        # Check that 'model__sample_weight' was passed in kwargs
         _, kwargs = mock_fit.call_args
         assert "model__sample_weight" in kwargs
         assert isinstance(kwargs["model__sample_weight"], np.ndarray)

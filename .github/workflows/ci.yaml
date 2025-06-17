@@ -1,4 +1,4 @@
-name: CI
+name: CI & Test Coverage
 
 on:
   push:
@@ -9,33 +9,36 @@ on:
       - main
 
 jobs:
-  test:
+  test-and-coverage:
+    name: Run Tests and Upload Coverage
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: [3.11]
+        python-version: [3.11]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v4
+        uses: actions/checkout@v4
         with:
-          python-version: ${{ matrix.python }}
+          fetch-depth: 2
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
           cache: "pip"
 
-      - name: Install pip-tools and test deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Install testing tools
           pip install pytest pytest-cov
-
-      - name: Install workspace packages
-        run: |
-          pip install -e paper-data
-          pip install -e paper-model
-          pip install -e paper-portfolio
-          pip install -e paper-asset-pricing
+          # Install all workspace packages in editable mode
+          # This ensures that pytest-cov can find and measure them
+          pip install -e ./paper-data
+          pip install -e ./paper-model
+          pip install -e ./paper-portfolio
+          pip install -e ./paper-asset-pricing
 
       - name: Run tests with coverage
         run: |
@@ -44,4 +47,11 @@ jobs:
             --cov=paper-model \
             --cov=paper-portfolio \
             --cov=paper-asset-pricing \
-            --cov-report=term-missing
+            --cov-branch \
+            --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: unittests

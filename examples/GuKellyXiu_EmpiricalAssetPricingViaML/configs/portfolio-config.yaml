@@ -1,50 +1,45 @@
-input_data:
-  prediction_model_names:
-  - "ols_baseline"
-  - "ols_huber_adaptive"
-  - "enet_full_tuned"
-  - "pls_full_tuned"
-  - "pcr_full_tuned"
-  - "rf_full_tuned"
-  - "gbrt_full_tuned"
-  - "nn1_tuned"
-  processed_dataset_name: "final_dataset_model"
-  date_column: "date"
-  id_column: "permno"
-  risk_free_rate_col: "rf"
-  value_weight_col: "mvel1" # TODO: put the corrected to market value
+# Configuration file for portfolio backtesting and analysis.
 
-strategies:
-- name: "EQ90"
+input_data:
+  # List of model names whose predictions will be used to form portfolios.
+  # These names must match the 'name' field in the model configuration file.
+  prediction_model_names:
+  - "ols3_baseline"
+  - "ols3_huber_adaptive"
+  - "ols_huber_adaptive"
+  - "pcr_full_tuned"
+  - "random_forest_tuned"
+
+  # Method to load the predictions. 'precomputed_prediction_files' is the standard method.
+  prediction_extraction_method: "precomputed_prediction_files"
+  precomputed_prediction_files:
+    date_column: "date"
+    id_column: "permno"
+
+  # Dataset containing the risk-free rate for calculating excess returns.
+  risk_free_dataset:
+  # Obtained from tbl column in Welch & Goyal (2024) dataset https://docs.google.com/spreadsheets/d/1OIZg6htTK60wtnCVXvxAujvG1aKEOVYv/edit?gid=1660564386#gid=1660564386
+    file_name: "monthly_risk_free_rates.csv" 
+    date_column: "date"
+    return_column: "monthly_rf" # Corresponds to 'risk_free_rate_col' in model config
+    date_format: "%Y%m%d"
+
+# If true, the performance of each quantile (e.g., decile) of stocks will be analyzed in a separate plot.
+cross_sectional_analysis: true
+
+# List of performance metrics to compute for each portfolio strategy.
+metrics:
+- "sharpe_ratio"
+- "cumulative_return"
+
+# Definitions of the portfolio strategies to backtest.
+portfolio_strategies:
+- name: "EQ90" # Long/Short top and bottom decile, equal-weighted
   weighting_scheme: "equal"
   long_quantiles: [ 0.9, 1.0 ]
   short_quantiles: [ 0.0, 0.1 ]
 
-# - name: "VAL90"
-#   weighting_scheme: "value"
-#   long_quantiles: [ 0.9, 1.0 ]
-#   short_quantiles: [ 0.0, 0.1 ]
-
-- name: "EQ95"
+- name: "EQ95" # Long/Short top and bottom decile, tail excluded, equal-weighted
   weighting_scheme: "equal"
-  long_quantiles: [ 0.90, 0.95 ]
-  short_quantiles: [ 0.05, 0.10 ]
-
-# - name: "VAL95"
-#   weighting_scheme: "value"
-#   long_quantiles: [ 0.90, 0.95 ]
-#   short_quantiles: [ 0.05, 0.10 ]
-
-metrics:
-- "sharpe_ratio"
-- "expected_shortfall"
-- "cumulative_return"
-
-market_benchmark:
-  name: "S&P 500"
-  file_name: "sp500_dec1989_dec2021.csv"
-  date_column: "date"
-  return_column: "ret"
-  date_format: "%Y-%m-%d"
-
-cross_sectional_analysis: true
+  long_quantiles: [ 0.9, 0.95 ]
+  short_quantiles: [ 0.05, 0.1 ]

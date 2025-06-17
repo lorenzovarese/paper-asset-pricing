@@ -1,8 +1,8 @@
 import pytest
-from typer.testing import CliRunner
+from typer.testing import CliRunner  # type: ignore
 from unittest.mock import MagicMock, patch
 
-import paper_tools.cli as cli  # type: ignore
+import paper_asset_pricing.cli as cli  # type: ignore
 
 runner = CliRunner()
 
@@ -187,8 +187,8 @@ def test_execute_fails_if_component_config_is_missing(project):
     assert "Data component config file 'data-config.yaml' not found" in result.stderr
 
 
-@patch("paper_tools.cli.DataManager")
-@patch("paper_tools.cli.load_data_config")
+@patch("paper_asset_pricing.cli.DataManager")
+@patch("paper_asset_pricing.cli.load_data_config")
 def test_execute_happy_path_with_autodetect(
     mock_load_data_config, mock_data_manager_class, project, monkeypatch
 ):
@@ -231,8 +231,8 @@ def test_execute_happy_path_with_autodetect(
         (KeyError, "An unexpected error occurred"),  # Test the generic Exception case
     ],
 )
-@patch("paper_tools.cli.ModelManager")
-@patch("paper_tools.cli.load_models_config")
+@patch("paper_asset_pricing.cli.ModelManager")
+@patch("paper_asset_pricing.cli.load_models_config")
 def test_execute_phase_handles_manager_errors(
     mock_load_config, mock_model_manager_class, exc_to_raise, expected_msg, project
 ):

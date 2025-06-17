@@ -40,7 +40,7 @@ Full citation:
     # Example:
     # uv venv
     # source .venv/bin/activate
-    pip install paper-data paper-model paper-portfolio # Or use paper-tools[all]
+    pip install paper-data paper-model paper-portfolio # Or use paper-asset-pricing[all]
     ```
 
 3.  **Create Component Configurations:**
@@ -72,15 +72,15 @@ Full citation:
     - Put your raw data files into the `data/raw/` directory.
 
 5.  **Execute Project Phases:**
-    Use `paper-tools execute` from the project root:
+    Use `paper execute` from the project root:
     ```bash
-    paper-tools execute data      # Runs the data processing phase
-    paper-tools execute models    # Runs the modeling phase
-    paper-tools execute portfolio # Runs the portfolio phase
+    paper execute data      # Runs the data processing phase
+    paper execute models    # Runs the modeling phase
+    paper execute portfolio # Runs the portfolio phase
     ```
     You can also run them sequentially:
     ```bash
-    paper-tools execute data && paper-tools execute models && paper-tools execute portfolio
+    paper execute data && paper execute models && paper execute portfolio
     ```
 
-Refer to `configs/paper-project.yaml` to see how `paper-tools` locates component configurations and CLI tools.
+Refer to `configs/paper-project.yaml` to see how `paper` locates component configurations and CLI tools.

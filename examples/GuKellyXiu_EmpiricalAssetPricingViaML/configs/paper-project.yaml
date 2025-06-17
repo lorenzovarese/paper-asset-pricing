@@ -1,7 +1,7 @@
 # configs/paper-project.yaml
 project_name: "GuKellyXiu_EmpiricalAssetPricingViaML"
 version: "0.1.0"
-paper_tools_version: "0.1.0"
+paper_asset_pricing_version: "0.1.0"
 creation_date: "2025-06-01"
 description: "P.A.P.E.R project: GuKellyXiu_EmpiricalAssetPricingViaML"
 

@@ -1,5 +1,10 @@
 [tool.uv.workspace]
-members = ["paper-data", "paper-model", "paper-portfolio", "paper-tools"]
+members = [
+  "paper-data",
+  "paper-model",
+  "paper-portfolio",
+  "paper-asset-pricing",
+]
 
 # The [tool.uv.sources] section tells uv to use local workspace versions
 # for these packages if they are listed as dependencies within the workspace.
@@ -10,7 +15,7 @@ members = ["paper-data", "paper-model", "paper-portfolio", "paper-tools"]
 paper-data = { workspace = true }
 paper-model = { workspace = true }
 paper-portfolio = { workspace = true }
-paper-tools = { workspace = true }
+paper-asset-pricing = { workspace = true }
 
 [dependency-groups]
 dev = [

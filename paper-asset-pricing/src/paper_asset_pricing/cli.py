@@ -16,7 +16,7 @@ from jinja2 import Environment, FileSystemLoader
 import logging
 from typing import Callable, Any, Type
 
-# --- Initial logger for paper-tools, before project-specific logging is set up ---
+# --- Initial logger for paper-asset-pricing, before project-specific logging is set up ---
 # This logger will initially print to stdout, but will be reconfigured later.
 # It's important that this is NOT basicConfig, as basicConfig configures the root logger
 # and we want more control.
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 # --- Try to import from sub-packages ---
-# This allows paper-tools to function (e.g., `init`) even if optional components aren't installed.
+# This allows paper-asset-pricing to function (e.g., `init`) even if optional components aren't installed.
 try:
     from paper_data.manager import DataManager  # type: ignore
     from paper_data.config_parser import load_config as load_data_config  # type: ignore
@@ -67,9 +67,9 @@ except ImportError:
 
 # Try to get version from __init__ for the config file, fallback if not found
 try:
-    from . import __version__ as paper_tools_version
+    from . import __version__ as paper_asset_pricing_version
 except ImportError:
-    paper_tools_version = "unknown"
+    paper_asset_pricing_version = "unknown"
 
 app = typer.Typer(
     name="paper",
@@ -225,7 +225,7 @@ def init(
 
         template_context = {
             "project_name": project_path.name,
-            "paper_tools_version": paper_tools_version,
+            "paper_asset_pricing_version": paper_asset_pricing_version,
             "creation_date": datetime.date.today().isoformat(),
             "CONFIGS_DIR_NAME": CONFIGS_DIR_NAME,
             "DATA_DIR_NAME": DATA_DIR_NAME,
@@ -554,7 +554,7 @@ def execute_data_phase(
         manager_class=DataManager,
         config_loader_fn=load_data_config,
         default_config_filename=DATA_COMPONENT_CONFIG_FILENAME,
-        install_hint="`pip install paper-tools[data]` or `pip install paper-data`",
+        install_hint="`pip install paper-asset-pricing[data]` or `pip install paper-data`",
     )
 
 
@@ -578,7 +578,7 @@ def execute_models_phase(
         manager_class=ModelManager,
         config_loader_fn=load_models_config,
         default_config_filename=MODELS_COMPONENT_CONFIG_FILENAME,
-        install_hint="`pip install paper-tools[models]` or `pip install paper-model`",
+        install_hint="`pip install paper-asset-pricing[models]` or `pip install paper-model`",
     )
 
 
@@ -602,7 +602,7 @@ def execute_portfolio_phase(
         manager_class=PortfolioManager,
         config_loader_fn=load_portfolio_config,
         default_config_filename=PORTFOLIO_COMPONENT_CONFIG_FILENAME,
-        install_hint="`pip install paper-tools[portfolio]` or `pip install paper-portfolio`",
+        install_hint="`pip install paper-asset-pricing[portfolio]` or `pip install paper-portfolio`",
     )
 
 

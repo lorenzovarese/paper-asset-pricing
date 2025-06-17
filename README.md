@@ -16,16 +16,16 @@ This repository is organized as a monorepo, housing several interconnected Pytho
 ├── paper-data/             # 📊 Data Ingestion & Preprocessing
 ├── paper-model/            # 🧠 Model Implementation & Evaluation
 ├── paper-portfolio/        # 💰 Portfolio Construction & Analysis
-├── paper-tools/            # 🚀 CLI & Orchestration
+├── paper-asset-pricing/    # 🚀 CLI & Orchestration
 ├── pyproject.toml          # uv workspace configuration
 └── README.md               # You are here!
 ```
 
 ### Core Components:
 
-*   **`paper-tools`**: The central command-line interface (CLI) and orchestrator for the entire P.A.P.E.R platform. It handles project initialization (`paper init`), manages configurations, and executes the research workflow phase by phase (`paper execute data`, `paper execute models`, `paper execute portfolio`).
+*   **`paper-asset-pricing`**: The central command-line interface (CLI) and orchestrator for the entire P.A.P.E.R platform. It handles project initialization (`paper init`), manages configurations, and executes the research workflow phase by phase (`paper execute data`, `paper execute models`, `paper execute portfolio`).
     *   **Key Features:** Project scaffolding with a standardized structure, execution of data, modeling, and portfolio pipelines, centralized logging.
-    *   **Learn More:** See [`paper-tools/README.md`](./paper-tools/README.md)
+    *   **Learn More:** See [`paper-asset-pricing/README.md`](./paper-asset-pricing/README.md)
 *   **`paper-data`**: Dedicated to data ingestion, cleaning, and preprocessing. It provides a flexible, configuration-driven pipeline to transform raw financial and economic data into clean, analysis-ready datasets.
     *   **Key Features:** Connectors for local files (CSV), Google Sheets, and WRDS. A powerful wrangling toolkit including monthly imputation, cross-sectional scaling, dataset merging, feature lagging, and interaction term creation.
     *   **Learn More:** See [`paper-data/README.md`](./paper-data/README.md)
@@ -64,7 +64,7 @@ pip install -e .[all]
 
 ### 2. Initialize Your Research Project
 
-Use the `paper` CLI from `paper-tools` to scaffold a new project. This creates a standardized directory structure for your work.
+Use the `paper` CLI from `paper-asset-pricing` to scaffold a new project. This creates a standardized directory structure for your work.
 
 ```bash
 paper init ThesisExample

@@ -1,5 +1,5 @@
 [project]
-name = "paper-tools"
+name = "paper-asset-pricing"
 version = "0.1.0"
 description = "A comprehensive suite of tools for asset pricing research, data, modeling, and portfolio analysis"
 readme = "README.md"
@@ -8,26 +8,28 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = ["jinja2>=3.1.6", "pyyaml>=6.0.2", "typer>=0.16.0"]
-# Core paper-tools might have no dependencies itself, or very few.
-# dependencies = []
 
 [project.scripts]
-paper = "paper_tools.cli:app"
+paper = "paper_asset_pricing.cli:app"
 
 [project.optional-dependencies]
 data = ["paper-data~=0.1.0"]
-models = ["paper-model~=0.1.0"]
+model = ["paper-model~=0.1.0"]
 portfolio = ["paper-portfolio~=0.1.0"]
 
 # An 'all' extra is common for installing everything
-all = ["paper-tools[data]", "paper-tools[models]", "paper-tools[portfolio]"]
+all = [
+    "paper-asset-pricing[data]",
+    "paper-asset-pricing[model]",
+    "paper-asset-pricing[portfolio]",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/paper_tools"]
+packages = ["src/paper_asset_pricing"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/paper_tools/**", "README.md", "LICENSE"]
+include = ["src/paper_asset_pricing/**", "README.md", "LICENSE"]

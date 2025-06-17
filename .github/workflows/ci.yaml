@@ -35,7 +35,7 @@ jobs:
           pip install -e paper-data
           pip install -e paper-model
           pip install -e paper-portfolio
-          pip install -e paper-tools
+          pip install -e paper-asset-pricing
 
       - name: Run tests with coverage
         run: |
@@ -43,5 +43,5 @@ jobs:
             --cov=paper-data \
             --cov=paper-model \
             --cov=paper-portfolio \
-            --cov=paper-tools \
+            --cov=paper-asset-pricing \
             --cov-report=term-missing

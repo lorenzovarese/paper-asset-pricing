@@ -28,18 +28,18 @@ Built with [Polars](https://pola.rs/) for high performance and memory efficiency
 
 ## 🚀 Installation
 
-`paper-data` is designed to be part of the larger `PAPER` monorepo. You can install it as an optional dependency of `paper-tools` or as a standalone package.
+`paper-data` is designed to be part of the larger `PAPER` monorepo. You can install it as an optional dependency of `paper-asset-pricing` or as a standalone package.
 
-**Recommended (as part of `paper-tools`):**
+**Recommended (as part of `paper-asset-pricing`):**
 
 This method ensures `paper-data` is available to the main `paper` CLI orchestrator.
 
 ```bash
 # Using pip
-pip install "paper-tools[data]"
+pip install "paper-asset-pricing[data]"
 
 # Using uv
-uv add "paper-tools[data]"
+uv add "paper-asset-pricing[data]"
 ```
 
 **Standalone Installation:**
@@ -156,7 +156,7 @@ cp paper-data/examples/synthetic_data/*.csv ThesisExample/data/raw/
 
 ### 3. Running the Data Pipeline
 
-The intended way to run the pipeline is with the `paper-tools` CLI from within your project directory.
+The intended way to run the pipeline is with the `paper-asset-pricing` CLI from within your project directory.
 
 ```bash
 # Navigate to your project directory from the monorepo root

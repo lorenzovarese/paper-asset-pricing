@@ -1,4 +1,4 @@
-"""paper-tools package."""
+"""paper-asset-pricing package."""
 
 __author__ = "Lorenzo Varese"
 __version__ = "0.1.0"

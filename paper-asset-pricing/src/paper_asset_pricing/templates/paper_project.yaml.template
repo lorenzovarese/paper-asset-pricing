@@ -1,7 +1,7 @@
 # {{CONFIGS_DIR_NAME}}/{{DEFAULT_PROJECT_CONFIG_NAME}}
 project_name: "{{project_name}}"
 version: "0.1.0"
-paper_tools_version: "{{paper_tools_version}}"
+paper_asset_pricing_version: "{{paper_asset_pricing_version}}"
 creation_date: "{{creation_date}}"
 description: "P.A.P.E.R project: {{project_name}}"
 

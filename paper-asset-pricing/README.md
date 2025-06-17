@@ -1,8 +1,8 @@
-# paper-tools: The Orchestrator for P.A.P.E.R Research 🚀
+# paper-asset-pricing: The Orchestrator for P.A.P.E.R Research 🚀
 
-`paper-tools` is the central command-line interface (CLI) and orchestration engine for the P.A.P.E.R (Platform for Asset Pricing Experimentation and Research) monorepo. It provides a unified entry point for initializing new research projects and executing the entire end-to-end asset pricing workflow.
+`paper-asset-pricing` is the central command-line interface (CLI) and orchestration engine for the P.A.P.E.R (Platform for Asset Pricing Experimentation and Research) monorepo. It provides a unified entry point for initializing new research projects and executing the entire end-to-end asset pricing workflow.
 
-Think of `paper-tools` as the conductor of your research symphony, ensuring each component (`paper-data`, `paper-model`, `paper-portfolio`) performs its role seamlessly and in the correct sequence.
+Think of `paper-asset-pricing` as the conductor of your research symphony, ensuring each component (`paper-data`, `paper-model`, `paper-portfolio`) performs its role seamlessly and in the correct sequence.
 
 ---
 
@@ -26,54 +26,54 @@ Think of `paper-tools` as the conductor of your research symphony, ensuring each
 
 ## 📦 Installation
 
-`paper-tools` is the primary entry point for the P.A.P.E.R ecosystem. You can install it with specific components as optional dependencies.
+`paper-asset-pricing` is the primary entry point for the P.A.P.E.R ecosystem. You can install it with specific components as optional dependencies.
 
 **Recommended (with all components):**
 
-To get `paper-tools` and all its components (`paper-data`, `paper-model`, `paper-portfolio`), use the `all` extra.
+To get `paper-asset-pricing` and all its components (`paper-data`, `paper-model`, `paper-portfolio`), use the `all` extra.
 
 ```bash
 # Using pip
-pip install "paper-tools[all]"
+pip install "paper-asset-pricing[all]"
 
 # Using uv
-uv pip install "paper-tools[all]"
+uv pip install "paper-asset-pricing[all]"
 ```
 
 **Install Specific Components:**
 
-If you only need `paper-tools` and a particular component (e.g., `paper-data`), you can install it like this:
+If you only need `paper-asset-pricing` and a particular component (e.g., `paper-data`), you can install it like this:
 
 ```bash
 # Using pip
-pip install "paper-tools[data]"
+pip install "paper-asset-pricing[data]"
 
 # Using uv
-uv pip install "paper-tools[data]"
+uv pip install "paper-asset-pricing[data]"
 ```
 
-**Core `paper-tools` only:**
+**Core `paper-asset-pricing` only:**
 
 If you only want the `paper init` command without any component dependencies:
 
 ```bash
 # Using pip
-pip install paper-tools
+pip install paper-asset-pricing
 
 # Using uv
-uv pip install paper-tools
+uv pip install paper-asset-pricing
 ```
 
 **From Source (for development within the monorepo):**
 
-Navigate to the root of your P.A.P.E.R monorepo and install `paper-tools` in editable mode.
+Navigate to the root of your P.A.P.E.R monorepo and install `paper-asset-pricing` in editable mode.
 
 ```bash
 # Using pip
-pip install -e ./paper-tools
+pip install -e ./paper-asset-pricing
 
 # Using uv
-uv pip install -e ./paper-tools
+uv pip install -e ./paper-asset-pricing
 ```
 
 ---
@@ -174,7 +174,7 @@ The `paper-project.yaml` file, located in your project's `configs/` directory, s
 # configs/paper-project.yaml
 project_name: "ToolsExampleProject"
 version: "0.1.0"
-paper_tools_version: "0.1.0"
+paper_asset_pricing_version: "0.1.0"
 creation_date: "2025-05-01"
 description: "P.A.P.E.R project: ToolsExampleProject"
 
@@ -200,12 +200,12 @@ logging:
 
 ## 🤝 Contributing
 
-We welcome contributions to `paper-tools`! If you have suggestions for new commands, improvements to existing features, or bug fixes, please feel free to open an issue or submit a pull request.
+We welcome contributions to `paper-asset-pricing`! If you have suggestions for new commands, improvements to existing features, or bug fixes, please feel free to open an issue or submit a pull request.
 
 ---
 
 ## 📄 License
 
-`paper-tools` is distributed under the MIT License. See the `LICENSE` file for more information.
+`paper-asset-pricing` is distributed under the MIT License. See the `LICENSE` file for more information.
 
 ---

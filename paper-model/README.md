@@ -28,7 +28,7 @@ Its primary objective is to bridge the gap between the clean, processed data fro
     *   Ensures perfect reproducibility and simplifies experimentation.
 *   **Seamless Integration:** 🔗
     *   Designed to work hand-in-hand with `paper-data` for input and `paper-portfolio` for downstream portfolio construction.
-    *   Orchestrated by `paper-tools` for a unified command-line experience.
+    *   Orchestrated by `paper-asset-pricing` for a unified command-line experience.
 
 ---
 
@@ -36,16 +36,16 @@ Its primary objective is to bridge the gap between the clean, processed data fro
 
 `paper-model` is designed to be part of the larger `PAPER` monorepo.
 
-**Recommended (as part of `paper-tools`):**
+**Recommended (as part of `paper-asset-pricing`):**
 
 This method ensures `paper-model` is available to the main `paper` CLI orchestrator.
 
 ```bash
 # Using pip
-pip install "paper-tools[models]"
+pip install "paper-asset-pricing[models]"
 
 # Using uv
-uv pip install "paper-tools[models]"
+uv pip install "paper-asset-pricing[models]"
 ```
 
 **Standalone Installation:**
@@ -80,7 +80,7 @@ The typical workflow for `paper-model` involves:
 
 1.  **Data Preparation:** Use `paper-data` to process your raw financial data. The resulting Parquet files in `data/processed/` are the direct input for `paper-model`.
 2.  **Configuration:** Define your entire experiment in the `models-config.yaml` file. This includes the evaluation window, metrics, and a list of all models to be trained and compared.
-3.  **Model Execution:** Run the models phase using the `paper-tools` CLI from your project's root directory:
+3.  **Model Execution:** Run the models phase using the `paper-asset-pricing` CLI from your project's root directory:
 
     ```bash
     paper execute models

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # A list of your packages
-PACKAGES=("paper-data" "paper-model" "paper-portfolio" "paper-tools")
+PACKAGES=("paper-data" "paper-model" "paper-portfolio" "paper-asset-pricing")
 
 # Clean the root dist directory before starting
 echo "--- Cleaning old builds ---"

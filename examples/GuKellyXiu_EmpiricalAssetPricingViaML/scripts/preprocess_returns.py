@@ -24,7 +24,7 @@ def convert_returns_to_decimal(input_path, output_path):
 
     # Check if 'ret' column exists
     if 'ret' not in df.columns:
-        print(f"Error: 'ret' column not found in the CSV file.")
+        print("Error: 'ret' column not found in the CSV file.")
         return
 
     print("\nOriginal data (first 5 rows):")

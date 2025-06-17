@@ -32,7 +32,7 @@ try:
     # We use index=False to avoid writing the pandas DataFrame index as a column
     output_df.to_csv(output_filename, index=False)
 
-    print(f"\nSuccessfully processed the data.")
+    print("\nSuccessfully processed the data.")
     print(f"Output saved to '{output_filename}'")
 
     # Display the first few rows of the new data for verification

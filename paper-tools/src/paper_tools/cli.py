@@ -14,6 +14,7 @@ import datetime
 import sys
 from jinja2 import Environment, FileSystemLoader
 import logging
+from typing import Callable, Any, Type
 
 # --- Initial logger for paper-tools, before project-specific logging is set up ---
 # This logger will initially print to stdout, but will be reconfigured later.
@@ -406,6 +407,131 @@ execute_app = typer.Typer(
 app.add_typer(execute_app)
 
 
+def _execute_phase_runner(
+    phase_name: str,
+    project_path_str: str | None,
+    is_available: bool,
+    manager_class: Type[Any] | None,
+    config_loader_fn: Callable | None,
+    default_config_filename: str,
+    install_hint: str,
+):
+    """
+    A generic runner for executing a project phase (data, models, portfolio).
+
+    This function encapsulates the common logic for:
+    - Checking if the required component is installed.
+    - Setting up project-specific logging.
+    - Finding and loading the component's configuration file.
+    - Instantiating the component's Manager class.
+    - Running the manager's main execution method.
+    - Handling common exceptions and reporting errors.
+
+    Args:
+        phase_name: The name of the phase (e.g., "data", "models").
+        project_path_str: The project path provided via CLI option.
+        is_available: A boolean flag indicating if the component is installed.
+        manager_class: The Manager class for the component (e.g., DataManager).
+        config_loader_fn: An optional function to load the component's config.
+                          If None, the manager is assumed to take the config path directly.
+        default_config_filename: The default name for the component's config file.
+        install_hint: A help string for how to install the missing component.
+    """
+    if not is_available or manager_class is None:
+        typer.secho(
+            f"Error: The 'paper-{phase_name}' component is not installed or importable. "
+            f"Please install it, e.g., {install_hint}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    typer.secho(
+        f">>> Executing {phase_name.capitalize()} Phase <<<",
+        fg=typer.colors.CYAN,
+        bold=True,
+    )
+    try:
+        project_root, project_config = _get_project_root_and_load_main_config(
+            project_path_str
+        )
+    except typer.Exit:
+        raise
+
+    log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
+    log_level = project_config.get("logging", {}).get("level", "INFO")
+    _configure_project_logging(project_root, log_file_name, log_level)
+
+    log_file_path = project_root / log_file_name
+    typer.secho(f"Logging details to: {log_file_path.resolve()}", fg=typer.colors.BLUE)
+
+    logger.info(
+        f"Starting {phase_name.capitalize()} Phase for project: {project_root.name}"
+    )
+    logger.info(f"Project root: {project_root}")
+
+    component_config_filename = (
+        project_config.get("components", {})
+        .get(phase_name, {})
+        .get("config_file", default_config_filename)
+    )
+    component_config_path = project_root / CONFIGS_DIR_NAME / component_config_filename
+
+    if not component_config_path.exists():
+        msg = f"{phase_name.capitalize()} component config file '{component_config_path.name}' not found in '{project_root / CONFIGS_DIR_NAME}'."
+        logger.error(msg)
+        typer.secho(
+            f"Error: {msg} Check logs for details: '{log_file_path}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    logger.info(f"Using {phase_name} configuration: {component_config_path}")
+
+    try:
+        # Instantiate manager based on whether a config loader is provided
+        if config_loader_fn:
+            component_config = config_loader_fn(config_path=component_config_path)
+            manager = manager_class(config=component_config)
+        else:
+            manager = manager_class(config_path=component_config_path)
+
+        # Run the main logic
+        manager.run(project_root=project_root)
+
+        typer.secho(
+            f"{phase_name.capitalize()} phase completed successfully. Additional information in '{log_file_path}'",
+            fg=typer.colors.GREEN,
+        )
+        logger.info(f"{phase_name.capitalize()} phase completed successfully.")
+
+    except (FileNotFoundError, ValueError, NotImplementedError) as e:
+        error_type_map = {
+            FileNotFoundError: "A required file was not found.",
+            ValueError: "Configuration issue.",
+            NotImplementedError: "A feature is not yet implemented.",
+        }
+        error_message = error_type_map.get(type(e), "An unexpected error occurred.")
+        logger.error(f"{error_message} during {phase_name} phase: {e}", exc_info=True)
+        typer.secho(
+            f"Error: {error_message} Check logs for details: '{log_file_path}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    except Exception as e:
+        logger.exception(
+            f"An unexpected error occurred while running the {phase_name} phase: {e}"
+        )
+        typer.secho(
+            f"An unexpected error occurred during the {phase_name} phase. Check logs for details: '{log_file_path}'",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
 @execute_app.command("data")
 def execute_data_phase(
     project_path: str = typer.Option(
@@ -419,94 +545,15 @@ def execute_data_phase(
     """
     Executes the data processing phase using the 'paper-data' component.
     """
-    if not PAPER_DATA_AVAILABLE or DataManager is None:
-        typer.secho(
-            "Error: The 'paper-data' component is not installed or importable. "
-            "Please install it, e.g., `pip install paper-tools[data]` or `pip install paper-data`.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    typer.secho(">>> Executing Data Phase <<<", fg=typer.colors.CYAN, bold=True)
-    try:
-        project_root, project_config = _get_project_root_and_load_main_config(
-            project_path
-        )
-    except typer.Exit:
-        raise
-    log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
-    log_level = project_config.get("logging", {}).get("level", "INFO")
-    _configure_project_logging(project_root, log_file_name, log_level)
-
-    log_file_path = project_root / log_file_name
-    typer.secho(f"Logging details to: {log_file_path.resolve()}", fg=typer.colors.BLUE)
-
-    logger.info(f"Starting Data Phase for project: {project_root.name}")
-    logger.info(f"Project root: {project_root}")
-    data_config_filename = (
-        project_config.get("components", {})
-        .get("data", {})
-        .get("config_file", DATA_COMPONENT_CONFIG_FILENAME)
+    _execute_phase_runner(
+        phase_name="data",
+        project_path_str=project_path,
+        is_available=PAPER_DATA_AVAILABLE,
+        manager_class=DataManager,
+        config_loader_fn=None,  # DataManager takes path directly
+        default_config_filename=DATA_COMPONENT_CONFIG_FILENAME,
+        install_hint="`pip install paper-tools[data]` or `pip install paper-data`",
     )
-    component_config_path = project_root / CONFIGS_DIR_NAME / data_config_filename
-    if not component_config_path.exists():
-        logger.error(
-            f"Data component config file '{component_config_path.name}' not found in '{project_root / CONFIGS_DIR_NAME}'."
-        )
-        typer.secho(
-            f"Error: Data component config file '{component_config_path.name}' not found. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    logger.info(f"Using data configuration: {component_config_path}")
-    try:
-        manager = DataManager(config_path=component_config_path)
-        processed_datasets = manager.run(project_root=project_root)
-        typer.secho(
-            f"Data phase completed successfully. Additional information in '{project_root / log_file_name}'",
-            fg=typer.colors.GREEN,
-        )
-        logger.info("Data phase completed successfully.")
-        for name, df in processed_datasets.items():
-            logger.info(f"  Final processed dataset '{name}' shape: {df.shape}")
-    except FileNotFoundError as e:
-        logger.error(f"File not found error during data phase: {e}", exc_info=True)
-        typer.secho(
-            f"Error: A required file was not found. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except ValueError as e:
-        logger.error(f"Configuration error during data phase: {e}", exc_info=True)
-        typer.secho(
-            f"Error: Configuration issue. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except NotImplementedError as e:
-        logger.error(
-            f"Feature not implemented error during data phase: {e}", exc_info=True
-        )
-        typer.secho(
-            f"Error: A feature is not yet implemented. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except Exception as e:
-        logger.exception(
-            f"An unexpected error occurred while running the data phase: {e}"
-        )
-        typer.secho(
-            f"An unexpected error occurred during the data phase. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
 
 
 @execute_app.command("models")
@@ -522,97 +569,15 @@ def execute_models_phase(
     """
     Executes the modeling phase using the 'paper-model' component.
     """
-    if not PAPER_MODEL_AVAILABLE or ModelManager is None or load_models_config is None:
-        typer.secho(
-            "Error: The 'paper-model' component is not installed or importable. "
-            "Please install it, e.g., `pip install paper-tools[models]` or `pip install paper-model`.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    typer.secho(">>> Executing Models Phase <<<", fg=typer.colors.CYAN, bold=True)
-    try:
-        project_root, project_config = _get_project_root_and_load_main_config(
-            project_path
-        )
-    except typer.Exit:
-        raise
-    log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
-    log_level = project_config.get("logging", {}).get("level", "INFO")
-    _configure_project_logging(project_root, log_file_name, log_level)
-
-    log_file_path = project_root / log_file_name
-    typer.secho(f"Logging details to: {log_file_path.resolve()}", fg=typer.colors.BLUE)
-
-    logger.info(f"Starting Models Phase for project: {project_root.name}")
-    logger.info(f"Project root: {project_root}")
-    models_config_filename = (
-        project_config.get("components", {})
-        .get("models", {})
-        .get("config_file", MODELS_COMPONENT_CONFIG_FILENAME)
+    _execute_phase_runner(
+        phase_name="models",
+        project_path_str=project_path,
+        is_available=PAPER_MODEL_AVAILABLE,
+        manager_class=ModelManager,
+        config_loader_fn=load_models_config,
+        default_config_filename=MODELS_COMPONENT_CONFIG_FILENAME,
+        install_hint="`pip install paper-tools[models]` or `pip install paper-model`",
     )
-    component_config_path = project_root / CONFIGS_DIR_NAME / models_config_filename
-    if not component_config_path.exists():
-        logger.error(
-            f"Models component config file '{component_config_path.name}' not found in '{project_root / CONFIGS_DIR_NAME}'."
-        )
-        typer.secho(
-            f"Error: Models component config file '{component_config_path.name}' not found. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    logger.info(f"Using models configuration: {component_config_path}")
-    try:
-        models_config = load_models_config(config_path=component_config_path)
-        manager = ModelManager(config=models_config)
-        prediction_results = manager.run(project_root=project_root)
-        typer.secho(
-            f"Models phase completed successfully. Additional information in '{project_root / log_file_name}'",
-            fg=typer.colors.GREEN,
-        )
-        logger.info("Models phase completed successfully.")
-        for name, df in prediction_results.items():
-            logger.info(
-                f"  Generated prediction results for '{name}' shape: {df.shape}"
-            )
-    except FileNotFoundError as e:
-        logger.error(f"File not found error during models phase: {e}", exc_info=True)
-        typer.secho(
-            f"Error: A required file was not found. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except ValueError as e:
-        logger.error(f"Configuration error during models phase: {e}", exc_info=True)
-        typer.secho(
-            f"Error: Configuration issue. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except NotImplementedError as e:
-        logger.error(
-            f"Feature not implemented error during models phase: {e}", exc_info=True
-        )
-        typer.secho(
-            f"Error: A feature is not yet implemented. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except Exception as e:
-        logger.exception(
-            f"An unexpected error occurred while running the models phase: {e}"
-        )
-        typer.secho(
-            f"An unexpected error occurred during the models phase. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
 
 
 @execute_app.command("portfolio")
@@ -628,108 +593,15 @@ def execute_portfolio_phase(
     """
     Executes the portfolio analysis phase using the 'paper-portfolio' component.
     """
-    if (
-        not PAPER_PORTFOLIO_AVAILABLE
-        or PortfolioManager is None
-        or load_portfolio_config is None
-    ):
-        typer.secho(
-            "Error: The 'paper-portfolio' component is not installed or importable. "
-            "Please install it, e.g., `pip install paper-tools[portfolio]` or `pip install paper-portfolio`.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    typer.secho(">>> Executing Portfolio Phase <<<", fg=typer.colors.CYAN, bold=True)
-
-    try:
-        project_root, project_config = _get_project_root_and_load_main_config(
-            project_path
-        )
-    except typer.Exit:
-        raise
-
-    log_file_name = project_config.get("logging", {}).get("log_file", LOG_FILE_NAME)
-    log_level = project_config.get("logging", {}).get("level", "INFO")
-    _configure_project_logging(project_root, log_file_name, log_level)
-
-    log_file_path = project_root / log_file_name
-    typer.secho(f"Logging details to: {log_file_path.resolve()}", fg=typer.colors.BLUE)
-
-    logger.info(f"Starting Portfolio Phase for project: {project_root.name}")
-    logger.info(f"Project root: {project_root}")
-
-    portfolio_config_filename = (
-        project_config.get("components", {})
-        .get("portfolio", {})
-        .get("config_file", PORTFOLIO_COMPONENT_CONFIG_FILENAME)
+    _execute_phase_runner(
+        phase_name="portfolio",
+        project_path_str=project_path,
+        is_available=PAPER_PORTFOLIO_AVAILABLE,
+        manager_class=PortfolioManager,
+        config_loader_fn=load_portfolio_config,
+        default_config_filename=PORTFOLIO_COMPONENT_CONFIG_FILENAME,
+        install_hint="`pip install paper-tools[portfolio]` or `pip install paper-portfolio`",
     )
-    component_config_path = project_root / CONFIGS_DIR_NAME / portfolio_config_filename
-
-    if not component_config_path.exists():
-        logger.error(
-            f"Portfolio component config file '{component_config_path.name}' "
-            f"not found in '{project_root / CONFIGS_DIR_NAME}'. "
-            f"Ensure '{PORTFOLIO_COMPONENT_CONFIG_FILENAME}' exists and is configured."
-        )
-        typer.secho(
-            f"Error: Portfolio component config file '{component_config_path.name}' not found. "
-            f"Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    logger.info(f"Using portfolio configuration: {component_config_path}")
-
-    try:
-        portfolio_config = load_portfolio_config(config_path=component_config_path)
-        manager = PortfolioManager(config=portfolio_config)
-        manager.run(project_root=project_root)
-
-        typer.secho(
-            f"Portfolio phase completed successfully. Additional information in '{project_root / log_file_name}'",
-            fg=typer.colors.GREEN,
-        )
-        logger.info("Portfolio phase completed successfully.")
-
-    except FileNotFoundError as e:
-        logger.error(f"File not found error during portfolio phase: {e}", exc_info=True)
-        typer.secho(
-            f"Error: A required file was not found. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except ValueError as e:
-        logger.error(f"Configuration error during portfolio phase: {e}", exc_info=True)
-        typer.secho(
-            f"Error: Configuration issue. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except NotImplementedError as e:
-        logger.error(
-            f"Feature not implemented error during portfolio phase: {e}", exc_info=True
-        )
-        typer.secho(
-            f"Error: A feature is not yet implemented. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    except Exception as e:
-        logger.exception(
-            f"An unexpected error occurred while running the portfolio phase: {e}"
-        )
-        typer.secho(
-            f"An unexpected error occurred during the portfolio phase. Check logs for details: '{project_root / log_file_name}'",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
 
 
 @app.callback()

@@ -85,19 +85,28 @@ def test_init_overwrites_nonempty_dir_with_force(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("subcmd", "flag", "pkg_name", "attr"),
+    ("subcmd", "attr"),
     [
-        ("data", "data", "paper-data", "PAPER_DATA_AVAILABLE"),
-        ("models", "models", "paper-model", "PAPER_MODEL_AVAILABLE"),
-        ("portfolio", "portfolio", "paper-portfolio", "PAPER_PORTFOLIO_AVAILABLE"),
+        ("data", "PAPER_DATA_AVAILABLE"),
+        ("models", "PAPER_MODEL_AVAILABLE"),
+        ("portfolio", "PAPER_PORTFOLIO_AVAILABLE"),
     ],
 )
-def test_execute_phase_errors_if_component_missing(subcmd, flag, pkg_name, attr):
-    # ensure component is reported missing
+def test_execute_phase_errors_if_component_missing(subcmd, attr):
+    """
+    Tests that the CLI exits with an error if a component is not installed/available.
+    """
+    original_value = getattr(cli, attr)
     setattr(cli, attr, False)
     result = runner.invoke(cli.app, ["execute", subcmd])
-    assert result.exit_code == 1
-    assert f"Error: The '{pkg_name}' component is not installed" in result.stderr
+    assert result.exit_code == 1, (
+        f"Expected exit code 1 but got {result.exit_code}. Stderr: {result.stderr}"
+    )
+    expected_error_fragment = (
+        f"Error: The 'paper-{subcmd}' component is not installed or importable"
+    )
+    assert expected_error_fragment in result.stderr
+    setattr(cli, attr, original_value)
 
 
 def test_execute_data_autodetect_fails(tmp_path):

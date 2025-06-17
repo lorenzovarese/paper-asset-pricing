@@ -26,9 +26,11 @@ def test_init_creates_full_project(tmp_path):
         "configs",
         "data/raw",
         "data/processed",
+        "models/evaluations",
+        "models/predictions",
         "models/saved",
         "portfolios/results",
-        "portfolios/indexes",
+        "portfolios/additional_datasets",
     ]
     for d in expected_dirs:
         assert (proj / d).is_dir(), f"Missing directory: {d}"

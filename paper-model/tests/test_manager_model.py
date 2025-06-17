@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import polars as pl
 from datetime import datetime
+from polars.testing import assert_frame_equal
 
 from paper_model.manager import ModelManager  # type: ignore
 from paper_model.config_parser import ModelsConfig, FeatureSelectionConfig  # type: ignore
@@ -63,6 +64,87 @@ def sample_models_config_dict():
             }
         ],
     }
+
+
+# --- Test class for _get_data_for_window ---
+
+
+class TestGetDataForWindow:
+    def test_raises_error_if_project_root_is_not_set(self, sample_models_config_dict):
+        """Tests that a ValueError is raised if _project_root is None."""
+        config = ModelsConfig.model_validate(sample_models_config_dict)
+        manager = ModelManager(config)
+        with pytest.raises(ValueError, match="Project root must be set"):
+            manager._get_data_for_window(datetime(2020, 1, 1), datetime(2020, 1, 1))
+
+    def test_loads_non_splitted_data_and_caches_it(
+        self, sample_models_config_dict, mock_project_root
+    ):
+        """Tests loading a single, non-partitioned parquet file and caching it."""
+        # Modify config for non-splitted data
+        sample_models_config_dict["input_data"]["splitted"] = "none"
+        config = ModelsConfig.model_validate(sample_models_config_dict)
+        manager = ModelManager(config)
+        manager._project_root = mock_project_root
+
+        # Create the dummy non-splitted file
+        data_path = mock_project_root / "data" / "processed" / "test_data.parquet"
+        dummy_df = pl.DataFrame({"col1": [1.0], "col2": [2.0]}).with_columns(
+            pl.all().cast(pl.Float64)
+        )
+        dummy_df.write_parquet(data_path)
+
+        # First call: should read from disk and cache
+        with patch("paper_model.manager.pl.read_parquet") as mock_read:
+            mock_read.return_value = dummy_df
+            df1 = manager._get_data_for_window(
+                datetime(2020, 1, 1), datetime(2020, 1, 1)
+            )
+            mock_read.assert_called_once_with(data_path)
+            assert hasattr(manager, "_cached_full_data")
+            # Check that Float64 columns were cast to Float32
+            assert df1["col1"].dtype == pl.Float32
+
+        # Second call: should use the cache and not read from disk
+        with patch("paper_model.manager.pl.read_parquet") as mock_read_again:
+            df2 = manager._get_data_for_window(
+                datetime(2021, 1, 1), datetime(2021, 1, 1)
+            )
+            mock_read_again.assert_not_called()
+            assert_frame_equal(df1, df2)
+
+    def test_non_splitted_data_file_not_found(
+        self, sample_models_config_dict, mock_project_root
+    ):
+        """Tests that FileNotFoundError is raised if the non-splitted file is missing."""
+        sample_models_config_dict["input_data"]["splitted"] = "none"
+        config = ModelsConfig.model_validate(sample_models_config_dict)
+        manager = ModelManager(config)
+        manager._project_root = mock_project_root
+
+        with pytest.raises(FileNotFoundError):
+            manager._get_data_for_window(datetime(2020, 1, 1), datetime(2020, 1, 1))
+
+    def test_returns_empty_df_if_no_year_files_found(
+        self, sample_models_config_dict, mock_project_root, caplog
+    ):
+        """Tests that an empty DataFrame with the correct schema is returned if no files match the window."""
+        config = ModelsConfig.model_validate(sample_models_config_dict)
+        manager = ModelManager(config)
+        manager._project_root = mock_project_root
+        # Manually set schema for the test
+        manager._all_data_columns = ["date", "id", "feature", "ret"]
+
+        # Request a window where no files exist
+        result_df = manager._get_data_for_window(
+            datetime(2025, 1, 1), datetime(2025, 12, 31)
+        )
+
+        assert "No data files found for window" in caplog.text
+        assert result_df.is_empty()
+        assert result_df.columns == ["date", "id", "feature", "ret"]
+        assert result_df["date"].dtype == pl.Date
+        assert result_df["id"].dtype == pl.Int64
 
 
 # --- Tests for ModelManager ---

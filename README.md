@@ -1,6 +1,8 @@
 # P.A.P.E.R: Platform for Asset Pricing Experimentation and Research 📈🔬
 
+[![Python CI](https://github.com/lorenzovarese/paper-asset-pricing/actions/workflows/ci.yaml/badge.svg)](https://github.com/lorenzovarese/paper-asset-pricing/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/github/lorenzovarese/paper-asset-pricing/graph/badge.svg?token=ZUDEPEPJFK)](https://codecov.io/github/lorenzovarese/paper-asset-pricing)
+[![PyPI version](https://badge.fury.io/py/paper-asset-pricing.svg)](https://badge.fury.io/py/paper-asset-pricing)
 
 Welcome to **P.A.P.E.R** (Platform for Asset Pricing Experimentation and Research)! This monorepo is a comprehensive suite of tools designed to streamline the entire workflow of quantitative asset pricing research, from raw data ingestion to portfolio construction and performance analysis.
 

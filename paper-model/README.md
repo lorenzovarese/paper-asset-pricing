@@ -1,6 +1,7 @@
 # paper-model: Advanced Model Implementation & Evaluation for Asset Pricing 🧠
 
 [![codecov](https://codecov.io/github/lorenzovarese/paper-asset-pricing/graph/badge.svg?token=ZUDEPEPJFK)](https://codecov.io/github/lorenzovarese/paper-asset-pricing)
+[![PyPI version](https://badge.fury.io/py/paper-model.svg)](https://badge.fury.io/py/paper-model)
 
 `paper-model` is a powerful and extensible component of the P.A.P.E.R (Platform for Asset Pricing Experimentation and Research) toolchain. It is the engine for implementing, training, evaluating, and managing a wide array of asset pricing models, from classic linear regressions to deep neural networks.
 

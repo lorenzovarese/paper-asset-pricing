@@ -1,6 +1,7 @@
 # paper-data: Data Ingestion & Preprocessing for Asset Pricing Research 📊
 
 [![codecov](https://codecov.io/github/lorenzovarese/paper-asset-pricing/graph/badge.svg?token=ZUDEPEPJFK)](https://codecov.io/github/lorenzovarese/paper-asset-pricing)
+[![PyPI version](https://badge.fury.io/py/paper-data.svg)](https://badge.fury.io/py/paper-data)
 
 `paper-data` is a core component of the P.A.P.E.R (Platform for Asset Pricing Experimentation and Research) monorepo. It provides a robust, flexible, and configuration-driven pipeline for ingesting raw financial and economic data, performing essential wrangling operations, and exporting clean, processed datasets ready for modeling and portfolio construction.
 

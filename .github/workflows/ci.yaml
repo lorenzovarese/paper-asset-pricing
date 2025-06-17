@@ -1,4 +1,4 @@
-name: CI & Test Coverage
+name: Python CI
 
 on:
   push:
@@ -9,8 +9,8 @@ on:
       - main
 
 jobs:
-  test-and-coverage:
-    name: Run Tests and Upload Coverage
+  test:
+    name: Test on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -31,16 +31,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Install testing tools
           pip install pytest pytest-cov
-          # Install all workspace packages in editable mode
-          # This ensures that pytest-cov can find and measure them
           pip install -e ./paper-data
           pip install -e ./paper-model
           pip install -e ./paper-portfolio
           pip install -e ./paper-asset-pricing
 
-      - name: Run tests with coverage
+      - name: Run tests and generate coverage report
         run: |
           pytest \
             --cov=paper-data \

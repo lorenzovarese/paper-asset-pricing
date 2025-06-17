@@ -1,6 +1,7 @@
 # paper-portfolio: Portfolio Construction & Performance Evaluation 📈
 
 [![codecov](https://codecov.io/github/lorenzovarese/paper-asset-pricing/graph/badge.svg?token=ZUDEPEPJFK)](https://codecov.io/github/lorenzovarese/paper-asset-pricing)
+[![PyPI version](https://badge.fury.io/py/paper-portfolio.svg)](https://badge.fury.io/py/paper-portfolio)
 
 `paper-portfolio` is the final component of the P.A.P.E.R (Platform for Asset Pricing Experimentation and Research) monorepo. It provides a powerful, configuration-driven framework for constructing investment portfolios based on the predictive outputs of machine learning models and evaluating their economic significance.
 

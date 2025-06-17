@@ -1,0 +1,200 @@
+import numpy as np
+import pytest
+from unittest.mock import patch, MagicMock
+import polars as pl
+from datetime import datetime
+
+from paper_model.manager import ModelManager  # type: ignore
+from paper_model.config_parser import ModelsConfig, FeatureSelectionConfig  # type: ignore
+
+# --- Fixtures ---
+
+
+@pytest.fixture
+def mock_project_root(tmp_path):
+    """Creates a mock project structure with dummy data files."""
+    proj_dir = tmp_path / "TestProject"
+    data_dir = proj_dir / "data" / "processed"
+    data_dir.mkdir(parents=True)
+
+    dummy_df = pl.DataFrame(
+        {
+            "date": pl.date_range(
+                datetime(2020, 1, 1), datetime(2020, 12, 31), "1mo", eager=True
+            ),
+            "id": range(12),
+            "feature": range(12),
+            "ret": np.random.rand(12),
+        }
+    )
+    dummy_df.write_parquet(data_dir / "test_data_2020.parquet")
+    dummy_df.with_columns(pl.col("date").dt.offset_by("1y")).write_parquet(
+        data_dir / "test_data_2021.parquet"
+    )
+
+    return proj_dir
+
+
+@pytest.fixture
+def sample_models_config_dict():
+    """A sample config dictionary for testing the manager."""
+    return {
+        "input_data": {
+            "dataset_name": "test_data",
+            "splitted": "year",
+            "date_column": "date",
+            "id_column": "id",
+        },
+        "evaluation": {
+            "implementation": "rolling window",
+            "train_month": 12,
+            "validation_month": 0,
+            "testing_month": 12,
+            "step_month": 12,
+            "metrics": ["r2_oos"],
+        },
+        "models": [
+            {
+                "name": "ols_model",
+                "type": "ols",
+                "target_column": "ret",
+                "features": ["feature"],
+                "save_prediction_results": True,
+            }
+        ],
+    }
+
+
+# --- Tests for ModelManager ---
+
+
+def test_manager_initialization(sample_models_config_dict):
+    """Tests that the manager initializes correctly from a config."""
+    config = ModelsConfig.model_validate(sample_models_config_dict)
+    manager = ModelManager(config)
+    assert manager.config == config
+    assert manager.models == {}
+
+
+@patch("paper_model.manager.pl.read_parquet_schema")
+@patch("paper_model.manager.pl.scan_parquet")
+def test_get_all_data_columns_and_months(
+    mock_scan, mock_schema, sample_models_config_dict, mock_project_root
+):
+    """Tests the logic for scanning data files to get metadata."""
+    # Setup mocks
+    mock_schema.return_value = {
+        "date": pl.Date,
+        "id": pl.Int64,
+        "feature": pl.Float64,
+        "ret": pl.Float64,
+    }
+    mock_scan.return_value.select.return_value.unique.return_value.collect.return_value = pl.DataFrame(
+        {
+            "date": pl.date_range(
+                datetime(2020, 1, 1), datetime(2020, 12, 31), "1mo", eager=True
+            )
+        }
+    )
+
+    config = ModelsConfig.model_validate(sample_models_config_dict)
+    manager = ModelManager(config)
+    manager._project_root = mock_project_root
+
+    columns, months = manager._get_all_data_columns_and_months()
+
+    assert columns == ["date", "id", "feature", "ret"]
+    assert len(months) == 12
+    assert mock_scan.call_count == 2  # For 2020 and 2021 files
+
+
+def test_resolve_feature_columns(sample_models_config_dict):
+    """Tests the feature resolution logic."""
+    config = ModelsConfig.model_validate(sample_models_config_dict)
+    manager = ModelManager(config)
+    all_cols = ["date", "id", "ret", "feature1", "feature2"]
+
+    # Test explicit list
+    resolved = manager._resolve_feature_columns(["feature1"], all_cols)
+    assert resolved == ["feature1"]
+
+    feature_config_obj = FeatureSelectionConfig(
+        method="all_except", columns=["date", "id", "ret"]
+    )
+    # Pass the object to the function
+    resolved = manager._resolve_feature_columns(feature_config_obj, all_cols)
+    assert resolved == ["feature1", "feature2"]
+
+    # Test error on missing feature
+    with pytest.raises(ValueError, match="Specified feature columns not found"):
+        manager._resolve_feature_columns(["non_existent_feature"], all_cols)
+
+
+@patch("paper_model.manager.SklearnModel")
+def test_initialize_models(mock_sklearn_model_class, sample_models_config_dict):
+    """Tests that models are correctly instantiated from the config."""
+    config = ModelsConfig.model_validate(sample_models_config_dict)
+
+    # We patch the class in the registry.
+    with patch.dict(ModelManager.MODEL_REGISTRY, {"ols": mock_sklearn_model_class}):
+        manager = ModelManager(config)
+        manager._all_data_columns = ["date", "id", "feature", "ret"]
+
+        manager._initialize_models()
+
+        mock_sklearn_model_class.assert_called_once()
+
+        # call_args is a tuple: (args, kwargs)
+        # args is a tuple of positional args: (name, config_dict)
+        pos_args, _ = mock_sklearn_model_class.call_args
+        name_arg = pos_args[0]
+        config_arg = pos_args[1]
+
+        assert name_arg == "ols_model"
+        assert config_arg["feature_columns"] == ["feature"]
+        assert "ols_model" in manager.models
+
+
+@patch("paper_model.manager.ModelManager._get_data_for_window")
+def test_run_rolling_window_evaluation(mock_get_data, sample_models_config_dict):
+    """Tests the main rolling window evaluation loop."""
+    # Setup mocks
+    mock_model_instance = MagicMock()
+    mock_model_instance.config = {
+        "target_column": "ret",
+        "save_prediction_results": True,
+        "feature_columns": ["feature"],  # Add this for the n_predictors calculation
+    }
+    mock_model_instance.predict.return_value = pl.Series("pred", [0.5, 0.5])
+
+    # This is the mock class that will be put into the registry
+    mock_sklearn_model_class = MagicMock(return_value=mock_model_instance)
+
+    mock_get_data.return_value = pl.DataFrame(
+        {
+            "date": [datetime(2020, 1, 31), datetime(2020, 2, 29)],
+            "id": [1, 1],
+            "feature": [1.0, 2.0],
+            "ret": [0.6, 0.7],
+        }
+    )
+
+    config = ModelsConfig.model_validate(sample_models_config_dict)
+
+    with patch.dict(ModelManager.MODEL_REGISTRY, {"ols": mock_sklearn_model_class}):
+        manager = ModelManager(config)
+        manager._all_data_columns = ["date", "id", "feature", "ret"]
+        manager._initialize_models()  # This will now use the mock class
+
+        unique_months = pl.date_range(
+            datetime(2020, 1, 1), datetime(2021, 12, 31), "1mo", eager=True
+        ).to_list()
+
+        manager._run_rolling_window_evaluation(unique_months)
+
+    # Assertions
+    assert mock_get_data.call_count > 0
+    # Now we assert that the train method on the INSTANCE was called
+    mock_model_instance.train.assert_called()
+    mock_model_instance.predict.assert_called()
+    assert len(manager.all_evaluation_results["ols_model"]) > 0

@@ -1,0 +1,41 @@
+# ---------------------------------------------------------------------------
+# P.A.P.E.R Data Configuration: Welch & Goyal (2024) Macro Predictors
+#
+# This pipeline demonstrates how to use the `run_script` feature to
+# download and process data from an online source.
+# ---------------------------------------------------------------------------
+
+# --- Ingestion Section ---
+# Download the raw data from the public Google Sheet provided by the authors.
+ingestion:
+- name: "goyal_welch_raw"
+  format: "google_sheet"
+  # URL from the original script's docstring
+  url: "https://docs.google.com/spreadsheets/d/1OIZg6htTK60wtnCVXvxAujvG1aKEOVYv/edit?gid=1660564386#gid=1660564386"
+  # The date column in the raw file is 'yyyymm'
+  date_column: { "yyyymm": "%Y%m" }
+  # Standardize column names to lowercase for easier processing in the script.
+  to_lowercase_cols: true
+  ignore_thousands_separator: true
+
+# --- Wrangling Pipeline Section ---
+# Apply the custom transformation logic.
+wrangling_pipeline:
+- operation: "run_script"
+  # Use the raw downloaded data as input.
+  dataset: "goyal_welch_raw"
+  # Specify the script file located in the 'data/scripts/' directory.
+  script: "process_goyal_welch.py"
+  # The function within that script to execute (defaults to "transform").
+  function_name: "transform"
+  # The logical name for the cleaned, processed dataset.
+  output_name: "macro_predictors_final"
+
+# --- Export Section ---
+# Save the final, processed dataset.
+export:
+- dataset_name: "macro_predictors_final"
+  output_filename_base: "macro_predictors"
+  format: "parquet"
+  # Obtain a single file for easier access.
+  partition_by: "none"

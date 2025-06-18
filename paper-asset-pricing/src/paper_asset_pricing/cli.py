@@ -19,6 +19,7 @@ import subprocess
 from jinja2 import Environment, FileSystemLoader
 import logging
 from typing import Callable, Any, Type
+from importlib.metadata import version, PackageNotFoundError
 
 # --- Initial logger for paper-asset-pricing, before project-specific logging is set up ---
 # This logger will initially print to stdout, but will be reconfigured later.
@@ -69,10 +70,12 @@ except ImportError:
     )
 
 
-# Try to get version from __init__ for the config file, fallback if not found
+# Get the version programmatically from the installed package metadata.
 try:
-    from . import __version__ as paper_asset_pricing_version
-except ImportError:
+    # The package name is defined in pyproject.toml
+    paper_asset_pricing_version = version("paper-asset-pricing")
+except PackageNotFoundError:
+    # This is a fallback for when the package is not installed,
     paper_asset_pricing_version = "unknown"
 
 app = typer.Typer(

@@ -1,8 +1,5 @@
 """wrangling package."""
 
-__author__ = "Lorenzo Varese"
-__version__ = "0.1.0"
-
 from .cleaner import impute_monthly, scale_to_range
 from .augmenter import (
     merge_datasets,

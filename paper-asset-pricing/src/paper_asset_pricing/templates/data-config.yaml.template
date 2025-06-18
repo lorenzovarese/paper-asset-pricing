@@ -10,7 +10,7 @@
 
 # --- Ingestion Section ---
 # Define all raw data sources here. You can have multiple sources.
-ingestion:
+#ingestion:
 #  - name: "my_firm_data"          # A logical name for this dataset.
 #    path: "my_file.csv"          # Path relative to the project's 'data/raw/' directory.
 #    format: "csv"
@@ -25,7 +25,7 @@ ingestion:
 # --- Wrangling Pipeline Section ---
 # Define a sequence of data transformation steps.
 # The 'dataset' for each step must be a name defined in 'ingestion' or the 'output_name' of a previous step.
-wrangling_pipeline:
+#wrangling_pipeline:
 #  - operation: "monthly_imputation"
 #    dataset: "my_firm_data"
 #    numeric_columns: [ "col1", "col2" ]
@@ -48,7 +48,7 @@ wrangling_pipeline:
 
 # --- Export Section ---
 # Define which datasets from the wrangling pipeline should be saved.
-export:
+#export:
 #  - dataset_name: "final_lagged_data" # Must be an 'output_name' from the pipeline.
 #    output_filename_base: "analysis_ready_dataset"
 #    format: "parquet" # 'parquet' is highly recommended for performance.

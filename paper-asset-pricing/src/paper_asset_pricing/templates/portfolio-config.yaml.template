@@ -9,59 +9,58 @@
 # ---------------------------------------------------------------------------
 
 # --- Input Data Configuration ---
-input_data:
-  # A list of model names whose predictions you want to evaluate.
-  # The tool will look for '{model_name}_predictions.parquet' files
-  # in the 'models/predictions/' directory.
-  prediction_model_names:
-    - "ols_baseline"
-    - "enet_tuned"
+# input_data:
+# A list of model names whose predictions you want to evaluate.
+# The tool will look for '{model_name}_predictions.parquet' files
+# in the 'models/predictions/' directory.
+#  prediction_model_names:
+#    - "ols_baseline"
+#    - "enet_tuned"
+#
+#  prediction_extraction_method: "precomputed_prediction_files"
+#  precomputed_prediction_files:
+#    date_column: "date"
+#    id_column: "permno"
 
-  prediction_extraction_method: "precomputed_prediction_files"
-  precomputed_prediction_files:
-    date_column: "date"
-    id_column: "permno"
+# --- Additional Datasets for Evaluation ---
+# These files must be placed in the 'portfolios/additional_datasets/' directory.
 
-  # --- Additional Datasets for Evaluation ---
-  # These files must be placed in the 'portfolios/additional_datasets/' directory.
+# The risk-free rate is required for calculating risk-adjusted metrics.
+# risk_free_dataset:
+#   file_name: "risk_free.csv"
+#   date_column: "date"
+#   return_column: "rf"
+#   date_format: "%Y%m%d"
 
-  # The risk-free rate is required for calculating risk-adjusted metrics.
-  risk_free_dataset:
-    file_name: "risk_free.csv"
-    date_column: "date"
-    return_column: "rf"
-    date_format: "%Y%m%d"
+# Optional: A market index for benchmark comparison in plots and reports.
+# market_benchmark:
+#   name: "S&P 500"
+#   file_name: "benchmark.csv"
+#   date_column: "date"
+#   return_column: "ret"
+#   date_format: "%Y-%m-%d"
 
-  # Optional: A market index for benchmark comparison in plots and reports.
-  # market_benchmark:
-  #   name: "S&P 500"
-  #   file_name: "benchmark.csv"
-  #   date_column: "date"
-  #   return_column: "ret"
-  #   date_format: "%Y-%m-%d"
-
-  # Optional: Market capitalization for value-weighting schemes.
-  # Uncomment this section if you want to run value-weighted strategies.
-  # company_values_weights:
-  #   file_name: "company_values.csv"
-  #   date_column: "date"
-  #   id_column: "permno"
-  #   value_weight_col: "mkt_cap"
-  #   date_format: "%Y-%m-%d"
+# Optional: Market capitalization for value-weighting schemes.
+# company_values_weights:
+#   file_name: "company_values.csv"
+#   date_column: "date"
+#   id_column: "permno"
+#   value_weight_col: "mkt_cap"
+#   date_format: "%Y-%m-%d"
 
 # --- Analysis and Metrics ---
 # If true, generates plots showing the cumulative performance of each prediction decile.
-cross_sectional_analysis: true
+# cross_sectional_analysis: true
 
 # A list of performance metrics to calculate for each portfolio strategy.
-metrics:
-  - "sharpe_ratio"
-  - "expected_shortfall"
-  - "cumulative_return"
+# metrics:
+#   - "sharpe_ratio"
+#   - "expected_shortfall"
+#   - "cumulative_return"
 
 # --- Portfolio Strategy Definitions ---
 # A list of long-short portfolio strategies to backtest.
-portfolio_strategies:
+# portfolio_strategies:
 #  - name: "EQ_DECILE"
 #    weighting_scheme: "equal" # Each stock in a leg gets an equal weight.
 #    long_quantiles: [ 0.9, 1.0 ] # Go long the top 10% of predicted performers.

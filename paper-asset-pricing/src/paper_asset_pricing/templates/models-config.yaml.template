@@ -9,26 +9,26 @@
 # ---------------------------------------------------------------------------
 
 # --- Global Input Data and Evaluation Settings ---
-input_data:
-  # Base name of the processed dataset from the data phase (must match 'output_filename_base' in data-config.yaml).
-  dataset_name: "analysis_ready_dataset"
-  # Must match the 'partition_by' setting in data-config.yaml for efficient loading.
-  splitted: "year"
-  date_column: "date"
-  id_column: "permno"
-  risk_free_rate_col: "rf"
+# input_data:
+#   # Base name of the processed dataset from the data phase (must match 'output_filename_base' in data-config.yaml).
+#   dataset_name: "analysis_ready_dataset"
+#   # Must match the 'partition_by' setting in data-config.yaml for efficient loading.
+#   splitted: "year"
+#   date_column: "date"
+#   id_column: "permno"
+#   risk_free_rate_col: "rf"
 
-evaluation:
-  implementation: "rolling window"
-  train_month: 120
-  validation_month: 24
-  testing_month: 12
-  step_month: 12
-  metrics: [ "mse", "r2_oos", "r2_adj_oos" ]
+# evaluation:
+#   implementation: "rolling window"
+#   train_month: 120
+#   validation_month: 24
+#   testing_month: 12
+#   step_month: 12
+#   metrics: [ "mse", "r2_oos", "r2_adj_oos" ]
 
 # --- Model Definitions ---
 # A list of all models to be trained and evaluated.
-models:
+# models:
 #  - name: "ols_baseline"
 #    type: "ols" # Ordinary Least Squares
 #    target_column: "ret" # The variable to predict.

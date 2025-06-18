@@ -7,7 +7,12 @@ authors = [
     { name = "Lorenzo Varese", email = "55581163+lorenzovarese@users.noreply.github.com" },
 ]
 requires-python = ">=3.11"
-dependencies = ["jinja2>=3.1.6", "pyyaml>=6.0.2", "typer>=0.16.0"]
+dependencies = [
+    "jinja2>=3.1.6",
+ "pyyaml>=6.0.2",
+ "requests>=2.32.3",
+ "typer>=0.16.0",
+]
 
 [project.scripts]
 paper = "paper_asset_pricing.cli:app"

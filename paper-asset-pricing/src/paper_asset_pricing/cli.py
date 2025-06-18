@@ -210,7 +210,7 @@ def init(
 
         dir_structure_map = {
             CONFIGS_DIR_NAME: [],
-            DATA_DIR_NAME: ["raw", "processed"],
+            DATA_DIR_NAME: ["raw", "processed", "scripts"],
             MODELS_DIR_NAME: ["evaluations", "predictions", "saved"],
             PORTFOLIOS_DIR_NAME: ["results", "additional_datasets"],
         }

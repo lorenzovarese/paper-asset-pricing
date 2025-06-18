@@ -225,6 +225,66 @@ def test_wrangling_operations(operation_config, mock_function_path, sample_firm_
         assert output_name in manager.datasets
 
 
+@patch("paper_data.manager.run_custom_script")
+def test_manager_delegates_to_run_script_operation(
+    mock_run_custom_script, mock_project_root, sample_firm_df
+):
+    """
+    Tests that the DataManager correctly calls (delegates to) the
+    run_custom_script function when it encounters the operation in the pipeline.
+    """
+    # Arrange
+    mock_run_custom_script.return_value = pl.DataFrame({"new_col": [1]})
+
+    config_dict = {
+        "ingestion": [
+            {
+                "name": "firm_data",
+                "format": "csv",
+                "path": "f.csv",
+                "date_column": {"date": "d"},
+            }
+        ],
+        "wrangling_pipeline": [
+            {
+                "operation": "run_script",
+                "dataset": "firm_data",
+                "script": "my_script.py",
+                "function_name": "my_func",
+                "output_name": "scripted_data",
+            }
+        ],
+        "export": [
+            {
+                "dataset_name": "scripted_data",
+                "output_filename_base": "out",
+                "format": "parquet",
+            }
+        ],
+    }
+    config = DataConfig.model_validate(config_dict)
+    manager = DataManager(config)
+    manager._project_root = mock_project_root
+    manager.datasets["firm_data"] = sample_firm_df
+
+    # Act
+    manager._wrangle_data()
+
+    # Assert
+    mock_run_custom_script.assert_called_once_with(
+        df=sample_firm_df,
+        project_root=mock_project_root,
+        script="my_script.py",
+        function_name="my_func",
+    )
+
+    # Verify the manager stored the result from the mocked function
+    assert "scripted_data" in manager.datasets
+    assert_frame_equal(
+        manager.datasets["scripted_data"], pl.DataFrame({"new_col": [1]})
+    )
+
+
 @patch("polars.DataFrame.write_parquet")
 def test_manager_export(mock_write_parquet, mock_project_root):
     """Tests that the manager correctly calls the export function."""

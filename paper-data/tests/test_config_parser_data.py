@@ -158,3 +158,38 @@ def test_ingestion_date_column_validation():
                 "export": [],
             }
         )
+
+
+def test_load_config_with_run_script(tmp_path, valid_config_dict):
+    """Tests that a config with a 'run_script' operation is loaded correctly."""
+    # Add the new run_script operation to the valid config
+    run_script_op = {
+        "operation": "run_script",
+        "dataset": "final_data",
+        "script": "my_script.py",
+        "function_name": "process",
+        "output_name": "scripted_data",
+    }
+    valid_config_dict["wrangling_pipeline"].append(run_script_op)
+    valid_config_dict["export"].append(
+        {
+            "dataset_name": "scripted_data",
+            "output_filename_base": "scripted_out",
+            "format": "parquet",
+        }
+    )
+
+    p = tmp_path / "config_with_script.yaml"
+    with open(p, "w") as f:
+        yaml.dump(valid_config_dict, f)
+
+    config = load_config(p)
+    assert len(config.wrangling_pipeline) == 3
+
+    # Check that the last operation is the correct type
+    from paper_data.config_parser import RunScriptConfig
+
+    script_config = config.wrangling_pipeline[2]
+    assert isinstance(script_config, RunScriptConfig)
+    assert script_config.script == "my_script.py"
+    assert script_config.function_name == "process"

@@ -144,6 +144,21 @@ class DummyConfig(BaseOperation):
     drop_original_col: bool = False
 
 
+class RunScriptConfig(BaseOperation):
+    """Configuration for running a custom Python script."""
+
+    operation: Literal["run_script"]
+    dataset: str
+    script: str = Field(
+        ...,
+        description="Filename of the Python script, located inside the project's 'data/scripts/' directory.",
+    )
+    function_name: str = Field(
+        "transform",
+        description="The name of the function within the script to execute.",
+    )
+
+
 class InteractionConfig(BaseOperation):
     operation: Literal["create_macro_interactions"]
     dataset: str
@@ -159,6 +174,7 @@ AnyWranglingOperation = Union[
     MergeConfig,
     LagConfig,
     DummyConfig,
+    RunScriptConfig,
     InteractionConfig,
 ]
 

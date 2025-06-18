@@ -14,6 +14,7 @@ from paper_data.config_parser import (
     MergeConfig,
     LagConfig,
     DummyConfig,
+    RunScriptConfig,
     InteractionConfig,
 )
 from paper_data.ingestion import (
@@ -27,6 +28,7 @@ from paper_data.wrangling.augmenter import (
     create_macro_firm_interactions,
     create_macro_firm_interactions_lazy,
     create_dummies,
+    run_custom_script,
 )
 from paper_data.wrangling.cleaner import (
     impute_monthly,
@@ -223,6 +225,23 @@ class DataManager:
                     self.datasets[op.dataset], op.column_to_dummy, op.drop_original_col
                 )
                 self.datasets[op.output_name] = dummied_df
+                self._ingestion_metadata[op.output_name] = meta
+
+            elif isinstance(op, RunScriptConfig):
+                if self._project_root is None:
+                    raise ValueError("Project root must be set to run custom scripts.")
+
+                input_df = self.datasets[op.dataset]
+
+                # Delegate the complex logic to the dedicated function
+                output_df = run_custom_script(
+                    df=input_df,
+                    project_root=self._project_root,
+                    script=op.script,
+                    function_name=op.function_name,
+                )
+
+                self.datasets[op.output_name] = output_df
                 self._ingestion_metadata[op.output_name] = meta
 
             elif isinstance(op, InteractionConfig):

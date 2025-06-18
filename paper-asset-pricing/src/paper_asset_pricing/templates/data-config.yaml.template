@@ -45,6 +45,14 @@
 #      method: "all_except"
 #      columns: [ "date", "permno", "ret" ] # Don't lag identifiers or the target
 #    output_name: "final_lagged_data"
+#
+# Example: Run a custom Python script for complex transformations.
+# The script must contain a function that takes a Polars DataFrame and returns one.
+#  - operation: "run_script"
+#    dataset: "my_raw_data"                             # Input dataset name
+#    script: "my_custom_logic.py"                  # Filename of your script in 'data/scripts/'
+#    function_name: "transform"                         # The function to call from the script (defaults to "transform")
+#    output_name: "custom_transformed_data"             # Output dataset name
 
 # --- Export Section ---
 # Define which datasets from the wrangling pipeline should be saved.

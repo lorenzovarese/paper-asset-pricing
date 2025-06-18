@@ -1,6 +1,8 @@
 """Data augmentation library for paper data."""
 
 from __future__ import annotations
+import importlib.util
+from pathlib import Path
 from typing import Literal
 import polars as pl
 import logging
@@ -157,6 +159,65 @@ def lag_columns(
 
     logger.info(f"Lag operation complete. Resulting shape: {out_df.shape}")
     return out_df
+
+
+def run_custom_script(
+    df: pl.DataFrame, project_root: Path, script: str, function_name: str
+) -> pl.DataFrame:
+    """
+    Dynamically loads and executes a user-defined function from a Python script.
+
+    Args:
+        df: The input Polars DataFrame to be transformed.
+        project_root: The absolute path to the root of the user's project.
+        script: The filename of the Python script, located in the project's
+                'data/scripts/' directory.
+        function_name: The name of the function to execute from the script.
+
+    Returns:
+        A new Polars DataFrame as returned by the custom function.
+    """
+    script_full_path = project_root / "data" / "scripts" / script
+    if not script_full_path.is_file():
+        raise FileNotFoundError(
+            f"Custom script not found. Looked for '{script}' inside the 'data/scripts/' directory."
+        )
+
+    logger.info(
+        f"Executing function '{function_name}' from script '{script_full_path.relative_to(project_root)}'"
+    )
+
+    # Dynamically load the module from the specified path
+    spec = importlib.util.spec_from_file_location(
+        name=script_full_path.stem, location=str(script_full_path)
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not create module spec for {script_full_path}")
+
+    custom_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(custom_module)
+
+    # Get the function from the loaded module
+    if not hasattr(custom_module, function_name):
+        raise AttributeError(
+            f"Function '{function_name}' not found in script '{script}'"
+        )
+
+    transform_func = getattr(custom_module, function_name)
+    if not callable(transform_func):
+        raise TypeError(
+            f"The attribute '{function_name}' in '{script}' is not a callable function."
+        )
+
+    # Execute the function and validate its output
+    output_df = transform_func(df)
+    if not isinstance(output_df, pl.DataFrame):
+        raise TypeError(
+            f"The function '{function_name}' from '{script}' must return a Polars DataFrame, "
+            f"but it returned type '{type(output_df).__name__}'."
+        )
+
+    return output_df
 
 
 def create_macro_firm_interactions(

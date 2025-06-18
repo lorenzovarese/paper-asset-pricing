@@ -10,6 +10,7 @@ from .augmenter import (
     create_macro_firm_interactions,
     create_macro_firm_interactions_lazy,
     create_dummies,
+    run_custom_script,
 )
 
 
@@ -21,4 +22,5 @@ __all__ = [
     "create_macro_firm_interactions",
     "create_macro_firm_interactions_lazy",
     "create_dummies",
+    "run_custom_script",
 ]

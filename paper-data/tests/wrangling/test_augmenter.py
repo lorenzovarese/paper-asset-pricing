@@ -9,6 +9,7 @@ from paper_data.wrangling.augmenter import (  # type: ignore
     create_macro_firm_interactions,
     create_macro_firm_interactions_lazy,
     create_dummies,
+    run_custom_script,
 )
 
 # --- Fixtures for sample data ---
@@ -206,3 +207,99 @@ def test_create_dummies_raises_error_on_missing_col():
     df = pl.DataFrame({"category": ["A", "B"]})
     with pytest.raises(ValueError, match="Column 'wrong_col' not found"):
         create_dummies(df, "wrong_col", False)
+
+
+@pytest.fixture
+def mock_project_root(tmp_path):
+    """Creates a mock project structure for custom script testing."""
+    proj_dir = tmp_path / "TestProject"
+    (proj_dir / "data" / "scripts").mkdir(parents=True)
+    return proj_dir
+
+
+@pytest.fixture
+def mock_custom_script(mock_project_root):
+    """Creates a mock Python script file for testing."""
+    script_path = mock_project_root / "data" / "scripts" / "custom_transform.py"
+
+    script_content = """
+import polars as pl
+
+def transform(df: pl.DataFrame) -> pl.DataFrame:
+    # A simple transformation for testing purposes
+    return df.with_columns(pl.col("value") * 2)
+
+def another_name(df: pl.DataFrame) -> pl.DataFrame:
+    return df.with_columns(pl.col("value") - 10)
+
+def returns_wrong_type(df: pl.DataFrame) -> str:
+    return "not a dataframe"
+
+# Not a function, to test error handling
+not_a_function = 123
+"""
+    script_path.write_text(script_content)
+    return script_path
+
+
+def test_run_custom_script_success(
+    mock_project_root, sample_panel_df, mock_custom_script
+):
+    """Tests the successful execution of a custom script."""
+    result_df = run_custom_script(
+        df=sample_panel_df,
+        project_root=mock_project_root,
+        script="custom_transform.py",
+        function_name="transform",
+    )
+
+    expected_df = sample_panel_df.with_columns(pl.col("value") * 2)
+    assert_frame_equal(result_df, expected_df)
+
+
+@pytest.mark.parametrize(
+    "script_name, function_name, error, match_text",
+    [
+        (
+            "non_existent_script.py",
+            "transform",
+            FileNotFoundError,
+            "Custom script not found",
+        ),
+        (
+            "custom_transform.py",
+            "non_existent_function",
+            AttributeError,
+            "Function 'non_existent_function' not found",
+        ),
+        (
+            "custom_transform.py",
+            "not_a_function",
+            TypeError,
+            "is not a callable function",
+        ),
+        (
+            "custom_transform.py",
+            "returns_wrong_type",
+            TypeError,
+            "must return a Polars DataFrame",
+        ),
+    ],
+)
+def test_run_custom_script_failures(
+    mock_project_root,
+    sample_panel_df,
+    mock_custom_script,
+    script_name,
+    function_name,
+    error,
+    match_text,
+):
+    """Tests various failure modes for the run_custom_script function."""
+    with pytest.raises(error, match=match_text):
+        run_custom_script(
+            df=sample_panel_df,
+            project_root=mock_project_root,
+            script=script_name,
+            function_name=function_name,
+        )

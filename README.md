@@ -1,4 +1,4 @@
-# P.A.P.E.R: Platform for Asset Pricing Experimentation and Research 📈🔬
+# P.A.P.E.R: Platform for Asset-Pricing Experimentation and Research 📈🔬
 
 [![Python CI](https://github.com/lorenzovarese/paper-asset-pricing/actions/workflows/ci.yaml/badge.svg)](https://github.com/lorenzovarese/paper-asset-pricing/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/github/lorenzovarese/paper-asset-pricing/graph/badge.svg?token=ZUDEPEPJFK)](https://codecov.io/github/lorenzovarese/paper-asset-pricing)

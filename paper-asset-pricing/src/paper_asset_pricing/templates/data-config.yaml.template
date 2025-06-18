@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# P.A.P.E.R Data Configuration Template
+#
+# Instructions:
+# 1. Uncomment and fill in the sections relevant to your project.
+# 2. Define your data sources under 'ingestion'.
+# 3. Build your data transformation sequence under 'wrangling_pipeline'.
+# 4. Specify your final, analysis-ready datasets under 'export'.
+# ---------------------------------------------------------------------------
+
+# --- Ingestion Section ---
+# Define all raw data sources here. You can have multiple sources.
+ingestion:
+#  - name: "my_firm_data"          # A logical name for this dataset.
+#    path: "my_file.csv"          # Path relative to the project's 'data/raw/' directory.
+#    format: "csv"
+#    date_column: { "date": "%Y%m%d" } # The date column and its format.
+#    firm_id_column: "permno"     # The column identifying each unique firm.
+#
+#  - name: "my_macro_data"
+#    path: "macro_data.csv"
+#    format: "csv"
+#    date_column: { "date": "%Y%m%d" }
+
+# --- Wrangling Pipeline Section ---
+# Define a sequence of data transformation steps.
+# The 'dataset' for each step must be a name defined in 'ingestion' or the 'output_name' of a previous step.
+wrangling_pipeline:
+#  - operation: "monthly_imputation"
+#    dataset: "my_firm_data"
+#    numeric_columns: [ "col1", "col2" ]
+#    output_name: "imputed_firm_data"
+#
+#  - operation: "merge"
+#    left_dataset: "imputed_firm_data"
+#    right_dataset: "my_macro_data"
+#    on: ["date"]
+#    how: "left"
+#    output_name: "merged_data"
+#
+#  - operation: "lag"
+#    dataset: "merged_data"
+#    periods: 1
+#    columns_to_lag:
+#      method: "all_except"
+#      columns: [ "date", "permno", "ret" ] # Don't lag identifiers or the target
+#    output_name: "final_lagged_data"
+
+# --- Export Section ---
+# Define which datasets from the wrangling pipeline should be saved.
+export:
+#  - dataset_name: "final_lagged_data" # Must be an 'output_name' from the pipeline.
+#    output_filename_base: "analysis_ready_dataset"
+#    format: "parquet" # 'parquet' is highly recommended for performance.
+#    partition_by: "year" # 'year' is recommended for rolling window models. 'none' is also an option.

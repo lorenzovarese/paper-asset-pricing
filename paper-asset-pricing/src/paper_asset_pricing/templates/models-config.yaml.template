@@ -1,0 +1,59 @@
+# ---------------------------------------------------------------------------
+# P.A.P.E.R Model Configuration Template
+#
+# Instructions:
+# 1. Uncomment and fill in the sections.
+# 2. Point 'input_data' to the dataset created by the data pipeline.
+# 3. Configure the rolling window evaluation parameters.
+# 4. Define one or more models to train under the 'models' list.
+# ---------------------------------------------------------------------------
+
+# --- Global Input Data and Evaluation Settings ---
+input_data:
+  # Base name of the processed dataset from the data phase (must match 'output_filename_base' in data-config.yaml).
+  dataset_name: "analysis_ready_dataset"
+  # Must match the 'partition_by' setting in data-config.yaml for efficient loading.
+  splitted: "year"
+  date_column: "date"
+  id_column: "permno"
+  risk_free_rate_col: "rf"
+
+evaluation:
+  implementation: "rolling window"
+  train_month: 120
+  validation_month: 24
+  testing_month: 12
+  step_month: 12
+  metrics: [ "mse", "r2_oos", "r2_adj_oos" ]
+
+# --- Model Definitions ---
+# A list of all models to be trained and evaluated.
+models:
+#  - name: "ols_baseline"
+#    type: "ols" # Ordinary Least Squares
+#    target_column: "ret" # The variable to predict.
+#    features: [ "feature1", "feature2", "feature3" ]
+#    objective_function: "huber" # Use a robust loss function to handle outliers.
+#    save_prediction_results: true
+#
+#  - name: "enet_tuned"
+#    type: "enet" # Elastic Net Regression
+#    target_column: "ret"
+#    features: [ "feature1", "feature2", "feature3", "feature4", "feature5" ]
+#    # --- Hyperparameter Tuning ---
+#    # The system will find the best combination using the validation set.
+#    alpha: [0.01, 0.1, 1.0] # Regularization strength
+#    l1_ratio: [0.2, 0.5, 0.8] # Mix between L1 (Lasso) and L2 (Ridge)
+#    random_state: 306
+#    save_prediction_results: true
+#
+#  - name: "random_forest_tuned"
+#    type: "rf" # Random Forest
+#    target_column: "ret"
+#    features: [ "feature1", "feature2", "feature3", "feature4", "feature5" ]
+#    n_estimators: 300 # Number of trees in the forest.
+#    # --- Hyperparameter Tuning ---
+#    max_depth: [ 3, 5, 7 ] # Max depth of each tree.
+#    max_features: [ "sqrt", 0.33 ] # Number of features to consider at each split.
+#    random_state: 306
+#    save_prediction_results: true

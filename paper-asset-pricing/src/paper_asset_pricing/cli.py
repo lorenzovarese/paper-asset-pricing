@@ -243,7 +243,7 @@ def init(
             project_path / CONFIGS_DIR_NAME / DEFAULT_PROJECT_CONFIG_NAME
         )
         _render_template(
-            "paper_project.yaml.template", template_context, main_config_output_path
+            "paper-project.yaml.template", template_context, main_config_output_path
         )
         typer.secho(
             f"✓ Created main project config: {main_config_output_path.relative_to(Path.cwd())}",
@@ -270,19 +270,21 @@ def init(
             fg=typer.colors.GREEN,
         )
 
-        for conf_filename in [
-            DATA_COMPONENT_CONFIG_FILENAME,
-            MODELS_COMPONENT_CONFIG_FILENAME,
-            PORTFOLIO_COMPONENT_CONFIG_FILENAME,
-        ]:
-            placeholder_conf_path = project_path / CONFIGS_DIR_NAME / conf_filename
-            with open(placeholder_conf_path, "w") as f:
-                f.write(
-                    f"# Placeholder for {conf_filename}\n# Please refer to the respective component's documentation for structure.\n"
-                )
+        component_templates = {
+            DATA_COMPONENT_CONFIG_FILENAME: "data-config.yaml.template",
+            MODELS_COMPONENT_CONFIG_FILENAME: "models-config.yaml.template",
+            PORTFOLIO_COMPONENT_CONFIG_FILENAME: "portfolio-config.yaml.template",
+        }
+
+        typer.secho(
+            "\nCreating component configuration files from templates:", bold=True
+        )
+        for conf_filename, template_name in component_templates.items():
+            output_path = project_path / CONFIGS_DIR_NAME / conf_filename
+            _render_template(template_name, template_context, output_path)
             typer.secho(
-                f"✓ Created placeholder component config: {placeholder_conf_path.relative_to(Path.cwd())}",
-                fg=typer.colors.BLUE,
+                f"✓ Created: {output_path.relative_to(Path.cwd())}",
+                fg=typer.colors.GREEN,
             )
 
         for dir_p in all_dirs_to_create_paths:

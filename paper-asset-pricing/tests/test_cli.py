@@ -83,7 +83,10 @@ def test_init_creates_full_project(tmp_path):
         cli.PORTFOLIO_COMPONENT_CONFIG_FILENAME,
     ):
         path = proj / "configs" / comp
-        assert path.exists() and path.read_text().startswith("# Placeholder"), comp
+        assert path.exists(), f"Config file {comp} should exist"
+        assert path.read_text().startswith(
+            "# ---------------------------------------------------------------------------"
+        ), f"Config file {comp} should be generated from the new template"
 
 
 def test_init_fails_if_name_is_existing_file(tmp_path):

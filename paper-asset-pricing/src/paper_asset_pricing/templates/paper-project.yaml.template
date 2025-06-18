@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# P.A.P.E.R Main Project Configuration File
+#
+# This file acts as the central hub for your research project.
+# It defines project metadata and points to the configuration files
+# for each phase of the research pipeline (data, models, portfolio).
+# ---------------------------------------------------------------------------
+
+# --- Project Metadata ---
+# Basic information about your research project.
+project_name: "{{project_name}}"
+version: "0.1.0"
+paper_asset_pricing_version: "{{paper_asset_pricing_version}}" # Version of P.A.P.E.R used to create this project.
+creation_date: "{{creation_date}}"
+description: "A research project on..." # TODO: Add a brief, one-line description of your project.
+
+# --- Component Configuration ---
+# This section maps each research phase to its specific YAML configuration file.
+# The file paths are relative to this 'configs' directory.
+components:
+  # Configuration for the data ingestion and wrangling phase.
+  data:
+    config_file: "{{DATA_COMPONENT_CONFIG_FILENAME}}"
+  # Configuration for the model training and evaluation phase.
+  models:
+    config_file: "{{MODELS_COMPONENT_CONFIG_FILENAME}}"
+  # Configuration for the portfolio construction and analysis phase.
+  portfolio:
+    config_file: "{{PORTFOLIO_COMPONENT_CONFIG_FILENAME}}"
+
+# --- Logging Configuration ---
+# Controls how logs are recorded for the entire project.
+logging:
+  # The name of the log file, located in the project's root directory.
+  log_file: "{{LOG_FILE_NAME}}"
+  # The minimum level of log messages to record.
+  # Options (from most to least verbose): DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"

@@ -102,7 +102,7 @@ def main():
             for name, df in generated_predictions.items():
                 root_logger.info(f"Predictions for '{name}':")
                 root_logger.info(f"  Shape: {df.shape}")
-                root_logger.info(f"  Columns: {df.columns}")
+                root_logger.info(f"  Columns: {df.schema.names()}")
                 root_logger.info(f"Head:\n{df.head()}")
                 root_logger.info("-" * 30)
 

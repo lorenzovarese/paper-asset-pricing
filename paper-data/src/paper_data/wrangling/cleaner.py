@@ -22,7 +22,7 @@ def _log_null_count(df: pl.DataFrame, col_name: str) -> None:
     col_name : str
         The name of the column for which to count and print nulls.
     """
-    if col_name not in df.columns:
+    if col_name not in df.schema.names():
         logger.warning(
             f"  Warning: Column '{col_name}' not found in DataFrame. Skipping null count."
         )
@@ -62,7 +62,7 @@ def impute_monthly(
     -------
     pl.DataFrame  (copy; original df remains unchanged)
     """
-    if date_col not in df.columns:
+    if date_col not in df.schema.names():
         raise ValueError(f"Date column '{date_col}' not found in DataFrame.")
     if not isinstance(df[date_col].dtype, (pl.Date, pl.Datetime)):
         raise ValueError(

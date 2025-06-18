@@ -411,7 +411,7 @@ class ModelManager:
                 agg_metrics = {}
                 df = pl.DataFrame(results)
                 for metric in self.config.evaluation.metrics:
-                    if metric in df.columns:
+                    if metric in df.schema.names():
                         agg_metrics[f"avg_{metric}"] = df.get_column(metric).mean()
                         agg_metrics[f"std_{metric}"] = df.get_column(metric).std()
                 reporter.generate_text_report(name, agg_metrics)

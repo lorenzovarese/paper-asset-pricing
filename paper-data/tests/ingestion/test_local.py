@@ -10,7 +10,7 @@ def test_csv_loader(tmp_path):
     loader = CSVLoader(path=file, date_col="date", id_col="id")
     df = loader.get_data(date_format="%Y%m%d")
     assert isinstance(df, pl.DataFrame)
-    assert list(df.columns) == ["date", "id", "val"]
+    assert list(df.schema.names()) == ["date", "id", "val"]
     assert df.shape == (2, 3)
 
 

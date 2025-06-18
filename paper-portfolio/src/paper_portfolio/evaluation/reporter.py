@@ -61,7 +61,7 @@ class PortfolioReporter:
         ]
 
         if returns_df.is_empty() or not all(
-            c in returns_df.columns for c in required_cols
+            c in returns_df.schema.names() for c in required_cols
         ):
             logger.warning(
                 f"Missing required columns for plotting in strategy '{strategy_name}'. Skipping plot."
@@ -102,7 +102,7 @@ class PortfolioReporter:
         )
 
         # Conditionally plot the market index benchmark if its data is present
-        if "cumulative_index" in returns_df.columns and index_name:
+        if "cumulative_index" in returns_df.schema.names() and index_name:
             # Filter out any rows where index data might be missing after the join
             plot_data = returns_df.filter(pl.col("cumulative_index").is_not_null())
             if not plot_data.is_empty():

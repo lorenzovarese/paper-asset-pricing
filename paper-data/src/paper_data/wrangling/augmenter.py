@@ -75,7 +75,7 @@ def lag_columns(
         logger.info("No columns specified for lagging. Returning original DataFrame.")
         return df
 
-    if date_col not in df.columns:
+    if date_col not in df.schema.names():
         raise ValueError(f"Date column '{date_col}' not found in DataFrame.")
     if not isinstance(df[date_col].dtype, (pl.Date, pl.Datetime)):
         raise ValueError(
@@ -83,7 +83,7 @@ def lag_columns(
         )
 
     # Validate that all specified columns exist in the DataFrame
-    missing_cols = [c for c in cols_to_lag if c not in df.columns]
+    missing_cols = [c for c in cols_to_lag if c not in df.schema.names()]
     if missing_cols:
         raise ValueError(
             f"Columns specified for lagging not found in DataFrame: {missing_cols}"
@@ -145,7 +145,7 @@ def lag_columns(
         renaming_dict = {
             lagged_name: original_name
             for lagged_name, original_name in zip(lagged_col_names, cols_to_lag)
-            if lagged_name in out_df.columns
+            if lagged_name in out_df.schema.names()
         }
         if renaming_dict:
             logger.info(
@@ -245,12 +245,12 @@ def create_macro_firm_interactions(
     new_interaction_cols = []
 
     # Validate that all specified columns exist in the DataFrame
-    missing_macro_cols = [c for c in macro_columns if c not in out_df.columns]
+    missing_macro_cols = [c for c in macro_columns if c not in out_df.schema.names()]
     if missing_macro_cols:
         raise ValueError(
             f"Macro columns specified for interaction not found in DataFrame: {missing_macro_cols}"
         )
-    missing_firm_cols = [c for c in firm_columns if c not in out_df.columns]
+    missing_firm_cols = [c for c in firm_columns if c not in out_df.schema.names()]
     if missing_firm_cols:
         raise ValueError(
             f"Firm columns specified for interaction not found in DataFrame: {missing_firm_cols}"
@@ -367,7 +367,7 @@ def create_dummies(
     Returns:
         A new Polars DataFrame with the added dummy columns.
     """
-    if column_to_dummy not in df.columns:
+    if column_to_dummy not in df.schema.names():
         raise ValueError(
             f"Column '{column_to_dummy}' not found in DataFrame for dummy generation."
         )

@@ -82,10 +82,10 @@ def test_load_and_merge_data_success(setup_project_files):
     out_df = data["m1"]
 
     # Check for columns from all sources
-    assert "predicted_ret" in out_df.columns
-    assert "actual_ret" in out_df.columns
-    assert "risk_free_rate" in out_df.columns
-    assert "value_weight" in out_df.columns
+    assert "predicted_ret" in out_df.schema.names()
+    assert "actual_ret" in out_df.schema.names()
+    assert "risk_free_rate" in out_df.schema.names()
+    assert "value_weight" in out_df.schema.names()
     assert out_df.height == 2
 
 

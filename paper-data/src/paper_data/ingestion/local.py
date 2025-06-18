@@ -47,12 +47,12 @@ class CSVLoader(DataConnector):
         """
         df = pl.read_csv(self._path, **self._read_csv_kwargs)
 
-        missing = {self._date_col, self._id_col} - set(df.columns)
+        missing = {self._date_col, self._id_col} - set(df.schema.names())
         if missing:
             error_msg = (
                 f"Missing required columns: {', '.join(missing)} from file '{self._path.name}'.\n"
                 f"  - Expected columns based on config: ['{self._date_col}', '{self._id_col}']\n"
-                f"  - Columns found in file: {df.columns}\n"
+                f"  - Columns found in file: {df.schema.names()}\n"
                 "  - Please check your 'data-config.yaml' for typos and ensure the column names (and their casing) match the CSV file."
             )
             raise ValueError(error_msg)

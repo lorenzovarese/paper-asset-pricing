@@ -179,7 +179,7 @@ def test_create_macro_firm_interactions_lazy(sample_interaction_df):
         drop_macro_columns=False,
     )
     result_df = result_ldf.collect()
-    assert "firm_char1_x_macro_var1" in result_df.columns
+    assert "firm_char1_x_macro_var1" in result_df.schema.names()
     assert result_df["firm_char1_x_macro_var1"].to_list() == [10, 20, 30]
 
 

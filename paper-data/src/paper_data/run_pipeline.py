@@ -92,7 +92,7 @@ def main():
             for name, df in processed_datasets.items():
                 root_logger.info(f"Dataset '{name}':")
                 root_logger.info(f"  Shape: {df.shape}")
-                root_logger.info(f"  Columns: {df.columns}")
+                root_logger.info(f"  Columns: {df.schema.names()}")
                 root_logger.info(f"Head {df.head()}")
                 root_logger.info("-" * 30)
 

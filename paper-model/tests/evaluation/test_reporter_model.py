@@ -31,7 +31,7 @@ def test_save_metrics_to_parquet(tmp_path):
     pq = out / "mymodel_evaluation_metrics.parquet"
     assert pq.exists()
     df = pl.read_parquet(pq)
-    assert list(df.columns) == ["a", "b"]
+    assert list(df.schema.names()) == ["a", "b"]
     assert df.shape == (2, 2)
 
 

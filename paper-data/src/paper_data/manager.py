@@ -115,7 +115,7 @@ class DataManager:
 
             if df is not None:
                 if d_config.to_lowercase_cols:
-                    df = df.rename({col: col.lower() for col in df.columns})
+                    df = df.rename({col: col.lower() for col in df.schema.names()})
                 self.datasets[d_config.name] = df
                 self._ingestion_metadata[d_config.name] = {
                     "date_column": d_config.date_col_name,
@@ -130,7 +130,7 @@ class DataManager:
         date_format: str | None,
         dataset_name: str,
     ) -> pl.DataFrame:
-        missing = {col for col in [date_col, id_col] if col not in df.columns}
+        missing = {col for col in [date_col, id_col] if col not in df.schema.names()}
         if missing:
             raise ValueError(
                 f"Missing required columns: {', '.join(missing)} for dataset '{dataset_name}'."

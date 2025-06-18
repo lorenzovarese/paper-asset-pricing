@@ -142,7 +142,7 @@ class TestGetDataForWindow:
 
         assert "No data files found for window" in caplog.text
         assert result_df.is_empty()
-        assert result_df.columns == ["date", "id", "feature", "ret"]
+        assert result_df.schema.names() == ["date", "id", "feature", "ret"]
         assert result_df["date"].dtype == pl.Date
         assert result_df["id"].dtype == pl.Int64
 

@@ -1,6 +1,7 @@
 import pytest
-from typer.testing import CliRunner  # type: ignore
-from unittest.mock import MagicMock, patch
+from typer.testing import CliRunner
+from unittest.mock import MagicMock, patch, call
+import subprocess
 
 import paper_asset_pricing.cli as cli  # type: ignore
 
@@ -26,7 +27,10 @@ def project(tmp_path):
     This avoids re-running the `init` command in every test.
     """
     project_name = "my-test-proj"
-    runner.invoke(cli.app, ["init", project_name], catch_exceptions=False)
+    # Patch git calls during fixture setup to avoid side-effects
+    with patch("paper_asset_pricing.cli.shutil.which", return_value=None):
+        runner.invoke(cli.app, ["init", project_name], catch_exceptions=False)
+
     proj_path = tmp_path / project_name
 
     # Write minimal valid content to component configs to avoid "file not found" errors
@@ -44,7 +48,10 @@ def project(tmp_path):
 
 
 def test_init_creates_full_project(tmp_path):
-    result = runner.invoke(cli.app, ["init", "myproj"])
+    # Patch git calls to isolate this test from git logic
+    with patch("paper_asset_pricing.cli.shutil.which", return_value=None):
+        result = runner.invoke(cli.app, ["init", "myproj"])
+
     assert result.exit_code == 0, result.stdout + result.stderr
 
     proj = tmp_path / "myproj"
@@ -99,7 +106,8 @@ def test_init_overwrites_nonempty_dir_with_force(tmp_path):
     d = tmp_path / "proj"
     d.mkdir()
     (d / "keep.txt").write_text("something")
-    result = runner.invoke(cli.app, ["init", "proj", "--force"])
+    with patch("paper_asset_pricing.cli.shutil.which", return_value=None):
+        result = runner.invoke(cli.app, ["init", "proj", "--force"])
     assert result.exit_code == 0
     assert "Overwriting due to --force" in result.stdout
     assert not (d / "keep.txt").exists()
@@ -108,7 +116,8 @@ def test_init_overwrites_nonempty_dir_with_force(tmp_path):
 def test_init_force_on_empty_dir(tmp_path):
     d = tmp_path / "proj"
     d.mkdir()
-    result = runner.invoke(cli.app, ["init", "proj", "--force"])
+    with patch("paper_asset_pricing.cli.shutil.which", return_value=None):
+        result = runner.invoke(cli.app, ["init", "proj", "--force"])
     assert result.exit_code == 0
     assert "exists but is empty. Proceeding" in result.stdout
 
@@ -122,6 +131,90 @@ def test_init_handles_generic_exception(monkeypatch):
     result = runner.invoke(cli.app, ["init", "any-proj"])
     assert result.exit_code == 1
     assert "An error occurred during project initialization: Disk full" in result.stderr
+
+
+# --- Tests for Git Initialization ---
+
+
+@patch("paper_asset_pricing.cli.subprocess.run")
+@patch("paper_asset_pricing.cli.shutil.which", return_value="/usr/bin/git")
+def test_init_initializes_git_repository_when_git_is_available(
+    mock_shutil_which, mock_subprocess_run, tmp_path
+):
+    """Tests that `git init`, `add`, and `commit` are called when git is found."""
+    project_name = "git-proj"
+    project_path = tmp_path / project_name
+
+    result = runner.invoke(cli.app, ["init", project_name])
+
+    assert result.exit_code == 0, result.stderr
+    assert "✓ Initialized git repository." in result.stdout
+    assert "✓ Created initial commit." in result.stdout
+
+    mock_shutil_which.assert_called_once_with("git")
+
+    expected_calls = [
+        call(
+            ["git", "init"],
+            cwd=project_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ),
+        call(
+            ["git", "add", "."],
+            cwd=project_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ),
+        call(
+            ["git", "commit", "-m", "Initial commit: P.A.P.E.R project setup"],
+            cwd=project_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ),
+    ]
+    mock_subprocess_run.assert_has_calls(expected_calls)
+    assert mock_subprocess_run.call_count == 3
+
+
+@patch("paper_asset_pricing.cli.subprocess.run")
+@patch("paper_asset_pricing.cli.shutil.which", return_value=None)
+def test_init_skips_git_initialization_when_git_is_not_available(
+    mock_shutil_which, mock_subprocess_run
+):
+    """Tests that git commands are skipped and a warning is shown if git is not found."""
+    result = runner.invoke(cli.app, ["init", "no-git-proj"])
+
+    assert result.exit_code == 0, result.stderr
+    assert "Warning: `git` command not found." in result.stdout
+    assert "Initialized git repository" not in result.stdout
+
+    mock_shutil_which.assert_called_once_with("git")
+    mock_subprocess_run.assert_not_called()
+
+
+@patch("paper_asset_pricing.cli.subprocess.run")
+@patch("paper_asset_pricing.cli.shutil.which", return_value="/usr/bin/git")
+def test_init_handles_git_command_failure_gracefully(
+    mock_shutil_which, mock_subprocess_run
+):
+    """Tests that a failure in a git command shows a warning but doesn't crash."""
+    mock_subprocess_run.side_effect = subprocess.CalledProcessError(
+        returncode=128, cmd="git init", stderr="fatal: could not create work tree"
+    )
+
+    result = runner.invoke(cli.app, ["init", "git-fail-proj"])
+
+    assert result.exit_code == 0, result.stderr
+    assert "Warning: Failed to initialize git repository" in result.stderr
+    assert "fatal: could not create work tree" in result.stderr
+    assert "✓ Initialized git repository." not in result.stdout
+
+    mock_shutil_which.assert_called_once_with("git")
+    mock_subprocess_run.assert_called_once()
 
 
 # --- Tests for `paper execute` ---

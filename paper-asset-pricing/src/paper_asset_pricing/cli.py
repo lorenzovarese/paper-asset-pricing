@@ -12,6 +12,7 @@ import yaml
 import shutil
 import datetime
 import sys
+import subprocess
 from jinja2 import Environment, FileSystemLoader
 import logging
 from typing import Callable, Any, Type
@@ -293,6 +294,59 @@ def init(
         typer.secho(
             "✓ Ensured .gitkeep in empty project subdirectories.", fg=typer.colors.GREEN
         )
+
+        # --- Initialize Git Repository ---
+        if not shutil.which("git"):
+            typer.secho(
+                "\nWarning: `git` command not found. Skipping git repository initialization.",
+                fg=typer.colors.YELLOW,
+            )
+        else:
+            try:
+                # Use capture_output=True to hide git's default messages
+                # Use text=True for cleaner error messages if they occur
+                subprocess.run(
+                    ["git", "init"],
+                    cwd=project_path,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                typer.secho("✓ Initialized git repository.", fg=typer.colors.GREEN)
+
+                subprocess.run(
+                    ["git", "add", "."],
+                    cwd=project_path,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                subprocess.run(
+                    [
+                        "git",
+                        "commit",
+                        "-m",
+                        "Initial commit: P.A.P.E.R project setup",
+                    ],
+                    cwd=project_path,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                typer.secho("✓ Created initial commit.", fg=typer.colors.GREEN)
+
+            except subprocess.CalledProcessError as e:
+                typer.secho(
+                    f"\nWarning: Failed to initialize git repository or create initial commit. Error: {e.stderr}",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
+            except Exception as e:
+                typer.secho(
+                    f"\nWarning: An unexpected error occurred during git initialization: {e}",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
 
         typer.secho(
             f"\n🎉 P.A.P.E.R project '{project_path.name}' initialized successfully!",

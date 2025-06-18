@@ -1,6 +1,6 @@
 [project]
 name = "paper-asset-pricing"
-version = "0.1.1"
+version = "0.1.2"
 description = "A comprehensive suite of tools for research in asset pricing."
 readme = "README.md"
 authors = [

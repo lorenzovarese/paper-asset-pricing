@@ -313,10 +313,11 @@ def init(
             fg=typer.colors.CYAN,
         )
         typer.secho(
-            f"  2. Place raw data in '{DATA_DIR_NAME}/raw/'.", fg=typer.colors.CYAN
+            f"  2. (Optional) If using local files, place them in the `{DATA_DIR_NAME}/raw/` directory.",
+            fg=typer.colors.CYAN,
         )
         typer.secho(
-            "  3. Run phases using `paper execute <phase>`.",
+            "  3. Run the first phase of your research, e.g., `paper execute data`.",
             fg=typer.colors.CYAN,
         )
 

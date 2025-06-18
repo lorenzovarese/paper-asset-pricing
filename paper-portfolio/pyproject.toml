@@ -1,6 +1,6 @@
 [project]
 name = "paper-portfolio"
-version = "0.1.0"
+version = "0.1.1"
 description = "A portfolio construction and analysis tool for asset-pricing strategies."
 readme = "README.md"
 authors = [

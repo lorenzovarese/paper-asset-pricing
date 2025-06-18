@@ -1,6 +1,6 @@
 [project]
 name = "paper-asset-pricing"
-version = "0.1.0"
+version = "0.1.1"
 description = "A comprehensive suite of tools for research in asset pricing."
 readme = "README.md"
 authors = [
@@ -13,9 +13,9 @@ dependencies = ["jinja2>=3.1.6", "pyyaml>=6.0.2", "typer>=0.16.0"]
 paper = "paper_asset_pricing.cli:app"
 
 [project.optional-dependencies]
-data = ["paper-data~=0.1.0"]
-model = ["paper-model~=0.1.0"]
-portfolio = ["paper-portfolio~=0.1.0"]
+data = ["paper-data~=0.1.1"]
+model = ["paper-model~=0.1.1"]
+portfolio = ["paper-portfolio~=0.1.1"]
 
 # An 'all' extra is common for installing everything
 all = [

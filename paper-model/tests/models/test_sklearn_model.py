@@ -138,7 +138,6 @@ def test_model_tuning_scenarios(
     config = base_config.copy()
     config.update({"type": model_type, **tuning_params})
 
-    # MODIFIED: Add all required default params for GBRT
     config.setdefault("n_estimators", 10)
     config.setdefault("max_depth", 3)
     config.setdefault("learning_rate", 0.1)

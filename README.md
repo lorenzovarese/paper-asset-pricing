@@ -30,11 +30,11 @@ This repository is organized as a monorepo, housing several interconnected Pytho
 
 ### Core Components:
 
-*   **`paper-asset-pricing`**: The central command-line interface (CLI) and orchestrator for the entire P.A.P.E.R platform. It handles project initialization (`paper init`), manages configurations, and executes the research workflow phase by phase (`paper execute data`, `paper execute models`, `paper execute portfolio`).
-    *   **Key Features:** Project scaffolding with a standardized structure, execution of data, modeling, and portfolio pipelines, centralized logging.
+*   **`paper-asset-pricing`**: The central command-line interface (CLI) and orchestrator for the entire P.A.P.E.R platform. It handles project initialization (`paper init`), manages configurations, executes the research workflow (`paper execute ...`), and facilitates publication (`paper publish ...`).
+    *   **Key Features:** Project scaffolding with a standardized structure, execution of data, modeling, and portfolio pipelines, centralized logging, and a built-in tool to create a draft publication on Zenodo.
     *   **Learn More:** See [`paper-asset-pricing/README.md`](./paper-asset-pricing/README.md)
 *   **`paper-data`**: Dedicated to data ingestion, cleaning, and preprocessing. It provides a flexible, configuration-driven pipeline to transform raw financial and economic data into clean, analysis-ready datasets.
-    *   **Key Features:** Connectors for local files (CSV), Google Sheets, and WRDS. A powerful wrangling toolkit including monthly imputation, cross-sectional scaling, dataset merging, feature lagging, and interaction term creation.
+    *   **Key Features:** Connectors for local files, Google Sheets, and WRDS. A powerful wrangling toolkit including imputation, scaling, merging, and lagging. **Supports custom Python scripts for complex, user-defined transformations.**
     *   **Learn More:** See [`paper-data/README.md`](./paper-data/README.md)
 *   **`paper-model`**: Implements a robust framework for training and evaluating asset pricing models. It uses a rolling-window backtesting methodology to generate out-of-sample predictions and performance metrics.
     *   **Key Features:** Support for various scikit-learn (OLS, ElasticNet, PCR, PLS, RandomForest, etc.) and PyTorch (Neural Network) models. Pydantic-validated configuration, rolling-window evaluation, hyperparameter tuning, and generation of prediction files.
@@ -126,6 +126,20 @@ The final phase uses the model predictions to construct long-short portfolios an
     ```
 
 **Output**: The `portfolios/results/` directory will be populated with performance reports, charts (e.g., cumulative returns), and detailed monthly return data for each strategy.
+
+### 6. Phase IV: Publishing Your Research
+
+P.A.P.E.R. helps you make your research reproducible and citable by providing a simple command to archive your project on [Zenodo](https://zenodo.org/), a free and open research data repository.
+
+1.  **Get a Zenodo API Token**: Follow the instructions provided by the command to get a personal access token from Zenodo.
+2.  **Create a Draft Publication**: Run the publish command. This will bundle your project's code and configuration (excluding large data files), create a new draft entry on Zenodo, and upload the archive.
+
+    ```bash
+    # Use the --sandbox flag to test with Zenodo's testing server first
+    paper publish zenodo --sandbox
+    ```
+
+**Output**: The command will provide a direct link to your new draft on the Zenodo website. You can then go to this link to review the metadata, add co-authors, and click the final "Publish" button to receive a permanent Digital Object Identifier (DOI) for your work.
 
 ---
 

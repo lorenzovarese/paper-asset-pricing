@@ -41,11 +41,7 @@ Built with [Polars](https://pola.rs/) for high performance and memory efficiency
 This method ensures `paper-data` is available to the main `paper` CLI orchestrator.
 
 ```bash
-# Using pip
 pip install "paper-asset-pricing[data]"
-
-# Using uv
-uv add "paper-asset-pricing[data]"
 ```
 
 **Standalone Installation:**
@@ -53,11 +49,7 @@ uv add "paper-asset-pricing[data]"
 If you only need `paper-data` and its core functionalities for a different project.
 
 ```bash
-# Using pip
 pip install paper-data
-
-# Using uv
-uv add paper-data
 ```
 
 **From Source (for development within the monorepo):**
@@ -65,11 +57,7 @@ uv add paper-data
 Navigate to the root of your `PAPER` monorepo and install `paper-data` in editable mode.
 
 ```bash
-# Using pip
 pip install -e ./paper-data
-
-# Using uv
-uv pip install -e ./paper-data
 ```
 
 ---

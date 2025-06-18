@@ -47,11 +47,7 @@ Its primary objective is to bridge the gap between the clean, processed data fro
 This method ensures `paper-model` is available to the main `paper` CLI orchestrator.
 
 ```bash
-# Using pip
 pip install "paper-asset-pricing[models]"
-
-# Using uv
-uv pip install "paper-asset-pricing[models]"
 ```
 
 **Standalone Installation:**
@@ -59,11 +55,7 @@ uv pip install "paper-asset-pricing[models]"
 If you only need `paper-model` and its core functionalities for a different project.
 
 ```bash
-# Using pip
 pip install paper-model
-
-# Using uv
-uv pip install paper-model
 ```
 
 **From Source (for development within the monorepo):**
@@ -71,11 +63,7 @@ uv pip install paper-model
 Navigate to the root of your `PAPER` monorepo and install `paper-model` in editable mode. This will also install all required dependencies like `scikit-learn`, `torch`, and `group-lasso`.
 
 ```bash
-# Using pip
 pip install -e ./paper-model
-
-# Using uv
-uv pip install -e ./paper-model
 ```
 
 ---

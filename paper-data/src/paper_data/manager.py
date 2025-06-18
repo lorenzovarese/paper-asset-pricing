@@ -81,7 +81,10 @@ class DataManager:
                 cache_hash = _generate_cache_hash(d_config.url)
                 cache_path = raw_data_dir / f"{d_config.name}_{cache_hash}.csv"
                 connector = GoogleSheetConnector(
-                    url=d_config.url, cache_path=cache_path
+                    url=d_config.url,
+                    cache_path=cache_path,
+                    ignore_thousands_separator=d_config.ignore_thousands_separator,
+                    date_column=d_config.date_column,
                 )
                 df_raw = connector.get_data()
                 df = self._post_process_loaded_df(

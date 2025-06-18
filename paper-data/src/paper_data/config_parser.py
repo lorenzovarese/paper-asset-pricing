@@ -46,6 +46,10 @@ class BaseIngestionConfig(BaseModel):
         description="The firm/entity identifier column. Defaults to date_column for time-series data.",
     )
     to_lowercase_cols: bool = False
+    ignore_thousands_separator: bool = Field(
+        False,
+        description="If True, removes commas from numeric strings before parsing.",
+    )
 
     @field_validator("date_column")
     def _validate_date_column(cls, v: Dict[str, str]) -> Dict[str, str]:

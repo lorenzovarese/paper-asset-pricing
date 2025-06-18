@@ -1,7 +1,9 @@
 import pytest
+import requests
 from typer.testing import CliRunner
 from unittest.mock import MagicMock, patch, call
 import subprocess
+import zipfile
 
 import paper_asset_pricing.cli as cli  # type: ignore
 
@@ -343,3 +345,150 @@ def test_execute_phase_handles_manager_errors(
     assert result.exit_code == 1
     assert expected_msg in result.stderr
     assert "Check logs for details" in result.stderr
+
+
+# --- Tests for `paper publish zenodo` ---
+
+
+@pytest.fixture
+def mock_zenodo_project(project):
+    """Creates a project with some files to be archived."""
+    # Add some files that should be included
+    (project / "results.txt").write_text("some results")
+    (project / "configs" / "extra.conf").write_text("config")
+
+    # Add some files that should be excluded
+    (project / "data" / "raw" / "data.csv").write_text("1,2,3")
+    (project / "data" / "processed" / "out.parquet").write_text("...")
+    (project / "logs.log").write_text("some logs")  # Excluded by EXCLUDED_FILES
+    (project / ".git" / "config").mkdir(parents=True)  # Excluded by EXCLUDED_DIRS
+
+    return project
+
+
+def test_create_archive_excludes_correctly(mock_zenodo_project):
+    """Unit test for the _create_archive helper function."""
+    archive_path = mock_zenodo_project.parent / "test_archive.zip"
+
+    file_count = cli._create_archive(mock_zenodo_project, archive_path)
+
+    # Check that the correct number of files were added
+    # Expected files: README.md, configs/paper-project.yaml, configs/data-config.yaml,
+    # configs/models-config.yaml, configs/portfolio-config.yaml, results.txt, configs/extra.conf
+    assert file_count == 7
+
+    with zipfile.ZipFile(archive_path, "r") as zf:
+        archived_files = zf.namelist()
+
+        # Assert included files
+        assert "README.md" in archived_files
+        assert "results.txt" in archived_files
+        assert "configs/extra.conf" in archived_files
+
+        # Assert excluded files
+        assert "data/raw/data.csv" not in archived_files
+        assert "data/processed/out.parquet" not in archived_files
+        assert "logs.log" not in archived_files
+        assert ".git/config" not in archived_files
+
+
+@patch("paper_asset_pricing.cli.requests.post")
+@patch("paper_asset_pricing.cli.requests.put")
+@patch("paper_asset_pricing.cli.os.getenv", return_value="DUMMY_TOKEN")
+@patch("paper_asset_pricing.cli.typer.prompt")
+def test_publish_zenodo_happy_path(
+    mock_prompt, mock_getenv, mock_put, mock_post, mock_zenodo_project
+):
+    """Tests a successful run of the 'publish zenodo' command."""
+    # --- Arrange Mocks ---
+    # Mock the author prompt
+    mock_prompt.side_effect = ["Test Author", "Test University"]
+
+    # Mock the API responses
+    mock_post.return_value.raise_for_status.return_value = None
+    mock_post.return_value.json.return_value = {
+        "id": 12345,
+        "links": {
+            "bucket": "https://zenodo.example.com/api/files/bucket-id",
+            "html": "https://zenodo.example.com/record/12345",
+        },
+    }
+    mock_put.return_value.raise_for_status.return_value = None
+
+    # --- Act ---
+    result = runner.invoke(
+        cli.app, ["publish", "zenodo", "-p", str(mock_zenodo_project)]
+    )
+
+    # --- Assert ---
+    assert result.exit_code == 0, result.stderr
+    assert ">>> Creating Zenodo Draft Publication <<<" in result.stdout
+    assert "✓ Created new draft deposition on Zenodo." in result.stdout
+    assert "✓ Uploaded project archive." in result.stdout
+    assert "✓ Set basic metadata" in result.stdout
+    assert "🎉 Draft created successfully!" in result.stdout
+    assert "https://zenodo.example.com/record/12345" in result.stdout
+
+    # Check that the API calls were made correctly
+    assert mock_post.call_count == 1  # Only one POST to create the deposition
+    assert mock_put.call_count == 2  # One PUT to upload file, one PUT to set metadata
+
+    # Check the metadata payload
+    metadata_call = mock_put.call_args_list[1]  # The second PUT call is for metadata
+    sent_metadata = metadata_call.kwargs["json"]["metadata"]
+    assert sent_metadata["title"] == "my-test-proj"
+    assert sent_metadata["creators"][0]["name"] == "Test Author"
+    assert sent_metadata["creators"][0]["affiliation"] == "Test University"
+
+
+@patch("paper_asset_pricing.cli.os.getenv", return_value=None)  # No env var
+@patch("paper_asset_pricing.cli.typer.prompt", return_value="TOKEN_FROM_PROMPT")
+def test_publish_zenodo_prompts_for_token(
+    mock_prompt, mock_getenv, mock_zenodo_project
+):
+    """Tests that the user is prompted for a token if the env var is not set."""
+    # We only need to test the prompt, so we can mock the rest to fail early
+    with patch(
+        "paper_asset_pricing.cli.requests.post", side_effect=Exception("API call made")
+    ):
+        # We expect the command to fail after the prompt, which is fine for this test
+        result = runner.invoke(
+            cli.app, ["publish", "zenodo", "-p", str(mock_zenodo_project)]
+        )
+
+    # Assert that the tutorial text was printed to standard output
+    assert "--- How to get a Zenodo API Token ---" in result.stdout
+    assert "https://zenodo.org/account/settings/applications/" in result.stdout
+
+    # Assert that typer.prompt was called to get the token
+    # The prompt for the token is the first time typer.prompt is called.
+    mock_prompt.assert_any_call("\nPlease enter your Zenodo API token", hide_input=True)
+
+
+@patch("paper_asset_pricing.cli.requests.post")
+@patch("paper_asset_pricing.cli.os.getenv", return_value="DUMMY_TOKEN")
+@patch("paper_asset_pricing.cli.typer.prompt")
+def test_publish_zenodo_handles_api_error(
+    mock_prompt, mock_getenv, mock_post, mock_zenodo_project
+):
+    """Tests graceful failure when the Zenodo API returns an error."""
+    # Arrange
+    mock_prompt.side_effect = ["Test Author", "Test University"]
+
+    # Simulate an HTTP error
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.json.return_value = {"status": 400, "message": "Validation error."}
+    mock_post.return_value.raise_for_status.side_effect = requests.HTTPError(
+        response=mock_response
+    )
+
+    # Act
+    result = runner.invoke(
+        cli.app, ["publish", "zenodo", "-p", str(mock_zenodo_project)]
+    )
+
+    # Assert
+    assert result.exit_code == 1
+    assert "❌ A Zenodo API error occurred: 400" in result.stderr
+    assert "Validation error" in result.stderr

@@ -6,6 +6,9 @@ commands to initialize a new research project with a standardized directory stru
 to execute various project phases (data processing, modeling, portfolio analysis).
 """
 
+import json
+import os
+import requests
 import typer
 from pathlib import Path
 import yaml
@@ -661,6 +664,244 @@ def execute_portfolio_phase(
         default_config_filename=PORTFOLIO_COMPONENT_CONFIG_FILENAME,
         install_hint="`pip install paper-asset-pricing[portfolio]` or `pip install paper-portfolio`",
     )
+
+
+# --- `publish` Command Group ---
+publish_app = typer.Typer(
+    name="publish",
+    help="Publish a P.A.P.E.R project to a research repository.",
+    no_args_is_help=True,
+)
+app.add_typer(publish_app)
+
+# --- Constants for Publishing ---
+EXCLUDED_EXTENSIONS = {
+    ".csv",
+    ".parquet",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".bzip",
+    ".7z",
+    ".json",
+    ".xlsx",
+    ".xls",
+}
+EXCLUDED_DIRS = {"__pycache__", ".pytest_cache", ".venv", ".git"}
+EXCLUDED_FILES = {
+    ".DS_Store",
+    "Thumbs.db",
+    ".coverage",
+    ".gitignore",
+    ".gitkeep",
+    LOG_FILE_NAME,
+}
+
+
+def _create_archive(project_root: Path, archive_path: Path) -> int:
+    """
+    Creates a zip archive of the project, excluding specified data formats,
+    directories, and specific filenames.
+    Returns the number of files added to the archive.
+    """
+    import zipfile
+
+    count = 0
+    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file_path in project_root.rglob("*"):
+            if (
+                file_path.is_file()
+                and file_path.name not in EXCLUDED_FILES
+                and file_path.suffix.lower() not in EXCLUDED_EXTENSIONS
+                and not any(d in file_path.parts for d in EXCLUDED_DIRS)
+            ):
+                archive_name = file_path.relative_to(project_root)
+                zf.write(file_path, archive_name)
+                count += 1
+    return count
+
+
+@publish_app.command("zenodo")
+def publish_to_zenodo(
+    project_path: str = typer.Option(
+        None,
+        "--project-path",
+        "-p",
+        help="Path to the P.A.P.E.R project root. Tries to auto-detect if not provided.",
+        show_default=False,
+    ),
+    sandbox: bool = typer.Option(
+        False,
+        "--sandbox",
+        help="Use the Zenodo Sandbox for testing instead of the production site.",
+    ),
+):
+    """
+    Creates a draft publication on Zenodo and uploads the project archive.
+
+    This command handles the technical steps of bundling your project files
+    (excluding large data files) and uploading them to Zenodo. It will create
+    a new entry in 'draft' mode.
+
+    You must then go to the provided Zenodo URL to review, complete the
+    metadata (like authors), and click the final 'Publish' button.
+    """
+    typer.secho(
+        ">>> Creating Zenodo Draft Publication <<<",
+        fg=typer.colors.CYAN,
+        bold=True,
+    )
+
+    # --- 1. Determine API endpoint and get token ---
+    if sandbox:
+        typer.secho("Using Zenodo Sandbox environment.", fg=typer.colors.YELLOW)
+        base_url = "https://sandbox.zenodo.org/api"
+        token_url = "https://sandbox.zenodo.org/account/settings/applications/"
+    else:
+        base_url = "https://zenodo.org/api"
+        token_url = "https://zenodo.org/account/settings/applications/"
+
+    token = os.getenv("ZENODO_TOKEN")
+    if not token:
+        # ... (The token tutorial and prompt logic remains the same) ...
+        typer.secho(
+            "\n--- How to get a Zenodo API Token ---", fg=typer.colors.YELLOW, bold=True
+        )
+        typer.secho("To create a draft on Zenodo, a personal access token is required.")
+        typer.secho(f"\n1. Go to: {token_url}", fg=typer.colors.CYAN)
+        typer.secho(
+            "2. Click 'New token', name it, and select the 'deposit:write' scope."
+        )
+        typer.secho("3. Copy the token and paste it below.")
+        typer.secho(
+            '\nTo skip this prompt next time, run: export ZENODO_TOKEN="<your_token>"',
+            fg=typer.colors.MAGENTA,
+        )
+        typer.secho(
+            "----------------------------------------",
+            fg=typer.colors.YELLOW,
+            bold=True,
+        )
+        token = typer.prompt("\nPlease enter your Zenodo API token", hide_input=True)
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # --- 2. Load project config and gather basic metadata ---
+    try:
+        project_root, project_config = _get_project_root_and_load_main_config(
+            project_path
+        )
+    except typer.Exit:
+        raise
+
+    # We only need basic metadata. The user will complete the rest online.
+    metadata = {
+        "title": project_config.get("project_name", project_root.name),
+        "description": project_config.get(
+            "description", "A P.A.P.E.R. research project."
+        ),
+        "upload_type": "software",
+        "creators": [],  # Start with an empty list
+    }
+
+    # --- Prompt for a single, primary author ---
+    typer.secho("\nPlease provide information for the primary author.", bold=True)
+    name = typer.prompt("Author Name")
+    affiliation = typer.prompt(
+        f"Affiliation for {name}", default="", show_default=False
+    )
+    metadata["creators"].append({"name": name, "affiliation": affiliation})
+
+    typer.secho(
+        "Additional authors can be added on the Zenodo website.",
+        dim=True,
+    )
+
+    # --- 3. Create filtered archive ---
+    archive_path = project_root.parent / f"{project_root.name}_zenodo_archive.zip"
+    typer.secho(f"\nCreating project archive at: {archive_path}", fg=typer.colors.BLUE)
+
+    try:
+        file_count = _create_archive(project_root, archive_path)
+        if file_count == 0:
+            typer.secho(
+                "No files found to archive. Aborting.", fg=typer.colors.RED, err=True
+            )
+            raise typer.Exit(code=1)
+        typer.secho(
+            f"✓ Successfully added {file_count} files to the archive.",
+            fg=typer.colors.GREEN,
+        )
+
+        # --- 4. Zenodo API Interaction ---
+        typer.secho("\nUploading to Zenodo as a draft...", fg=typer.colors.BLUE)
+
+        # Step 1: Create a new deposition
+        r = requests.post(f"{base_url}/deposit/depositions", json={}, headers=headers)
+        r.raise_for_status()
+        deposition_data = r.json()
+        deposition_id = deposition_data["id"]
+        bucket_url = deposition_data["links"]["bucket"]
+        edit_url = deposition_data["links"][
+            "html"
+        ]  # Get the URL for the draft's edit page
+        typer.secho("✓ Created new draft deposition on Zenodo.", fg=typer.colors.GREEN)
+
+        # Step 2: Upload the archive
+        with open(archive_path, "rb") as fp:
+            r = requests.put(
+                f"{bucket_url}/{archive_path.name}", data=fp, headers=headers
+            )
+            r.raise_for_status()
+        typer.secho("✓ Uploaded project archive.", fg=typer.colors.GREEN)
+
+        # Step 3: Set the basic metadata
+        metadata_payload = {"metadata": metadata}
+        r = requests.put(
+            f"{base_url}/deposit/depositions/{deposition_id}",
+            json=metadata_payload,
+            headers=headers,
+        )
+        r.raise_for_status()
+        typer.secho(
+            "✓ Set basic metadata (title and description).", fg=typer.colors.GREEN
+        )
+
+        # --- 5. Final Instructions ---
+        typer.secho(
+            "\n🎉 Draft created successfully!", bold=True, fg=typer.colors.BRIGHT_GREEN
+        )
+        typer.secho("\nNext Steps:", bold=True)
+        typer.secho("1. Go to the following URL to edit your draft:")
+        typer.secho(f"   {edit_url}", fg=typer.colors.CYAN)
+        typer.secho("2. Complete the metadata (especially the 'Authors' section).")
+        typer.secho(
+            "3. Click the 'Publish' button on the Zenodo website to finalize your submission."
+        )
+
+    except requests.HTTPError as e:
+        typer.secho(
+            f"\n❌ A Zenodo API error occurred: {e.response.status_code}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        try:
+            typer.secho(f"Error details: {e.response.json()}", err=True)
+        except json.JSONDecodeError:
+            typer.secho(f"Error details: {e.response.text}", err=True)
+        raise typer.Exit(code=1)
+    except Exception as e:
+        typer.secho(
+            f"\n❌ An unexpected error occurred: {e}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1)
+    finally:
+        # Clean up the temporary archive file
+        if archive_path.exists():
+            archive_path.unlink()
+            typer.secho(
+                f"\nCleaned up temporary archive: {archive_path}", fg=typer.colors.BLUE
+            )
 
 
 @app.callback()

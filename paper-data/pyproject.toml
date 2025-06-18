@@ -1,6 +1,6 @@
 [project]
 name = "paper-data"
-version = "0.1.1"
+version = "0.1.2"
 description = "A flexible, configuration-driven data pipeline for asset-pricing research."
 readme = "README.md"
 authors = [

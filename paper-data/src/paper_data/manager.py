@@ -245,7 +245,23 @@ class DataManager:
                 )
 
                 self.datasets[op.output_name] = output_df
-                self._ingestion_metadata[op.output_name] = meta
+
+                # determine new date column (fall back safely if none)
+                new_date_col = (
+                    "date"
+                    if "date" in output_df.schema.names()
+                    else meta.get("date_column")
+                )
+                # only keep id_column if it really exists in output_df
+                old_id = meta.get("id_column")
+                new_id_col = (
+                    old_id if (old_id and old_id in output_df.schema.names()) else None
+                )
+
+                self._ingestion_metadata[op.output_name] = {
+                    "date_column": new_date_col,
+                    "id_column": new_id_col,
+                }
 
             elif isinstance(op, InteractionConfig):
                 self._ingestion_metadata[op.output_name] = meta
